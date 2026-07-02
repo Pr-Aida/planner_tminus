@@ -340,7 +340,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
       )}
 
       {tab === 'activity' && (
-        <ActivityTab roomId={room.id} />
+        <ActivityTab roomId={room.id} userId={userId} />
       )}
 
       {tab === 'settings' && isAdmin && (
@@ -498,7 +498,7 @@ function SharingPrefsCard({ member, roomId, onUpdated }: {
 }
 
 // ─── Activity tab ─────────────────────────────────────────────────────────────
-function ActivityTab({ roomId }: { roomId: string }) {
+function ActivityTab({ roomId, userId }: { roomId: string; userId: string }) {
   const [activity, setActivity] = useState<RoomMemberActivity[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -506,20 +506,57 @@ function ActivityTab({ roomId }: { roomId: string }) {
     fetchRoomActivity(roomId).then(setActivity).catch(() => {}).finally(() => setLoading(false));
   }, [roomId]);
 
-  if (loading) return <div className="py-8 text-center"><Loader2 className="animate-spin mx-auto" size={22} color="#1B2A4A" /></div>;
-  if (activity.length === 0) return <p className="text-sm text-center py-8" style={{ color: '#9CA3AF' }}>No shared activity yet.</p>;
-
   return (
-    <div className="space-y-3">
-      {activity.map(a => (
-        <div key={a.user_id} className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.08)' }}>
-          <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>{a.display_name || a.username || 'Member'}</p>
-          <div className="flex gap-4 mt-1">
-            <span className="text-xs" style={{ color: '#6B6B6B' }}>Today: {a.today_minutes}m</span>
-            <span className="text-xs" style={{ color: '#6B6B6B' }}>Week: {a.week_minutes}m</span>
-          </div>
+    <div className="space-y-4">
+      {/* My Study Timer — personal timer controls for the current user */}
+      <StudyTimerSection roomId={roomId} userId={userId} />
+
+      {/* Room Activity Summary — shared study times for all approved members */}
+      <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
+        <div className="flex items-center gap-2 mb-3">
+          <Clock size={16} color="#7B1C3E" />
+          <p className="text-xs font-bold uppercase tracking-widest" style={{ color: '#7B1C3E' }}>Room Activity Summary</p>
         </div>
-      ))}
+        {loading ? (
+          <div className="py-4 text-center"><Loader2 className="animate-spin mx-auto" size={18} color="#1B2A4A" /></div>
+        ) : activity.length === 0 ? (
+          <p className="text-sm text-center py-4" style={{ color: '#9CA3AF' }}>No shared activity yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {activity.map(a => (
+              <div key={a.user_id} className="flex items-center gap-3 rounded-lg p-2.5" style={{ background: '#F8F9FC' }}>
+                {a.avatar_url ? (
+                  <img src={a.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                ) : (
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ background: '#1B2A4A' }}>
+                    {(a.username || a.display_name || '?').charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate" style={{ color: '#1B2A4A' }}>
+                    {a.display_name || a.username || 'Member'}
+                    {a.user_id === userId && <span className="ml-1.5 text-[10px] font-bold uppercase" style={{ color: '#9CA3AF' }}>(you)</span>}
+                  </p>
+                  <p className="text-xs" style={{ color: '#9CA3AF' }}>@{a.username || ''}</p>
+                </div>
+                {a.active_now && !a.hidden && (
+                  <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#E6F6EF', color: '#059669' }}>
+                    <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#059669' }} />
+                    Studying
+                  </span>
+                )}
+                {!a.hidden ? (
+                  <div className="flex items-center gap-3 flex-shrink-0 text-xs" style={{ color: '#6B6B6B' }}>
+                    <span>Today: <strong style={{ color: '#1B2A4A' }}>{formatDuration(a.minutes * 60)}</strong></span>
+                  </div>
+                ) : (
+                  <span className="text-[10px] italic flex-shrink-0" style={{ color: '#9CA3AF' }}>Hidden</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -851,11 +888,18 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
     } catch (e) { console.error(e); }
   }
 
+  // Fetch timer summaries so we can show inline study times per member
+  const [timerSummaries, setTimerSummaries] = useState<MemberTimerSummary[]>([]);
+  useEffect(() => {
+    getRoomTimerSummaries(room.id).then(setTimerSummaries).catch(() => {});
+    const id = setInterval(() => {
+      getRoomTimerSummaries(room.id).then(setTimerSummaries).catch(() => {});
+    }, 15000);
+    return () => clearInterval(id);
+  }, [room.id]);
+
   return (
     <div className="space-y-4">
-      {/* Study Timer */}
-      <StudyTimerSection roomId={room.id} userId={currentUserId} />
-
       {/* Invite by username (owner/admin only) */}
       {isAdmin && (
         <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
@@ -920,77 +964,103 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
         </div>
       )}
 
-      {/* Approved members */}
+      {/* Approved members — avatar, name, role, studying status, inline study times */}
       <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
         <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7B1C3E' }}>Members ({approved.length})</p>
         <div className="space-y-2">
-          {approved.map(m => (
-            <div key={m.id} className="flex items-center gap-2">
-              <MemberAvatar m={m} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate" style={{ color: '#1B2A4A' }}>
-                  {m.display_name || m.username || 'Member'}
-                  {m.role === 'owner' && (
-                    <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#F5E6EC', color: '#7B1C3E' }}>Owner</span>
-                  )}
-                  {m.role === 'admin' && m.role !== 'owner' && (
-                    <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#EBF0FF', color: '#1B2A4A' }}>Admin</span>
-                  )}
-                  {m.user_id === currentUserId && (
-                    <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#E8EBF4', color: '#1B2A4A' }}>You</span>
-                  )}
-                </p>
-                <p className="text-xs" style={{ color: '#9CA3AF' }}>@{m.username || m.user_id.slice(0, 8)}</p>
-              </div>
-              {/* Member actions (owner only) */}
-              {isOwner && m.user_id !== room.owner_id && (
-                <div className="relative">
-                  <button
-                    onClick={() => setMemberMenuOpen(memberMenuOpen === m.user_id ? null : m.user_id)}
-                    className="p-1 rounded transition-colors"
-                    style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: '#C8C8C8' }}
-                    onMouseEnter={e => (e.currentTarget.style.color = '#1B2A4A')}
-                    onMouseLeave={e => (e.currentTarget.style.color = '#C8C8C8')}
-                  >
-                    <MoreVertical size={14} />
-                  </button>
-                  {memberMenuOpen === m.user_id && (
-                    <div
-                      className="absolute right-0 top-full mt-1 z-50 rounded-lg py-1 min-w-[140px]"
-                      style={{ background: '#fff', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', border: '1px solid #E8E8E8' }}
-                      onClick={e => e.stopPropagation()}
-                    >
-                      {m.role !== 'admin' && (
-                        <button
-                          onClick={() => { handleMakeAdmin(m.user_id); setMemberMenuOpen(null); }}
-                          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-left hover:bg-gray-50"
-                          style={{ border: 'none', background: 'transparent', color: '#1B2A4A', cursor: 'pointer' }}
-                        >
-                          <UserCog size={12} /> Make Admin
-                        </button>
-                      )}
-                      {m.role === 'admin' && (
-                        <button
-                          onClick={() => { handleRemoveAdmin(m.user_id); setMemberMenuOpen(null); }}
-                          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-left hover:bg-gray-50"
-                          style={{ border: 'none', background: 'transparent', color: '#B45309', cursor: 'pointer' }}
-                        >
-                          <UserCog size={12} /> Remove Admin
-                        </button>
-                      )}
-                      <button
-                        onClick={() => { onRemove(m.user_id); setMemberMenuOpen(null); }}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-left hover:bg-red-50"
-                        style={{ border: 'none', background: 'transparent', color: '#B91C1C', cursor: 'pointer' }}
-                      >
-                        <Trash2 size={12} /> Remove
-                      </button>
-                    </div>
-                  )}
+          {approved.map(m => {
+            const ts = timerSummaries.find(s => s.user_id === m.user_id);
+            return (
+              <div key={m.id} className="flex items-center gap-2.5 flex-wrap">
+                <MemberAvatar m={m} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: '#1B2A4A' }}>
+                    {m.display_name || m.username || 'Member'}
+                    {m.role === 'owner' && (
+                      <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#F5E6EC', color: '#7B1C3E' }}>Owner</span>
+                    )}
+                    {m.role === 'admin' && m.role !== 'owner' && (
+                      <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#EBF0FF', color: '#1B2A4A' }}>Admin</span>
+                    )}
+                    {m.user_id === currentUserId && (
+                      <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#E8EBF4', color: '#1B2A4A' }}>You</span>
+                    )}
+                  </p>
+                  <p className="text-xs" style={{ color: '#9CA3AF' }}>@{m.username || m.user_id.slice(0, 8)}</p>
                 </div>
-              )}
-            </div>
-          ))}
+
+                {/* Studying status badge */}
+                {ts?.is_studying && (
+                  <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#E6F6EF', color: '#059669' }}>
+                    <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#059669' }} />
+                    Studying
+                  </span>
+                )}
+
+                {/* Inline study times on the same row */}
+                {ts && !ts.is_studying && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#F2F2F2', color: '#9CA3AF' }}>
+                    {ts.finished_for_day ? 'Finished' : 'Not studying'}
+                  </span>
+                )}
+                {ts && (
+                  <div className="flex items-center gap-2 text-xs flex-shrink-0" style={{ color: '#6B6B6B' }}>
+                    <span>Today: <strong style={{ color: '#1B2A4A' }}>{formatDuration(ts.today_seconds)}</strong></span>
+                    <span style={{ color: '#D1D5DB' }}>|</span>
+                    <span>Week: <strong style={{ color: '#1B2A4A' }}>{formatDuration(ts.week_seconds)}</strong></span>
+                  </div>
+                )}
+
+                {/* Member actions (owner only) */}
+                {isOwner && m.user_id !== room.owner_id && (
+                  <div className="relative">
+                    <button
+                      onClick={() => setMemberMenuOpen(memberMenuOpen === m.user_id ? null : m.user_id)}
+                      className="p-1 rounded transition-colors"
+                      style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: '#C8C8C8' }}
+                      onMouseEnter={e => (e.currentTarget.style.color = '#1B2A4A')}
+                      onMouseLeave={e => (e.currentTarget.style.color = '#C8C8C8')}
+                    >
+                      <MoreVertical size={14} />
+                    </button>
+                    {memberMenuOpen === m.user_id && (
+                      <div
+                        className="absolute right-0 top-full mt-1 z-50 rounded-lg py-1 min-w-[140px]"
+                        style={{ background: '#fff', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', border: '1px solid #E8E8E8' }}
+                        onClick={e => e.stopPropagation()}
+                      >
+                        {m.role !== 'admin' && (
+                          <button
+                            onClick={() => { handleMakeAdmin(m.user_id); setMemberMenuOpen(null); }}
+                            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-left hover:bg-gray-50"
+                            style={{ border: 'none', background: 'transparent', color: '#1B2A4A', cursor: 'pointer' }}
+                          >
+                            <UserCog size={12} /> Make Admin
+                          </button>
+                        )}
+                        {m.role === 'admin' && (
+                          <button
+                            onClick={() => { handleRemoveAdmin(m.user_id); setMemberMenuOpen(null); }}
+                            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-left hover:bg-gray-50"
+                            style={{ border: 'none', background: 'transparent', color: '#B45309', cursor: 'pointer' }}
+                          >
+                            <UserCog size={12} /> Remove Admin
+                          </button>
+                        )}
+                        <button
+                          onClick={() => { onRemove(m.user_id); setMemberMenuOpen(null); }}
+                          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-left hover:bg-red-50"
+                          style={{ border: 'none', background: 'transparent', color: '#B91C1C', cursor: 'pointer' }}
+                        >
+                          <Trash2 size={12} /> Remove
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

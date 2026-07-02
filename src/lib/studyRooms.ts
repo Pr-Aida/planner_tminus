@@ -168,6 +168,20 @@ export async function regenerateInviteCode(roomId: string): Promise<string> {
 }
 
 export async function deleteRoom(roomId: string): Promise<void> {
+  // 1. Remove the room's profile image from storage (only that room's folder).
+  try {
+    const { data: files } = await supabase.storage.from('room-profiles').list(roomId);
+    if (files && files.length > 0) {
+      const paths = files.map(f => `${roomId}/${f.name}`);
+      await supabase.storage.from('room-profiles').remove(paths);
+    }
+  } catch (e) {
+    logSupabaseError('deleteRoom storage cleanup', e);
+    // Don't block room deletion if storage cleanup fails — FK CASCADE handles DB rows.
+  }
+
+  // 2. Delete the room record. FK CASCADE removes members, invites, join requests,
+  //    notifications, and study sessions. Planner data is untouched (no FK to rooms).
   const { error } = await supabase.from('study_rooms').delete().eq('id', roomId);
   if (error) throw error;
 }
@@ -289,6 +303,8 @@ export async function fetchRoomByInviteCode(code: string): Promise<StudyRoom | n
 export async function fetchRoomByCode(code: string): Promise<StudyRoom | null> {
   const normalized = code.trim().toUpperCase();
   if (!normalized) return null;
+  if (normalized.length > 20) return null;
+  if (!/^[A-Z0-9-]+$/.test(normalized)) return null;
   const { data, error } = await supabase
     .from('study_rooms').select('*').eq('room_code', normalized).maybeSingle();
   if (error) throw error;
@@ -470,6 +486,8 @@ export async function searchUserByUsername(username: string): Promise<{
 } | null> {
   const normalized = username.trim();
   if (!normalized) return null;
+  if (normalized.length > 24) return null;
+  if (!/^[A-Za-z0-9_.]+$/.test(normalized)) return null;
   const { data, error } = await supabase
     .rpc('search_profile_by_username', { p_username: normalized });
   if (error) throw error;
