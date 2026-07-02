@@ -16,6 +16,7 @@ export interface StudyRoom {
   name: string;
   description: string;
   avatar_url: string | null;
+  profile_image_url: string | null;
   theme_color: string;
   invite_code: string;
   room_code: string;
@@ -74,6 +75,27 @@ export interface RoomMemberActivity {
   minutes: number;
   active_now: boolean;
   hidden: boolean;
+}
+
+export interface RoomStudySession {
+  id: string;
+  room_id: string;
+  user_id: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number | null;
+  created_at: string;
+}
+
+export interface MemberTimerSummary {
+  user_id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+  is_studying: boolean;
+  today_seconds: number;
+  week_seconds: number;
+  active_started_at: string | null;
 }
 
 export type ReminderStatus = 'pending' | 'completed' | 'not_completed' | 'postponed' | 'cancelled';

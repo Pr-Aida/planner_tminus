@@ -1,61 +1,84 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ArrowLeft, Copy, Check, RefreshCw, Users, Clock, Trophy, Settings,
   UserPlus, Trash2, X, Loader2, Link as LinkIcon, Search, LogOut, AlertTriangle,
-  UserCog,
+  UserCog, Play, Square, Timer, ImageIcon,
 } from 'lucide-react';
-import type { StudyRoom, RoomMember, RoomMemberActivity } from '../types';
+import type { StudyRoom, RoomMember, RoomMemberActivity, MemberTimerSummary } from '../types';
 import {
   fetchRoomById, fetchMembers, fetchMyMembership, fetchRoomActivity,
   updateRoom, regenerateInviteCode, deleteRoom,
   approveMember, rejectMember, removeMember, leaveRoom, transferOwnership,
   updateMySharing, requestToJoin, searchUserByUsername, inviteByUsername,
   acceptInvite, declineInvite,
+  startStudySession, stopStudySession, getMyActiveSession, getRoomTimerSummaries,
+  uploadRoomProfileImage, removeRoomProfileImage,
 } from '../lib/studyRooms';
 
+// ─── Shared styles ──────────────────────────────────────────────────────────────
+const inputStyle = {
+  border: '1.5px solid #E8EBF4',
+  background: '#F8F9FC',
+  color: '#1B2A4A',
+  fontSize: 13,
+};
+
+// ─── Field / Label helpers ─────────────────────────────────────────────────────
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="mb-4">
+      <label className="block text-xs font-bold mb-1.5 uppercase tracking-wider" style={{ color: '#1B2A4A' }}>
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+// ─── MemberAvatar helper ──────────────────────────────────────────────────────
+function MemberAvatar({ m }: { m: RoomMember }) {
+  if (m.avatar_url) {
+    return <img src={m.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />;
+  }
+  return (
+    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+      style={{ background: '#1B2A4A' }}>
+      {(m.username || m.display_name || '?').charAt(0).toUpperCase()}
+    </div>
+  );
+}
+
+// ─── Tab types ─────────────────────────────────────────────────────────────────
+type Tab = 'overview' | 'members' | 'activity' | 'settings';
+
+// ─── Main component ────────────────────────────────────────────────────────────
 interface Props {
   roomId: string;
   userId: string;
   onBack: () => void;
 }
 
-type Tab = 'overview' | 'members' | 'settings';
-
 export default function RoomProfileView({ roomId, userId, onBack }: Props) {
   const [room, setRoom] = useState<StudyRoom | null>(null);
   const [members, setMembers] = useState<RoomMember[]>([]);
   const [myMembership, setMyMembership] = useState<RoomMember | null>(null);
-  const [activityToday, setActivityToday] = useState<RoomMemberActivity[]>([]);
-  const [activityWeek, setActivityWeek] = useState<RoomMemberActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('overview');
   const [copied, setCopied] = useState<'link' | 'code' | null>(null);
   const [showLeave, setShowLeave] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
     try {
-      const [r, ms, mm] = await Promise.all([
+      const [r, m, me] = await Promise.all([
         fetchRoomById(roomId),
         fetchMembers(roomId),
         fetchMyMembership(roomId, userId),
       ]);
       setRoom(r);
-      setMembers(ms);
-      setMyMembership(mm);
-
-      // Only fetch activity if I'm an approved member or owner.
-      const isApproved = mm?.status === 'approved' || r?.owner_id === userId;
-      if (isApproved) {
-        const [today, week] = await Promise.all([
-          fetchRoomActivity(roomId, 'today'),
-          fetchRoomActivity(roomId, 'week'),
-        ]);
-        setActivityToday(today);
-        setActivityWeek(week);
-      }
+      setMembers(m);
+      setMyMembership(me);
     } catch (e) {
-      console.error(e);
+      console.error('RoomProfileView load error:', e);
     } finally {
       setLoading(false);
     }
@@ -63,142 +86,126 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
-  const isOwner = room?.owner_id === userId;
-  const isApproved = myMembership?.status === 'approved' || isOwner;
-  const myStatus = myMembership?.status;
-
-  function copy(text: string, which: 'link' | 'code') {
-    navigator.clipboard?.writeText(text).then(() => {
-      setCopied(which);
-      setTimeout(() => setCopied(null), 1500);
-    });
-  }
-
   if (loading) {
     return (
-      <div className="max-w-5xl mx-auto px-4 md:px-6 py-12 flex justify-center">
-        <Loader2 className="animate-spin" size={24} color="#9CA3AF" />
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="animate-spin" size={28} color="#1B2A4A" />
       </div>
     );
   }
 
   if (!room) {
     return (
-      <div className="max-w-5xl mx-auto px-4 md:px-6 py-12 text-center">
-        <p style={{ color: '#6B6B6B' }}>This room no longer exists or you don't have access.</p>
-        <button onClick={onBack} className="mt-4 text-sm font-semibold" style={{ color: '#1B2A4A' }}>← Back</button>
+      <div className="text-center py-20">
+        <p className="text-sm" style={{ color: '#6B6B6B' }}>Room not found.</p>
+        <button onClick={onBack} className="mt-4 px-4 py-2 rounded-lg text-sm font-bold text-white" style={{ background: '#1B2A4A', border: 'none', cursor: 'pointer' }}>Back</button>
       </div>
     );
+  }
+
+  const isOwner = room.owner_id === userId;
+  const myStatus = myMembership?.status;
+
+  // Non-approved users: show limited view
+  if (!isOwner && myStatus !== 'approved') {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-6">
+        <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-semibold mb-6" style={{ color: '#1B2A4A', background: 'none', border: 'none', cursor: 'pointer' }}>
+          <ArrowLeft size={15} /> Back
+        </button>
+        <RoomHeader room={room} />
+        <div className="mt-6 rounded-xl p-5 text-center" style={{ background: '#FEF3C7' }}>
+          <Clock size={24} color="#B45309" className="mx-auto mb-2" />
+          <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>
+            {myStatus === 'pending' ? 'Your request is pending approval.' : 'You are not a member of this room.'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  function copyToClipboard(text: string, type: 'link' | 'code') {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(type);
+      setTimeout(() => setCopied(null), 1800);
+    });
   }
 
   const inviteLink = `${window.location.origin}/room/${room.invite_code}`;
-  const approvedMembers = members.filter(m => m.status === 'approved');
-  const pendingRequests = members.filter(m => m.status === 'pending');
+  const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
+    { key: 'overview', label: 'Overview', icon: <Users size={14} /> },
+    { key: 'members', label: 'Members', icon: <UserPlus size={14} /> },
+    { key: 'activity', label: 'Activity', icon: <Clock size={14} /> },
+    ...(isOwner ? [{ key: 'settings' as Tab, label: 'Settings', icon: <Settings size={14} /> }] : []),
+  ];
 
-  // ─── Pending / non-approved view (limited preview) ─────────────────────────
-  if (!isApproved) {
-    return (
-      <div className="max-w-2xl mx-auto px-4 md:px-6 py-6">
-        <BackButton onBack={onBack} />
-        <RoomHeader room={room} membersCount={approvedMembers.length} />
-        <PendingPanel
-          status={myStatus}
-          room={room}
-          userId={userId}
-          onChanged={load}
-        />
-      </div>
-    );
-  }
-
-  // ─── Approved member / owner view ───────────────────────────────────────────
   return (
-    <div className="max-w-5xl mx-auto px-4 md:px-6 py-6">
-      <BackButton onBack={onBack} />
+    <div className="max-w-2xl mx-auto px-4 py-6">
+      {/* Back */}
+      <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-semibold mb-5" style={{ color: '#1B2A4A', background: 'none', border: 'none', cursor: 'pointer' }}>
+        <ArrowLeft size={15} /> Back to Rooms
+      </button>
 
-      <RoomHeader room={room} membersCount={approvedMembers.length} />
+      {/* Header */}
+      <RoomHeader room={room} />
 
-      {/* Invite link + code (visible to approved members; owner can manage) */}
-      <div
-        className="rounded-xl p-4 mb-4"
-        style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}
-      >
-        <div className="flex items-center gap-2 mb-3">
-          <LinkIcon size={14} color="#7B1C3E" />
-          <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#7B1C3E' }}>
-            Invite
-          </span>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <div className="flex-1 flex items-center rounded-lg px-3 py-2 gap-2" style={{ background: '#F8F9FC', border: '1px solid #E8EBF4' }}>
-            <span className="text-xs flex-1 truncate font-mono" style={{ color: '#1B2A4A' }}>{inviteLink}</span>
-            <button
-              onClick={() => copy(inviteLink, 'link')}
-              className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded"
-              style={{ background: '#1B2A4A', color: '#fff', border: 'none', cursor: 'pointer' }}
-            >
-              {copied === 'link' ? <Check size={12} /> : <Copy size={12} />} Copy
-            </button>
-          </div>
-          <div className="flex items-center rounded-lg px-3 py-2 gap-2" style={{ background: '#F8F9FC', border: '1px solid #E8EBF4' }}>
-            <span className="text-xs font-mono font-bold" style={{ color: '#1B2A4A' }}>{room.room_code}</span>
-            <button
-              onClick={() => copy(room.room_code, 'code')}
-              className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded"
-              style={{ background: '#E8EBF4', color: '#1B2A4A', border: 'none', cursor: 'pointer' }}
-            >
-              {copied === 'code' ? <Check size={12} /> : <Copy size={12} />}
-            </button>
-          </div>
-        </div>
-        {!room.invite_enabled && (
-          <p className="text-xs mt-2" style={{ color: '#B45309' }}>Invite link is disabled by the owner.</p>
-        )}
+      {/* Invite / code bar */}
+      <div className="flex flex-wrap items-center gap-2 my-4">
+        <button
+          onClick={() => copyToClipboard(inviteLink, 'link')}
+          disabled={!room.invite_enabled}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
+          style={{ background: '#F2F2F2', color: '#1B2A4A', border: 'none', cursor: room.invite_enabled ? 'pointer' : 'not-allowed', opacity: room.invite_enabled ? 1 : 0.5 }}
+        >
+          {copied === 'link' ? <Check size={13} color="#059669" /> : <LinkIcon size={13} />}
+          {copied === 'link' ? 'Copied!' : 'Copy invite link'}
+        </button>
+        <button
+          onClick={() => copyToClipboard(room.room_code, 'code')}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold font-mono"
+          style={{ background: '#F2F2F2', color: '#1B2A4A', border: 'none', cursor: 'pointer' }}
+        >
+          {copied === 'code' ? <Check size={13} color="#059669" /> : <Copy size={13} />}
+          {copied === 'code' ? 'Copied!' : room.room_code}
+        </button>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-4">
-        {([
-          { k: 'overview', label: 'Overview' },
-          { k: 'members', label: `Members (${approvedMembers.length})` },
-          ...(isOwner ? [{ k: 'settings', label: 'Settings' }] : []),
-        ] as { k: Tab; label: string }[]).map(t => (
+      <div className="flex gap-1 mb-5 rounded-xl p-1" style={{ background: '#F2F2F2' }}>
+        {tabs.map(t => (
           <button
-            key={t.k}
-            onClick={() => setTab(t.k)}
-            className="px-3 py-1.5 rounded-md text-xs font-semibold transition-all"
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold flex-1 justify-center transition-colors"
             style={{
-              background: tab === t.k ? '#1B2A4A' : 'transparent',
-              color: tab === t.k ? '#fff' : '#6B6B6B',
+              background: tab === t.key ? '#1B2A4A' : 'transparent',
+              color: tab === t.key ? '#fff' : '#6B6B6B',
               border: 'none', cursor: 'pointer',
             }}
           >
-            {t.label}
+            {t.icon} {t.label}
           </button>
         ))}
       </div>
 
       {tab === 'overview' && (
-        <OverviewTab
-          room={room}
-          activityToday={activityToday}
-          activityWeek={activityWeek}
-          isOwner={isOwner}
-        />
+        <OverviewTab room={room} members={members} isOwner={isOwner} userId={userId} onUpdated={load} />
       )}
 
       {tab === 'members' && (
         <MembersTab
           room={room}
           members={members}
-          isOwner={isOwner}
           currentUserId={userId}
-          pendingRequests={pendingRequests}
-          onApprove={(uid) => approveMember(room.id, uid).then(load)}
-          onReject={(uid) => rejectMember(room.id, uid).then(load)}
-          onRemove={(uid) => removeMember(room.id, uid).then(load)}
-          onInvite={(uid) => inviteByUsername(room.id, uid, userId).then(load)}
+          isOwner={isOwner}
+          onRemove={async (uid) => { await removeMember(room.id, uid); load(); }}
+          onApprove={async (uid) => { await approveMember(room.id, uid); load(); }}
+          onReject={async (uid) => { await rejectMember(room.id, uid); load(); }}
         />
+      )}
+
+      {tab === 'activity' && (
+        <ActivityTab roomId={room.id} />
       )}
 
       {tab === 'settings' && isOwner && (
@@ -212,17 +219,6 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
             await transferOwnership(room.id, newOwnerId);
             await leaveRoom(room.id, userId);
             onBack();
-          }}
-        />
-      )}
-
-      {/* My privacy controls — always visible to approved members */}
-      {myMembership && (
-        <PrivacyPanel
-          membership={myMembership}
-          onChanged={async (patch) => {
-            await updateMySharing(room.id, userId, patch);
-            load();
           }}
         />
       )}
@@ -271,412 +267,399 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
 }
 
 // ─── Room header ───────────────────────────────────────────────────────────────
-function RoomHeader({ room, membersCount }: { room: StudyRoom; membersCount: number }) {
+function RoomHeader({ room }: { room: StudyRoom }) {
+  const img = room.profile_image_url || room.avatar_url;
   return (
-    <div
-      className="rounded-xl p-6 mb-4 flex items-center gap-4"
-      style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}
-    >
-      {room.avatar_url ? (
-        <img src={room.avatar_url} alt="" className="rounded-xl object-cover" style={{ width: 64, height: 64 }} />
+    <div className="flex items-center gap-4 mb-2">
+      {img ? (
+        <img src={img} alt="" className="rounded-xl object-cover flex-shrink-0" style={{ width: 64, height: 64 }} />
       ) : (
-        <div
-          className="rounded-xl flex items-center justify-center text-white font-extrabold text-xl"
-          style={{ width: 64, height: 64, background: room.theme_color }}
-        >
+        <div className="rounded-xl flex items-center justify-center text-white font-extrabold text-2xl flex-shrink-0"
+          style={{ width: 64, height: 64, background: room.theme_color }}>
           {room.name.charAt(0).toUpperCase()}
         </div>
       )}
-      <div className="flex-1 min-w-0">
-        <h1 className="text-xl font-extrabold truncate" style={{ color: '#1B2A4A' }}>{room.name}</h1>
-        {room.description && (
-          <p className="text-sm mt-1" style={{ color: '#6B6B6B' }}>{room.description}</p>
-        )}
-        <div className="flex items-center gap-3 mt-2">
-          <span className="flex items-center gap-1 text-xs" style={{ color: '#9CA3AF' }}>
-            <Users size={12} /> {membersCount} member{membersCount === 1 ? '' : 's'}
-          </span>
-          <span className="flex items-center gap-1 text-xs font-mono" style={{ color: '#9CA3AF' }}>
-            {room.room_code}
-          </span>
-        </div>
+      <div>
+        <h1 className="text-xl font-extrabold" style={{ color: '#1B2A4A' }}>{room.name}</h1>
+        {room.description && <p className="text-sm mt-0.5" style={{ color: '#6B6B6B' }}>{room.description}</p>}
       </div>
     </div>
   );
 }
 
-function BackButton({ onBack }: { onBack: () => void }) {
-  return (
-    <button
-      onClick={onBack}
-      className="flex items-center gap-1 text-xs font-semibold mb-4"
-      style={{ color: '#1B2A4A', background: 'none', border: 'none', cursor: 'pointer' }}
-    >
-      <ArrowLeft size={14} /> Back to rooms
-    </button>
-  );
-}
-
-// ─── Pending panel (non-approved users) ───────────────────────────────────────
-function PendingPanel({
-  status, room, userId, onChanged,
-}: {
-  status: RoomMember['status'] | undefined;
-  room: StudyRoom;
-  userId: string;
-  onChanged: () => void;
+// ─── Overview tab ─────────────────────────────────────────────────────────────
+function OverviewTab({ room, members, isOwner, userId, onUpdated }: {
+  room: StudyRoom; members: RoomMember[]; isOwner: boolean; userId: string; onUpdated: () => void;
 }) {
-  const [requesting, setRequesting] = useState(false);
-
-  async function handleRequest() {
-    setRequesting(true);
-    try {
-      await requestToJoin(room.id, userId);
-      onChanged();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setRequesting(false);
-    }
-  }
-
-  return (
-    <div
-      className="rounded-xl p-6"
-      style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}
-    >
-      {status === 'pending' && (
-        <div className="text-center">
-          <div className="inline-flex items-center justify-center rounded-full mb-3" style={{ width: 48, height: 48, background: '#FEF3C7' }}>
-            <Clock size={22} color="#B45309" />
-          </div>
-          <p className="text-sm font-bold mb-1" style={{ color: '#1B2A4A' }}>Request pending</p>
-          <p className="text-xs" style={{ color: '#6B6B6B' }}>
-            Your request to join this room is pending approval. You'll see shared activity once the owner approves.
-          </p>
-        </div>
-      )}
-      {status === 'invited' && (
-        <div className="text-center">
-          <div className="inline-flex items-center justify-center rounded-full mb-3" style={{ width: 48, height: 48, background: '#E6F6EF' }}>
-            <UserPlus size={22} color="#059669" />
-          </div>
-          <p className="text-sm font-bold mb-1" style={{ color: '#1B2A4A' }}>You've been invited</p>
-          <p className="text-xs mb-4" style={{ color: '#6B6B6B' }}>Accept the invitation to join this room.</p>
-          <AcceptDeclineButtons roomId={room.id} userId={userId} onChanged={onChanged} />
-        </div>
-      )}
-      {status === 'rejected' && (
-        <div className="text-center">
-          <div className="inline-flex items-center justify-center rounded-full mb-3" style={{ width: 48, height: 48, background: '#FEE2E2' }}>
-            <X size={22} color="#B91C1C" />
-          </div>
-          <p className="text-sm font-bold mb-1" style={{ color: '#1B2A4A' }}>Request declined</p>
-          <p className="text-xs mb-4" style={{ color: '#6B6B6B' }}>The owner declined your request. You can request again.</p>
-          <button
-            onClick={handleRequest}
-            disabled={requesting}
-            className="px-4 py-2 rounded-lg text-xs font-bold text-white"
-            style={{ background: '#1B2A4A', border: 'none', cursor: requesting ? 'not-allowed' : 'pointer' }}
-          >
-            {requesting ? 'Requesting…' : 'Request to join again'}
-          </button>
-        </div>
-      )}
-      {(status === undefined || status === 'left' || status === 'removed' || status === 'declined') && (
-        <div className="text-center">
-          <p className="text-sm mb-4" style={{ color: '#6B6B6B' }}>
-            This is a private study room. Request to join — the owner will review your request.
-          </p>
-          <button
-            onClick={handleRequest}
-            disabled={requesting}
-            className="px-4 py-2 rounded-lg text-xs font-bold text-white"
-            style={{ background: '#1B2A4A', border: 'none', cursor: requesting ? 'not-allowed' : 'pointer' }}
-          >
-            {requesting ? 'Requesting…' : 'Request to join'}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function AcceptDeclineButtons({ roomId, userId, onChanged }: { roomId: string; userId: string; onChanged: () => void }) {
-  const [busy, setBusy] = useState(false);
-  return (
-    <div className="flex gap-2 justify-center">
-      <button
-        onClick={async () => { setBusy(true); try { await acceptInvite(roomId, userId); onChanged(); } finally { setBusy(false); } }}
-        disabled={busy}
-        className="px-4 py-2 rounded-lg text-xs font-bold text-white"
-        style={{ background: '#059669', border: 'none', cursor: busy ? 'not-allowed' : 'pointer' }}
-      >
-        Accept
-      </button>
-      <button
-        onClick={async () => { setBusy(true); try { await declineInvite(roomId, userId); onChanged(); } finally { setBusy(false); } }}
-        disabled={busy}
-        className="px-4 py-2 rounded-lg text-xs font-semibold"
-        style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: busy ? 'not-allowed' : 'pointer' }}
-      >
-        Decline
-      </button>
-    </div>
-  );
-}
-
-// ─── Overview tab ──────────────────────────────────────────────────────────────
-function OverviewTab({
-  room, activityToday, activityWeek, isOwner,
-}: {
-  room: StudyRoom;
-  activityToday: RoomMemberActivity[];
-  activityWeek: RoomMemberActivity[];
-  isOwner: boolean;
-}) {
-  const totalToday = activityToday.reduce((s, a) => s + a.minutes, 0);
-  const totalWeek = activityWeek.reduce((s, a) => s + a.minutes, 0);
-  const sortedToday = [...activityToday].sort((a, b) => b.minutes - a.minutes);
-  const sortedWeek = [...activityWeek].sort((a, b) => b.minutes - a.minutes);
+  const approved = members.filter(m => m.status === 'approved');
+  const myM = members.find(m => m.user_id === userId);
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <StatCard icon={<Clock size={16} />} label="Today's focus" value={fmtMin(totalToday)} color="#1B2A4A" />
-        <StatCard icon={<Trophy size={16} />} label="This week" value={fmtMin(totalWeek)} color="#7B1C3E" />
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { icon: <Users size={16} color="#7B1C3E" />, label: 'Members', value: approved.length },
+          { icon: <Clock size={16} color="#7B1C3E" />, label: 'Status', value: myM?.status === 'approved' ? 'Member' : (myM?.status || 'Guest') },
+          { icon: <Trophy size={16} color="#7B1C3E" />, label: 'Leaderboard', value: room.leaderboard_enabled ? 'On' : 'Off' },
+        ].map(s => (
+          <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.08)' }}>
+            <div className="flex justify-center mb-1">{s.icon}</div>
+            <p className="text-lg font-extrabold" style={{ color: '#1B2A4A' }}>{s.value}</p>
+            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: '#9CA3AF' }}>{s.label}</p>
+          </div>
+        ))}
       </div>
 
-      {room.leaderboard_enabled && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Leaderboard title="Today" rows={sortedToday} />
-          <Leaderboard title="This week" rows={sortedWeek} />
+      {/* Sharing prefs (for own membership) */}
+      {myM && (
+        <SharingPrefsCard member={myM} roomId={room.id} onUpdated={onUpdated} />
+      )}
+    </div>
+  );
+}
+
+function SharingPrefsCard({ member, roomId, onUpdated }: {
+  member: RoomMember; roomId: string; onUpdated: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const toggle = async (field: 'share_today' | 'share_weekly' | 'show_active_now') => {
+    setSaving(true);
+    try {
+      await updateMySharing(roomId, { [field]: !member[field] });
+      onUpdated();
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.08)' }}>
+      <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7B1C3E' }}>My sharing preferences</p>
+      {([
+        { key: 'share_today', label: "Share today's activity" },
+        { key: 'share_weekly', label: "Share weekly activity" },
+        { key: 'show_active_now', label: 'Show when I\'m active' },
+      ] as { key: 'share_today' | 'share_weekly' | 'show_active_now'; label: string }[]).map(p => (
+        <div key={p.key} className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid #F2F2F2' }}>
+          <span className="text-xs font-semibold" style={{ color: '#1B2A4A' }}>{p.label}</span>
+          <button
+            onClick={() => toggle(p.key)}
+            disabled={saving}
+            className="rounded-full transition-colors"
+            style={{
+              width: 36, height: 20, background: member[p.key] ? '#1B2A4A' : '#D1D5DB',
+              position: 'relative', border: 'none', cursor: saving ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <span style={{
+              position: 'absolute', top: 2, left: member[p.key] ? 18 : 2, width: 16, height: 16,
+              borderRadius: '50%', background: '#fff', transition: 'left 0.15s',
+            }} />
+          </button>
         </div>
-      )}
-
-      {!isOwner && (
-        <p className="text-xs px-1" style={{ color: '#9CA3AF' }}>
-          Only your Activity-section time is shared. Habits, notes, reminders, and other planner data stay private.
-        </p>
-      )}
+      ))}
     </div>
   );
 }
 
-function StatCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: string; color: string }) {
+// ─── Activity tab ─────────────────────────────────────────────────────────────
+function ActivityTab({ roomId }: { roomId: string }) {
+  const [activity, setActivity] = useState<RoomMemberActivity[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchRoomActivity(roomId).then(setActivity).catch(() => {}).finally(() => setLoading(false));
+  }, [roomId]);
+
+  if (loading) return <div className="py-8 text-center"><Loader2 className="animate-spin mx-auto" size={22} color="#1B2A4A" /></div>;
+  if (activity.length === 0) return <p className="text-sm text-center py-8" style={{ color: '#9CA3AF' }}>No shared activity yet.</p>;
+
   return (
-    <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
-      <div className="flex items-center gap-2 mb-2">
-        <span style={{ color }}>{icon}</span>
-        <span className="text-xs font-bold uppercase tracking-widest" style={{ color }}>{label}</span>
+    <div className="space-y-3">
+      {activity.map(a => (
+        <div key={a.user_id} className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.08)' }}>
+          <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>{a.display_name || a.username || 'Member'}</p>
+          <div className="flex gap-4 mt-1">
+            <span className="text-xs" style={{ color: '#6B6B6B' }}>Today: {a.today_minutes}m</span>
+            <span className="text-xs" style={{ color: '#6B6B6B' }}>Week: {a.week_minutes}m</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Study Timer section ───────────────────────────────────────────────────────
+function formatDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m`;
+  return `${Math.floor(seconds % 60)}s`;
+}
+
+function formatTimer(seconds: number): string {
+  const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
+  const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
+  const s = Math.floor(seconds % 60).toString().padStart(2, '0');
+  return `${h}:${m}:${s}`;
+}
+
+function StudyTimerSection({ roomId, userId }: { roomId: string; userId: string }) {
+  const [activeSession, setActiveSession] = useState<{ id: string; started_at: string } | null>(null);
+  const [summaries, setSummaries] = useState<MemberTimerSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [acting, setActing] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const [active, sums] = await Promise.all([
+        getMyActiveSession(roomId, userId),
+        getRoomTimerSummaries(roomId),
+      ]);
+      setActiveSession(active ? { id: active.id, started_at: active.started_at } : null);
+      setSummaries(sums);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  }, [roomId, userId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (activeSession) {
+      const update = () => setElapsed(Math.floor((Date.now() - new Date(activeSession.started_at).getTime()) / 1000));
+      update();
+      tickRef.current = setInterval(update, 1000);
+      return () => { if (tickRef.current) clearInterval(tickRef.current); };
+    } else { setElapsed(0); }
+  }, [activeSession]);
+
+  const handleStart = async () => {
+    setActing(true); setError(null);
+    try { await startStudySession(roomId, userId); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Could not start timer'); }
+    finally { setActing(false); }
+  };
+
+  const handleStop = async () => {
+    setActing(true); setError(null);
+    try { await stopStudySession(roomId, userId); setActiveSession(null); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Could not stop timer'); }
+    finally { setActing(false); }
+  };
+
+  if (loading) return <div className="rounded-xl p-4 mb-4 flex items-center gap-2" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
+    <Loader2 size={16} className="animate-spin" color="#1B2A4A" /><span className="text-xs" style={{ color: '#6B6B6B' }}>Loading timer…</span>
+  </div>;
+
+  return (
+    <div className="rounded-xl p-4 mb-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
+      <div className="flex items-center gap-2 mb-3">
+        <Timer size={16} color="#7B1C3E" />
+        <p className="text-xs font-bold uppercase tracking-widest" style={{ color: '#7B1C3E' }}>Study Timer</p>
       </div>
-      <p className="text-2xl font-extrabold" style={{ color: '#1B2A4A' }}>{value}</p>
-    </div>
-  );
-}
-
-function Leaderboard({ title, rows }: { title: string; rows: RoomMemberActivity[] }) {
-  return (
-    <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
-      <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7B1C3E' }}>{title}</p>
-      {rows.length === 0 ? (
-        <p className="text-xs" style={{ color: '#C8C8C8' }}>No activity yet.</p>
-      ) : (
-        <ol className="space-y-1.5">
-          {rows.map((r, i) => (
-            <li key={r.user_id} className="flex items-center gap-2">
-              <span className="text-xs font-bold w-5" style={{ color: i < 3 ? '#7B1C3E' : '#C8C8C8' }}>{i + 1}</span>
-              {r.avatar_url ? (
-                <img src={r.avatar_url} alt="" className="rounded-full object-cover" style={{ width: 22, height: 22 }} />
-              ) : (
-                <div className="rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ width: 22, height: 22, background: '#1B2A4A' }}>
-                  {(r.display_name || r.username || '?').charAt(0).toUpperCase()}
-                </div>
-              )}
-              <span className="text-xs font-medium flex-1 truncate" style={{ color: '#1B2A4A' }}>
-                {r.display_name || r.username}
+      <div className="flex items-center justify-between gap-3 mb-4 pb-4" style={{ borderBottom: '1px solid #F2F2F2' }}>
+        <div>
+          {activeSession ? (
+            <div>
+              <p className="text-sm font-bold font-mono" style={{ color: '#059669' }}>Studying: {formatTimer(elapsed)}</p>
+              <p className="text-xs" style={{ color: '#6B6B6B' }}>Timer is running</p>
+            </div>
+          ) : <p className="text-sm font-semibold" style={{ color: '#1B2A4A' }}>Ready to study</p>}
+        </div>
+        {activeSession ? (
+          <button onClick={handleStop} disabled={acting} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white"
+            style={{ background: acting ? '#9CA3AF' : '#B91C1C', border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
+            {acting ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />} Stop Study Timer
+          </button>
+        ) : (
+          <button onClick={handleStart} disabled={acting} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white"
+            style={{ background: acting ? '#9CA3AF' : '#059669', border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
+            {acting ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Start Study Timer
+          </button>
+        )}
+      </div>
+      {error && <div className="rounded-lg px-3 py-2 text-xs mb-3" style={{ background: '#FEE2E2', color: '#B91C1C' }}>{error}</div>}
+      <div className="space-y-2">
+        {summaries.map(s => (
+          <div key={s.user_id} className="flex items-center gap-3">
+            {s.avatar_url ? (
+              <img src={s.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" />
+            ) : (
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ background: '#1B2A4A' }}>
+                {(s.username || '?').charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold truncate" style={{ color: '#1B2A4A' }}>
+                {s.display_name || s.username}
+                {s.user_id === userId && <span className="ml-1.5 text-[9px] font-bold uppercase" style={{ color: '#9CA3AF' }}>(you)</span>}
+              </p>
+              <p className="text-[10px]" style={{ color: '#9CA3AF' }}>
+                Today: {formatDuration(s.today_seconds)} · This week: {formatDuration(s.week_seconds)}
+              </p>
+            </div>
+            {s.is_studying ? (
+              <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#E6F6EF', color: '#059669' }}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#059669' }} /> Studying now
               </span>
-              {r.active_now && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#E6F6EF', color: '#059669' }}>now</span>}
-              <span className="text-xs font-bold" style={{ color: r.hidden ? '#C8C8C8' : '#1B2A4A' }}>
-                {r.hidden ? '—' : fmtMin(r.minutes)}
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
+            ) : (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: '#F2F2F2', color: '#9CA3AF' }}>Not studying</span>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
 // ─── Members tab ───────────────────────────────────────────────────────────────
-function MembersTab({
-  room, members, isOwner, currentUserId, pendingRequests,
-  onApprove, onReject, onRemove, onInvite,
-}: {
+function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove, onReject }: {
   room: StudyRoom;
   members: RoomMember[];
-  isOwner: boolean;
   currentUserId: string;
-  pendingRequests: RoomMember[];
-  onApprove: (uid: string) => Promise<void>;
-  onReject: (uid: string) => Promise<void>;
-  onRemove: (uid: string) => Promise<void>;
-  onInvite: (uid: string) => Promise<void>;
+  isOwner: boolean;
+  onRemove: (uid: string) => void;
+  onApprove: (uid: string) => void;
+  onReject: (uid: string) => void;
 }) {
-  const [search, setSearch] = useState('');
-  const [searchResult, setSearchResult] = useState<{ id: string; username: string; display_name: string; avatar_url: string | null } | null>(null);
+  const approved = members.filter(m => m.status === 'approved');
+  const pending = members.filter(m => m.status === 'pending');
+  const [inviteQuery, setInviteQuery] = useState('');
+  const [inviteResult, setInviteResult] = useState<{ id: string; username: string; display_name: string; avatar_url: string | null } | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const [inviting, setInviting] = useState(false);
-  const [inviteMsg, setInviteMsg] = useState<string | null>(null);
 
   async function handleSearch() {
-    if (!search.trim()) return;
-    setSearching(true);
-    setInviteMsg(null);
+    if (!inviteQuery.trim()) return;
+    setSearching(true); setInviteError(null); setInviteResult(null); setInviteSuccess(null);
     try {
-      const r = await searchUserByUsername(search);
-      setSearchResult(r);
-      if (!r) setInviteMsg('No user found with that username.');
-    } catch {
-      setInviteMsg('Search failed.');
-    } finally {
-      setSearching(false);
-    }
+      const r = await searchUserByUsername(inviteQuery.trim());
+      if (!r) { setInviteError('No user found with this username.'); return; }
+      // Check if already member
+      if (members.find(m => m.user_id === r.id && (m.status === 'approved' || m.status === 'pending' || m.status === 'invited'))) {
+        setInviteError(members.find(m => m.user_id === r.id)?.status === 'approved'
+          ? 'This user is already a member of this room.'
+          : 'This user already has a pending invitation.');
+        return;
+      }
+      setInviteResult(r);
+    } catch (e) { setInviteError(e instanceof Error ? e.message : 'Search failed'); }
+    finally { setSearching(false); }
   }
 
   async function handleInvite() {
-    if (!searchResult) return;
-    setInviting(true);
-    setInviteMsg(null);
+    if (!inviteResult) return;
+    setInviting(true); setInviteError(null);
     try {
-      await onInvite(searchResult.id);
-      setInviteMsg(`Invitation sent to @${searchResult.username}.`);
-      setSearchResult(null);
-      setSearch('');
-    } catch (e: unknown) {
-      setInviteMsg(e instanceof Error ? e.message : 'Could not send invitation.');
-    } finally {
-      setInviting(false);
-    }
+      await inviteByUsername(room.id, inviteResult.id);
+      setInviteSuccess('Invitation sent successfully.');
+      setInviteResult(null); setInviteQuery('');
+    } catch (e) { setInviteError(e instanceof Error ? e.message : 'Invite failed'); }
+    finally { setInviting(false); }
   }
-
-  const approved = members.filter(m => m.status === 'approved');
 
   return (
     <div className="space-y-4">
-      {/* Pending requests (owner only) */}
-      {isOwner && pendingRequests.length > 0 && (
+      {/* Study Timer */}
+      <StudyTimerSection roomId={room.id} userId={currentUserId} />
+
+      {/* Invite by username (owner only) */}
+      {isOwner && (
         <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
-          <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#B45309' }}>
-            Pending requests ({pendingRequests.length})
-          </p>
+          <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7B1C3E' }}>Invite by username</p>
+          <div className="flex gap-2 mb-2">
+            <input
+              value={inviteQuery}
+              onChange={e => setInviteQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              placeholder="Search username…"
+              className="flex-1 rounded-lg px-3 py-2 text-xs outline-none"
+              style={inputStyle}
+            />
+            <button onClick={handleSearch} disabled={searching || !inviteQuery.trim()}
+              className="px-3 py-2 rounded-lg text-xs font-bold text-white flex items-center gap-1"
+              style={{ background: '#1B2A4A', border: 'none', cursor: searching || !inviteQuery.trim() ? 'not-allowed' : 'pointer', opacity: !inviteQuery.trim() ? 0.5 : 1 }}>
+              {searching ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />} Search
+            </button>
+          </div>
+          {inviteError && <p className="text-xs mb-2" style={{ color: '#B91C1C' }}>{inviteError}</p>}
+          {inviteSuccess && <p className="text-xs mb-2" style={{ color: '#059669' }}>{inviteSuccess}</p>}
+          {inviteResult && (
+            <div className="flex items-center gap-3 rounded-lg p-3 mb-2" style={{ background: '#F8F9FC' }}>
+              {inviteResult.avatar_url ? (
+                <img src={inviteResult.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover" />
+              ) : (
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white" style={{ background: '#1B2A4A' }}>
+                  {inviteResult.username.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold" style={{ color: '#1B2A4A' }}>{inviteResult.display_name || inviteResult.username}</p>
+                <p className="text-xs" style={{ color: '#9CA3AF' }}>@{inviteResult.username}</p>
+              </div>
+              <button onClick={handleInvite} disabled={inviting}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+                style={{ background: '#1B2A4A', border: 'none', cursor: inviting ? 'not-allowed' : 'pointer' }}>
+                {inviting ? <Loader2 size={13} className="animate-spin" /> : 'Invite'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Pending requests */}
+      {isOwner && pending.length > 0 && (
+        <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
+          <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7B1C3E' }}>Pending requests ({pending.length})</p>
           <div className="space-y-2">
-            {pendingRequests.map(m => (
+            {pending.map(m => (
               <div key={m.id} className="flex items-center gap-2">
                 <MemberAvatar m={m} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate" style={{ color: '#1B2A4A' }}>{m.display_name || m.username}</p>
-                  <p className="text-xs" style={{ color: '#9CA3AF' }}>@{m.username}</p>
+                  <p className="text-sm font-medium truncate" style={{ color: '#1B2A4A' }}>{m.display_name || m.username || 'User'}</p>
+                  <p className="text-xs" style={{ color: '#9CA3AF' }}>@{m.username || m.user_id.slice(0, 8)}</p>
                 </div>
-                <button
-                  onClick={() => onApprove(m.user_id)}
-                  className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg text-white"
-                  style={{ background: '#059669', border: 'none', cursor: 'pointer' }}
-                >
-                  <Check size={12} /> Approve
-                </button>
-                <button
-                  onClick={() => onReject(m.user_id)}
-                  className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg"
-                  style={{ background: '#FEE2E2', color: '#B91C1C', border: 'none', cursor: 'pointer' }}
-                >
-                  <X size={12} /> Reject
-                </button>
+                <button onClick={() => onApprove(m.user_id)} className="px-2 py-1 rounded-lg text-xs font-bold text-white" style={{ background: '#059669', border: 'none', cursor: 'pointer' }}>Approve</button>
+                <button onClick={() => onReject(m.user_id)} className="px-2 py-1 rounded-lg text-xs font-semibold" style={{ background: '#FEE2E2', color: '#B91C1C', border: 'none', cursor: 'pointer' }}>Reject</button>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Invite by username (owner only) */}
-      {isOwner && (
-        <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
-          <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7B1C3E' }}>
-            Invite by username
-          </p>
-          <div className="flex gap-2">
-            <div className="flex-1 flex items-center rounded-lg px-3 gap-2" style={{ border: '1.5px solid #E8EBF4', background: '#F8F9FC' }}>
-              <Search size={14} color="#9CA3AF" />
-              <input
-                type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Enter username"
-                className="flex-1 text-sm py-2.5 outline-none bg-transparent"
-                style={{ color: '#111', border: 'none', fontFamily: 'inherit' }}
-                onKeyDown={e => e.key === 'Enter' && handleSearch()}
-              />
-            </div>
-            <button
-              onClick={handleSearch}
-              disabled={searching || !search.trim()}
-              className="px-4 rounded-lg text-xs font-bold text-white"
-              style={{ background: '#1B2A4A', border: 'none', cursor: searching || !search.trim() ? 'not-allowed' : 'pointer', opacity: searching || !search.trim() ? 0.6 : 1 }}
-            >
-              {searching ? '…' : 'Find'}
-            </button>
-          </div>
-          {searchResult && (
-            <div className="mt-3 flex items-center gap-2 rounded-lg p-2" style={{ background: '#F8F9FC' }}>
-              <MemberAvatar m={searchResult} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate" style={{ color: '#1B2A4A' }}>{searchResult.display_name || searchResult.username}</p>
-                <p className="text-xs" style={{ color: '#9CA3AF' }}>@{searchResult.username}</p>
-              </div>
-              <button
-                onClick={handleInvite}
-                disabled={inviting}
-                className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-lg text-white"
-                style={{ background: '#059669', border: 'none', cursor: inviting ? 'not-allowed' : 'pointer' }}
-              >
-                {inviting ? '…' : 'Send invite'}
-              </button>
-            </div>
-          )}
-          {inviteMsg && <p className="text-xs mt-2" style={{ color: '#6B6B6B' }}>{inviteMsg}</p>}
-        </div>
-      )}
-
-      {/* Approved members list */}
+      {/* Approved members */}
       <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
-        <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7B1C3E' }}>
-          Members ({approved.length})
-        </p>
+        <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7B1C3E' }}>Members ({approved.length})</p>
         <div className="space-y-2">
           {approved.map(m => (
             <div key={m.id} className="flex items-center gap-2">
               <MemberAvatar m={m} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate" style={{ color: '#1B2A4A' }}>
-                  {m.display_name || m.username}
+                  {m.display_name || m.username || 'Member'}
                   {m.role === 'owner' && (
-                    <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#F5E6EC', color: '#7B1C3E' }}>Admin</span>
+                    <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#F5E6EC', color: '#7B1C3E' }}>Owner</span>
+                  )}
+                  {m.role === 'admin' && m.role !== 'owner' && (
+                    <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#EBF0FF', color: '#1B2A4A' }}>Admin</span>
                   )}
                   {m.user_id === currentUserId && (
                     <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#E8EBF4', color: '#1B2A4A' }}>You</span>
                   )}
                 </p>
-                <p className="text-xs" style={{ color: '#9CA3AF' }}>@{m.username}</p>
+                <p className="text-xs" style={{ color: '#9CA3AF' }}>@{m.username || m.user_id.slice(0, 8)}</p>
               </div>
               {isOwner && m.user_id !== room.owner_id && (
-                <button
-                  onClick={() => onRemove(m.user_id)}
-                  className="p-1 rounded transition-colors"
+                <button onClick={() => onRemove(m.user_id)} className="p-1 rounded transition-colors"
                   style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: '#C8C8C8' }}
                   onMouseEnter={e => (e.currentTarget.style.color = '#B91C1C')}
                   onMouseLeave={e => (e.currentTarget.style.color = '#C8C8C8')}
-                  title="Remove member"
-                >
+                  title="Remove member">
                   <Trash2 size={13} />
                 </button>
               )}
@@ -688,21 +671,8 @@ function MembersTab({
   );
 }
 
-function MemberAvatar({ m }: { m: { avatar_url?: string | null; display_name?: string; username?: string } }) {
-  if (m.avatar_url) {
-    return <img src={m.avatar_url} alt="" className="rounded-full object-cover" style={{ width: 32, height: 32 }} />;
-  }
-  return (
-    <div className="rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ width: 32, height: 32, background: '#1B2A4A' }}>
-      {(m.display_name || m.username || '?').charAt(0).toUpperCase()}
-    </div>
-  );
-}
-
-// ─── Settings tab (owner only) ─────────────────────────────────────────────────
-function SettingsTab({
-  room, members, onUpdated, onRegenerate, onDelete, onTransferAndLeave,
-}: {
+// ─── Settings tab ─────────────────────────────────────────────────────────────
+function SettingsTab({ room, members, onUpdated, onRegenerate, onDelete, onTransferAndLeave }: {
   room: StudyRoom;
   members: RoomMember[];
   onUpdated: () => void;
@@ -712,7 +682,6 @@ function SettingsTab({
 }) {
   const [name, setName] = useState(room.name);
   const [description, setDescription] = useState(room.description);
-  const [avatarUrl, setAvatarUrl] = useState(room.avatar_url || '');
   const [themeColor, setThemeColor] = useState(room.theme_color);
   const [inviteEnabled, setInviteEnabled] = useState(room.invite_enabled);
   const [leaderboardEnabled, setLeaderboardEnabled] = useState(room.leaderboard_enabled);
@@ -723,60 +692,88 @@ function SettingsTab({
   const [showTransfer, setShowTransfer] = useState(false);
   const [transferTarget, setTransferTarget] = useState('');
   const [transferring, setTransferring] = useState(false);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
 
-  const approvedOthers = members.filter(
-    (m) => m.status === 'approved' && m.user_id !== room.owner_id
-  );
+  async function handleImageUpload(file: File) {
+    if (file.size > 5 * 1024 * 1024) { setImageError('Image file is too large. Maximum 5 MB.'); return; }
+    if (!['image/png', 'image/jpeg', 'image/jpg', 'image/webp'].includes(file.type)) {
+      setImageError('Unsupported image format. Use PNG, JPG, or WEBP.'); return;
+    }
+    setImageError(null); setImageUploading(true);
+    try { await uploadRoomProfileImage(room.id, file); onUpdated(); }
+    catch (e) { setImageError(e instanceof Error ? e.message : 'Upload failed'); }
+    finally { setImageUploading(false); }
+  }
+
+  async function handleImageRemove() {
+    setImageUploading(true); setImageError(null);
+    try { await removeRoomProfileImage(room.id); onUpdated(); }
+    catch (e) { setImageError(e instanceof Error ? e.message : 'Remove failed'); }
+    finally { setImageUploading(false); }
+  }
+
+  const approvedOthers = members.filter(m => m.status === 'approved' && m.user_id !== room.owner_id);
 
   async function handleSave() {
     setSaving(true);
     try {
-      await updateRoom(room.id, {
-        name: name.trim(),
-        description: description.trim(),
-        avatar_url: avatarUrl.trim() || null,
-        theme_color: themeColor,
-        invite_enabled: inviteEnabled,
-        leaderboard_enabled: leaderboardEnabled,
-      });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 1500);
+      await updateRoom(room.id, { name, description, theme_color: themeColor, invite_enabled: inviteEnabled, leaderboard_enabled: leaderboardEnabled });
+      setSaved(true); setTimeout(() => setSaved(false), 2000);
       onUpdated();
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleRegenerate() {
-    setRegenerating(true);
-    try {
-      await onRegenerate();
-    } finally {
-      setRegenerating(false);
-    }
+    } finally { setSaving(false); }
   }
 
   return (
     <div className="space-y-4">
+      {/* Room info */}
       <div className="rounded-xl p-5" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
-        <p className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: '#7B1C3E' }}>Room details</p>
+        <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7B1C3E' }}>Room info</p>
 
         <Field label="Room name">
           <input type="text" value={name} onChange={e => setName(e.target.value)} maxLength={60}
-            className="w-full rounded-lg px-4 py-2.5 text-sm outline-none"
-            style={inputStyle} />
+            className="w-full rounded-lg px-4 py-2.5 text-sm outline-none" style={inputStyle} />
         </Field>
 
         <Field label="Description">
           <textarea value={description} onChange={e => setDescription(e.target.value)} maxLength={200} rows={2}
-            className="w-full rounded-lg px-4 py-2.5 text-sm outline-none resize-none"
-            style={inputStyle} />
+            className="w-full rounded-lg px-4 py-2.5 text-sm outline-none resize-none" style={inputStyle} />
         </Field>
 
-        <Field label="Avatar image URL">
-          <input type="text" value={avatarUrl} onChange={e => setAvatarUrl(e.target.value)} placeholder="https://…"
-            className="w-full rounded-lg px-4 py-2.5 text-sm outline-none"
-            style={inputStyle} />
+        {/* Profile image */}
+        <Field label="Profile image">
+          <div className="flex items-center gap-3">
+            {room.profile_image_url ? (
+              <img src={room.profile_image_url} alt="" className="rounded-lg object-cover" style={{ width: 52, height: 52 }} />
+            ) : (
+              <div className="rounded-lg flex items-center justify-center text-sm font-bold text-white" style={{ width: 52, height: 52, background: themeColor }}>
+                {room.name.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div className="flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className="cursor-pointer">
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
+                    style={{ background: '#F2F2F2', color: '#1B2A4A', border: '1px solid #E8EBF4', cursor: imageUploading ? 'not-allowed' : 'pointer' }}>
+                    {imageUploading ? <Loader2 size={12} className="animate-spin" /> : <ImageIcon size={12} />}
+                    {imageUploading ? 'Uploading…' : 'Upload image'}
+                  </span>
+                  <input type="file" accept="image/png,image/jpeg,image/webp" disabled={imageUploading}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleImageUpload(f); }}
+                    className="hidden" />
+                </label>
+                {room.profile_image_url && (
+                  <button onClick={handleImageRemove} disabled={imageUploading}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                    style={{ background: '#FEE2E2', color: '#B91C1C', border: 'none', cursor: imageUploading ? 'not-allowed' : 'pointer' }}>
+                    Remove
+                  </button>
+                )}
+              </div>
+              {imageError && <p className="text-[10px] mt-1" style={{ color: '#B91C1C' }}>{imageError}</p>}
+              <p className="text-[10px] mt-1" style={{ color: '#9CA3AF' }}>PNG, JPG, or WEBP. Max 5 MB.</p>
+            </div>
+          </div>
         </Field>
 
         <Field label="Theme color">
@@ -789,33 +786,43 @@ function SettingsTab({
           </div>
         </Field>
 
-        <Toggle label="Invite link enabled" checked={inviteEnabled} onChange={setInviteEnabled} />
-        <Toggle label="Leaderboard enabled" checked={leaderboardEnabled} onChange={setLeaderboardEnabled} />
+        <div className="flex items-center justify-between py-2 mb-1" style={{ borderTop: '1px solid #F2F2F2' }}>
+          <span className="text-xs font-semibold" style={{ color: '#1B2A4A' }}>Invite link enabled</span>
+          <button onClick={() => setInviteEnabled(v => !v)} className="rounded-full transition-colors"
+            style={{ width: 36, height: 20, background: inviteEnabled ? '#1B2A4A' : '#D1D5DB', position: 'relative', border: 'none', cursor: 'pointer' }}>
+            <span style={{ position: 'absolute', top: 2, left: inviteEnabled ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.15s' }} />
+          </button>
+        </div>
 
-        <button
-          onClick={handleSave}
-          disabled={saving || !name.trim()}
-          className="mt-4 px-4 py-2 rounded-lg text-xs font-bold text-white flex items-center gap-1"
-          style={{ background: '#1B2A4A', border: 'none', cursor: saving || !name.trim() ? 'not-allowed' : 'pointer', opacity: saving || !name.trim() ? 0.6 : 1 }}
-        >
-          {saved ? <Check size={14} /> : <Settings size={14} />} {saved ? 'Saved' : 'Save changes'}
+        <div className="flex items-center justify-between py-2 mb-4" style={{ borderTop: '1px solid #F2F2F2' }}>
+          <span className="text-xs font-semibold" style={{ color: '#1B2A4A' }}>Leaderboard</span>
+          <button onClick={() => setLeaderboardEnabled(v => !v)} className="rounded-full transition-colors"
+            style={{ width: 36, height: 20, background: leaderboardEnabled ? '#1B2A4A' : '#D1D5DB', position: 'relative', border: 'none', cursor: 'pointer' }}>
+            <span style={{ position: 'absolute', top: 2, left: leaderboardEnabled ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.15s' }} />
+          </button>
+        </div>
+
+        <button onClick={handleSave} disabled={saving}
+          className="w-full py-2.5 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-1.5"
+          style={{ background: '#1B2A4A', border: 'none', cursor: saving ? 'not-allowed' : 'pointer' }}>
+          {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <Check size={14} /> : null}
+          {saving ? 'Saving…' : saved ? 'Saved!' : 'Save changes'}
         </button>
       </div>
 
-      {/* Invite link management */}
+      {/* Invite code */}
       <div className="rounded-xl p-5" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
-        <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7B1C3E' }}>Invite link</p>
-        <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>
-          Regenerating the link invalidates the old one. Anyone with the link can only request to join — you still approve.
-        </p>
-        <button
-          onClick={handleRegenerate}
-          disabled={regenerating}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold"
-          style={{ background: '#F5E6EC', color: '#7B1C3E', border: 'none', cursor: regenerating ? 'not-allowed' : 'pointer' }}
-        >
-          <RefreshCw size={13} className={regenerating ? 'animate-spin' : ''} /> Regenerate invite link
-        </button>
+        <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7B1C3E' }}>Invite code</p>
+        <div className="flex items-center gap-2">
+          <span className="flex-1 font-mono text-sm font-bold px-3 py-2 rounded-lg" style={{ background: '#F8F9FC', color: '#1B2A4A' }}>{room.room_code}</span>
+          <button
+            onClick={async () => { setRegenerating(true); await onRegenerate(); setRegenerating(false); }}
+            disabled={regenerating}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold"
+            style={{ background: '#F2F2F2', color: '#1B2A4A', border: 'none', cursor: regenerating ? 'not-allowed' : 'pointer' }}>
+            {regenerating ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Regenerate
+          </button>
+        </div>
       </div>
 
       {/* Danger zone */}
@@ -825,63 +832,43 @@ function SettingsTab({
         {/* Transfer ownership + leave */}
         <div className="mb-4 pb-4" style={{ borderBottom: '1px solid #F2F2F2' }}>
           <p className="text-xs font-bold mb-1" style={{ color: '#1B2A4A' }}>Transfer ownership & leave</p>
-          <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>
-            Transfer ownership to another approved member, then leave the room. The room stays active for everyone else.
-          </p>
+          <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>Transfer ownership to another approved member, then leave. The room stays active for everyone else.</p>
           {approvedOthers.length === 0 ? (
-            <p className="text-xs italic" style={{ color: '#9CA3AF' }}>
-              There are no other approved members to transfer ownership to. You can either keep the room or delete it.
-            </p>
+            <p className="text-xs italic" style={{ color: '#9CA3AF' }}>No other approved members to transfer ownership to.</p>
           ) : !showTransfer ? (
-            <button
-              onClick={() => setShowTransfer(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold"
-              style={{ background: '#FEF3C7', color: '#92400E', border: 'none', cursor: 'pointer' }}
-            >
+            <button onClick={() => setShowTransfer(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold"
+              style={{ background: '#FEF3C7', color: '#92400E', border: 'none', cursor: 'pointer' }}>
               <UserCog size={13} /> Transfer & leave
             </button>
           ) : (
             <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold mb-1.5" style={{ color: '#1B2A4A' }}>New owner</label>
-                <select
-                  value={transferTarget}
-                  onChange={e => setTransferTarget(e.target.value)}
-                  className="w-full rounded-lg px-3 py-2 text-xs outline-none"
-                  style={{ border: '1.5px solid #C8C8C8', background: '#F8F8F8', color: '#111' }}
-                >
-                  <option value="">Select an approved member…</option>
-                  {approvedOthers.map(m => (
-                    <option key={m.user_id} value={m.user_id}>
-                      {m.username || m.user_id.slice(0, 8)}{m.role === 'admin' ? ' (admin)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <select value={transferTarget} onChange={e => setTransferTarget(e.target.value)}
+                className="w-full rounded-lg px-3 py-2 text-xs outline-none"
+                style={{ border: '1.5px solid #C8C8C8', background: '#F8F8F8', color: '#111' }}>
+                <option value="">Select an approved member…</option>
+                {approvedOthers.map(m => (
+                  <option key={m.user_id} value={m.user_id}>
+                    {m.username || m.user_id.slice(0, 8)}{m.role === 'admin' ? ' (admin)' : ''}
+                  </option>
+                ))}
+              </select>
               {transferTarget && (
                 <p className="text-xs" style={{ color: '#6B6B6B' }}>
-                  Are you sure you want to transfer ownership to{' '}
-                  <strong style={{ color: '#1B2A4A' }}>
+                  Transfer ownership to <strong style={{ color: '#1B2A4A' }}>
                     {approvedOthers.find(m => m.user_id === transferTarget)?.username || 'this member'}
-                  </strong>
-                  ? They will become the new room owner, and you will leave the room.
+                  </strong>? They will become the new room owner and you will leave.
                 </p>
               )}
               <div className="flex items-center gap-2">
-                <button
-                  onClick={async () => {
-                    if (!transferTarget) return;
-                    setTransferring(true);
-                    try { await onTransferAndLeave(transferTarget); }
-                    finally { setTransferring(false); }
-                  }}
+                <button onClick={async () => { setTransferring(true); try { await onTransferAndLeave(transferTarget); } finally { setTransferring(false); } }}
                   disabled={!transferTarget || transferring}
                   className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
-                  style={{ background: !transferTarget || transferring ? '#9CA3AF' : '#92400E', border: 'none', cursor: !transferTarget || transferring ? 'not-allowed' : 'pointer' }}
-                >
+                  style={{ background: !transferTarget || transferring ? '#9CA3AF' : '#92400E', border: 'none', cursor: !transferTarget || transferring ? 'not-allowed' : 'pointer' }}>
                   {transferring ? 'Transferring…' : 'Transfer & leave'}
                 </button>
-                <button onClick={() => { setShowTransfer(false); setTransferTarget(''); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: 'pointer' }}>Cancel</button>
+                <button onClick={() => { setShowTransfer(false); setTransferTarget(''); }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                  style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: 'pointer' }}>Cancel</button>
               </div>
             </div>
           )}
@@ -890,15 +877,10 @@ function SettingsTab({
         {/* Delete room */}
         <div>
           <p className="text-xs font-bold mb-1" style={{ color: '#B91C1C' }}>Delete room</p>
-          <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>
-            Deleting a room removes the room for all members, along with invite links, join requests, and shared activity summaries. This cannot be undone.
-          </p>
+          <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>Deletes the room for all members. Cannot be undone.</p>
           {!showDelete ? (
-            <button
-              onClick={() => setShowDelete(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold"
-              style={{ background: '#FEE2E2', color: '#B91C1C', border: 'none', cursor: 'pointer' }}
-            >
+            <button onClick={() => setShowDelete(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold"
+              style={{ background: '#FEE2E2', color: '#B91C1C', border: 'none', cursor: 'pointer' }}>
               <Trash2 size={13} /> Delete room
             </button>
           ) : (
@@ -919,66 +901,4 @@ function SettingsTab({
       </div>
     </div>
   );
-}
-
-// ─── Privacy panel (each member controls their sharing) ────────────────────────
-function PrivacyPanel({
-  membership, onChanged,
-}: {
-  membership: RoomMember;
-  onChanged: (patch: Partial<Pick<RoomMember, 'share_today' | 'share_weekly' | 'show_active_now' | 'hide_activity'>>) => Promise<void>;
-}) {
-  return (
-    <div className="rounded-xl p-5 mt-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
-      <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#7B1C3E' }}>My privacy</p>
-      <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>
-        Control what you share with this room. Only Activity-section time is ever shared.
-      </p>
-      <Toggle label="Share today's activity time" checked={membership.share_today && !membership.hide_activity}
-        onChange={v => onChanged({ share_today: v, hide_activity: false })} />
-      <Toggle label="Share weekly activity total" checked={membership.share_weekly && !membership.hide_activity}
-        onChange={v => onChanged({ share_weekly: v, hide_activity: false })} />
-      <Toggle label="Show me as active now" checked={membership.show_active_now}
-        onChange={v => onChanged({ show_active_now: v })} />
-      <Toggle label="Hide all my activity from this room" checked={membership.hide_activity}
-        onChange={v => onChanged({ hide_activity: v })} />
-    </div>
-  );
-}
-
-// ─── Small primitives ──────────────────────────────────────────────────────────
-const inputStyle: React.CSSProperties = { border: '1.5px solid #E8EBF4', background: '#F8F9FC', fontFamily: 'inherit', color: '#111' };
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="mb-3">
-      <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#6B6B6B' }}>{label}</label>
-      {children}
-    </div>
-  );
-}
-
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <div className="flex items-center justify-between py-2">
-      <span className="text-sm" style={{ color: '#1B2A4A' }}>{label}</span>
-      <button
-        onClick={() => onChange(!checked)}
-        className="relative rounded-full transition-colors"
-        style={{ width: 40, height: 22, background: checked ? '#059669' : '#D1D5DB', border: 'none', cursor: 'pointer' }}
-      >
-        <span
-          className="absolute rounded-full bg-white transition-all"
-          style={{ width: 18, height: 18, top: 2, left: checked ? 20 : 2 }}
-        />
-      </button>
-    </div>
-  );
-}
-
-function fmtMin(min: number): string {
-  if (min <= 0) return '0m';
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }

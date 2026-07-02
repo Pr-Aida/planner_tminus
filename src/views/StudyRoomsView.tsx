@@ -220,8 +220,8 @@ function RoomCard({
       >
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="flex items-center gap-3 min-w-0 flex-1">
-            {room.avatar_url ? (
-              <img src={room.avatar_url} alt="" className="rounded-lg object-cover flex-shrink-0" style={{ width: 44, height: 44 }} />
+            {room.profile_image_url ? (
+              <img src={room.profile_image_url} alt="" className="rounded-lg object-cover flex-shrink-0" style={{ width: 44, height: 44 }} />
             ) : (
               <div
                 className="rounded-lg flex items-center justify-center text-white font-bold flex-shrink-0"
@@ -460,16 +460,30 @@ function CreateRoomModal({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [theme, setTheme] = useState(THEME_COLORS[0]);
+  const [profileImage, setProfileImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { setError('Image file is too large. Maximum 5 MB.'); return; }
+    if (!['image/png', 'image/jpeg', 'image/jpg', 'image/webp'].includes(file.type)) {
+      setError('Unsupported image format. Use PNG, JPG, or WEBP.'); return;
+    }
+    setError(null);
+    setProfileImage(file);
+    setImagePreview(URL.createObjectURL(file));
+  }
 
   async function handleCreate() {
     if (!name.trim()) return;
     setSaving(true);
     setError(null);
     try {
-      const room = await createRoom({ name, description, theme_color: theme }, userId);
+      const room = await createRoom({ name, description, theme_color: theme, profileImage }, userId);
       setSuccess('Study Room created successfully.');
       setTimeout(() => onCreated(room.id), 900);
     } catch (e: unknown) {
@@ -510,6 +524,31 @@ function CreateRoomModal({
         onFocus={e => (e.target.style.borderColor = '#1B2A4A')}
         onBlur={e => (e.target.style.borderColor = '#E8EBF4')}
       />
+
+      <Label>Room profile image <span style={{ color: '#9CA3AF', fontWeight: 400 }}>(optional)</span></Label>
+      <div className="flex items-center gap-3 mb-4">
+        {imagePreview ? (
+          <img src={imagePreview} alt="Preview" className="rounded-lg object-cover" style={{ width: 56, height: 56 }} />
+        ) : (
+          <div className="rounded-lg flex items-center justify-center text-xs font-bold text-white" style={{ width: 56, height: 56, background: theme }}>
+            {(name.charAt(0) || '?').toUpperCase()}
+          </div>
+        )}
+        <div className="flex-1">
+          <label className="cursor-pointer">
+            <span className="inline-block px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#F2F2F2', color: '#1B2A4A', border: '1px solid #E8EBF4' }}>
+              Choose image
+            </span>
+            <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleImageChange} className="hidden" />
+          </label>
+          {profileImage && (
+            <button onClick={() => { setProfileImage(null); setImagePreview(null); }} className="ml-2 text-xs font-semibold" style={{ color: '#B91C1C', background: 'none', border: 'none', cursor: 'pointer' }}>
+              Remove
+            </button>
+          )}
+          <p className="text-[10px] mt-1" style={{ color: '#9CA3AF' }}>PNG, JPG, or WEBP. Max 5 MB.</p>
+        </div>
+      </div>
 
       <Label>Theme color</Label>
       <div className="flex gap-2 mb-6">

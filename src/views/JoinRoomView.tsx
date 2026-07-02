@@ -214,8 +214,8 @@ export default function JoinRoomView({
 function RoomPreview({ room }: { room: StudyRoom }) {
   return (
     <div className="text-center mb-5">
-      {room.avatar_url ? (
-        <img src={room.avatar_url} alt="" className="rounded-2xl object-cover mx-auto mb-3" style={{ width: 72, height: 72 }} />
+      {(room.profile_image_url || room.avatar_url) ? (
+        <img src={room.profile_image_url || room.avatar_url || ''} alt="" className="rounded-2xl object-cover mx-auto mb-3" style={{ width: 72, height: 72 }} />
       ) : (
         <div className="rounded-2xl flex items-center justify-center text-white font-extrabold text-2xl mx-auto mb-3" style={{ width: 72, height: 72, background: room.theme_color }}>
           {room.name.charAt(0).toUpperCase()}

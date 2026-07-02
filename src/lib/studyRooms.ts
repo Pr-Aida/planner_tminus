@@ -84,6 +84,7 @@ export async function createRoom(input: {
   description?: string;
   avatar_url?: string | null;
   theme_color?: string;
+  profileImage?: File | null;
 }, _ownerId: string): Promise<StudyRoom> {
   // 1. Verify the user is authenticated.
   const { data: { user } } = await supabase.auth.getUser();
@@ -118,6 +119,17 @@ export async function createRoom(input: {
   }
   if (!room) throw new Error('Room creation failed. Please try again.');
 
+  // 3b. Upload profile image if provided
+  if (input.profileImage) {
+    try {
+      const imageUrl = await uploadRoomProfileImage(room.id, input.profileImage);
+      room = { ...room, profile_image_url: imageUrl };
+    } catch (e) {
+      // Image upload failure shouldn't block room creation
+      console.error('Profile image upload failed:', e);
+    }
+  }
+
   // 4. Insert the creator as an approved owner member.
   //    user_id is set by DEFAULT auth.uid(); status='approved'; role='owner'.
   const { error: mErr } = await supabase
@@ -141,7 +153,7 @@ export async function createRoom(input: {
 
 export async function updateRoom(
   roomId: string,
-  patch: Partial<Pick<StudyRoom, 'name' | 'description' | 'avatar_url' | 'theme_color' | 'invite_enabled' | 'leaderboard_enabled'>>,
+  patch: Partial<Pick<StudyRoom, 'name' | 'description' | 'avatar_url' | 'theme_color' | 'invite_enabled' | 'leaderboard_enabled' | 'profile_image_url'>>,
 ): Promise<void> {
   const { error } = await supabase.from('study_rooms').update(patch).eq('id', roomId);
   if (error) throw error;
@@ -187,11 +199,8 @@ export async function transferOwnership(roomId: string, newOwnerId: string): Pro
   }
 }
 
-/** Rooms the current user owns or is an approved/invited/pending member of. */
+/** Rooms the current user actively belongs to (approved status only in list; pending shown separately). */
 export async function fetchMyRooms(): Promise<(StudyRoom & { my_status: RoomMemberStatus })[]> {
-  // The rooms SELECT policy already returns rooms I own or have a
-  // pending/invited/approved membership in. We then look up my membership
-  // status per room (owner defaults to 'approved').
   const [{ data: rooms, error: e1 }, { data: memberRows, error: e2 }] = await Promise.all([
     supabase.from('study_rooms').select('*').order('updated_at', { ascending: false }),
     supabase.from('study_room_members').select('room_id, status'),
@@ -204,10 +213,15 @@ export async function fetchMyRooms(): Promise<(StudyRoom & { my_status: RoomMemb
     statusByRoom.set(m.room_id, m.status);
   }
 
-  return ((rooms || []) as StudyRoom[]).map(r => ({
-    ...r,
-    my_status: (statusByRoom.get(r.id) || 'approved') as RoomMemberStatus,
-  }));
+  // Only show rooms where status is approved (or owner — owner_id check as fallback)
+  // Filter out left / rejected / removed / declined
+  const ACTIVE_STATUSES = new Set<RoomMemberStatus>(['approved', 'pending', 'invited']);
+  return ((rooms || []) as StudyRoom[])
+    .map(r => ({
+      ...r,
+      my_status: (statusByRoom.get(r.id) || 'approved') as RoomMemberStatus,
+    }))
+    .filter(r => ACTIVE_STATUSES.has(r.my_status));
 }
 
 /** Fetch a single room by id (visible if owner, or pending/invited/approved member). */
@@ -220,16 +234,20 @@ export async function fetchRoomById(roomId: string): Promise<StudyRoom | null> {
 
 /** Look up a room by invite code (for invite-link landing page). */
 export async function fetchRoomByInviteCode(code: string): Promise<StudyRoom | null> {
+  const normalized = code.trim().toUpperCase();
+  if (!normalized) return null;
   const { data, error } = await supabase
-    .from('study_rooms').select('*').eq('invite_code', code).maybeSingle();
+    .from('study_rooms').select('*').eq('invite_code', normalized).maybeSingle();
   if (error) throw error;
   return (data as StudyRoom) || null;
 }
 
-/** Look up a room by short room code (for "join by code"). */
+/** Look up a room by short room code (for "join by code"). Case-insensitive, trims spaces. */
 export async function fetchRoomByCode(code: string): Promise<StudyRoom | null> {
+  const normalized = code.trim().toUpperCase();
+  if (!normalized) return null;
   const { data, error } = await supabase
-    .from('study_rooms').select('*').eq('room_code', code.toUpperCase().trim()).maybeSingle();
+    .from('study_rooms').select('*').eq('room_code', normalized).maybeSingle();
   if (error) throw error;
   return (data as StudyRoom) || null;
 }
@@ -349,18 +367,18 @@ export async function fetchMyMembership(roomId: string, userId: string): Promise
 
 /** Fetch all members of a room (visible to approved members + owner). */
 export async function fetchMembers(roomId: string): Promise<RoomMember[]> {
-  // We need profile info too. Query members, then profiles separately and join.
-  const memberIdsRes = await supabase.from('study_room_members').select('user_id').eq('room_id', roomId);
-  const memberIds = (memberIdsRes.data || []).map(r => (r as unknown as { user_id: string }).user_id);
-
+  // Query members, then use the SECURITY DEFINER RPC to get safe profile fields.
+  // This avoids the profiles RLS issue (profiles SELECT only allows auth.uid() = id).
   const [{ data: members, error: e1 }, { data: profiles, error: e2 }] = await Promise.all([
     supabase.from('study_room_members').select('*').eq('room_id', roomId).order('joined_at', { ascending: false, nullsFirst: false }),
-    supabase.from('profiles').select('id, display_name, username, avatar_url').in('id', memberIds.length ? memberIds : ['00000000-0000-0000-0000-000000000000']),
+    supabase.rpc('get_room_member_profiles', { p_room_id: roomId }),
   ]);
   if (e1) throw e1;
   if (e2) throw e2;
 
-  const profById = new Map<string, ProfileRow>((profiles || []).map(p => [(p as unknown as ProfileRow).id, p as unknown as ProfileRow]));
+  const profById = new Map<string, { id: string; display_name: string; username: string; avatar_url: string | null }>(
+    (profiles || []).map(p => [(p as { id: string }).id, p as { id: string; display_name: string; username: string; avatar_url: string | null }])
+  );
   return ((members || []) as RoomMember[]).map(m => ({
     ...m,
     display_name: profById.get(m.user_id)?.display_name || '',
@@ -390,13 +408,13 @@ export async function fetchRoomActivity(
 export async function searchUserByUsername(username: string): Promise<{
   id: string; username: string; display_name: string; avatar_url: string | null;
 } | null> {
+  const normalized = username.trim();
+  if (!normalized) return null;
   const { data, error } = await supabase
-    .from('profiles')
-    .select('id, username, display_name, avatar_url')
-    .ilike('username', username.trim())
-    .maybeSingle();
+    .rpc('search_profile_by_username', { p_username: normalized });
   if (error) throw error;
-  return (data as unknown as ProfileRow | null) || null;
+  if (!data || data.length === 0) return null;
+  return data[0] as { id: string; username: string; display_name: string; avatar_url: string | null };
 }
 
 /** Owner invites a user by username. Creates an 'invited' member row + invite record + notification. */
@@ -541,4 +559,178 @@ export async function unreadNotificationCount(userId: string): Promise<number> {
     .eq('read', false);
   if (error) throw error;
   return count || 0;
+}
+
+// ─── Study Timer / Focus Timer ─────────────────────────────────────────────────
+
+export interface StudySession {
+  id: string;
+  room_id: string;
+  user_id: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number | null;
+}
+
+export interface MemberTimerSummary {
+  user_id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+  is_studying: boolean;
+  today_seconds: number;
+  week_seconds: number;
+  active_started_at: string | null;
+}
+
+/** Start a study timer for the current user in a room. Creates a new session with ended_at = null. */
+export async function startStudySession(roomId: string, userId: string): Promise<StudySession> {
+  const { data, error } = await supabase
+    .from('room_study_sessions')
+    .insert({ room_id: roomId, user_id: userId })
+    .select('*')
+    .single();
+  if (error) {
+    if (error.code === '23505') throw new Error('You already have an active timer in this room.');
+    throw error;
+  }
+  return data as StudySession;
+}
+
+/** Stop the active study timer for the current user in a room. Sets ended_at and duration_seconds. */
+export async function stopStudySession(roomId: string, userId: string): Promise<void> {
+  const { data: active, error: findErr } = await supabase
+    .from('room_study_sessions')
+    .select('id, started_at')
+    .eq('room_id', roomId)
+    .eq('user_id', userId)
+    .is('ended_at', null)
+    .maybeSingle();
+  if (findErr) throw findErr;
+  if (!active) throw new Error('No active timer found.');
+
+  const { error: updateErr } = await supabase
+    .from('room_study_sessions')
+    .update({
+      ended_at: new Date().toISOString(),
+      duration_seconds: Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000),
+    })
+    .eq('id', active.id);
+  if (updateErr) throw updateErr;
+}
+
+/** Get the current user's active session in a room (if any). */
+export async function getMyActiveSession(roomId: string, userId: string): Promise<StudySession | null> {
+  const { data, error } = await supabase
+    .from('room_study_sessions')
+    .select('*')
+    .eq('room_id', roomId)
+    .eq('user_id', userId)
+    .is('ended_at', null)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as StudySession) || null;
+}
+
+/** Get timer summaries for all approved members in a room. */
+export async function getRoomTimerSummaries(roomId: string): Promise<MemberTimerSummary[]> {
+  // 1. Fetch approved members
+  const members = await fetchMembers(roomId);
+  const approved = members.filter(m => m.status === 'approved');
+  if (approved.length === 0) return [];
+
+  // 2. Fetch all sessions for this room (RLS allows approved members to see all)
+  const { data: sessions, error } = await supabase
+    .from('room_study_sessions')
+    .select('user_id, started_at, ended_at, duration_seconds')
+    .eq('room_id', roomId);
+  if (error) throw error;
+
+  // 3. Compute today and week totals per user
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfWeek = new Date(now);
+  startOfWeek.setDate(now.getDate() - now.getDay());
+  startOfWeek.setHours(0, 0, 0, 0);
+
+  const summaries: MemberTimerSummary[] = approved.map(m => {
+    const userSessions = (sessions || []).filter(s => s.user_id === m.user_id);
+    const activeSession = userSessions.find(s => !s.ended_at);
+
+    let todaySeconds = 0;
+    let weekSeconds = 0;
+
+    for (const s of userSessions) {
+      const start = new Date(s.started_at);
+      const end = s.ended_at ? new Date(s.ended_at) : now;
+      const duration = s.duration_seconds ?? Math.floor((end.getTime() - start.getTime()) / 1000);
+
+      if (end >= startOfToday) todaySeconds += duration;
+      if (end >= startOfWeek) weekSeconds += duration;
+    }
+
+    return {
+      user_id: m.user_id,
+      username: m.username,
+      display_name: m.display_name,
+      avatar_url: m.avatar_url,
+      is_studying: !!activeSession,
+      today_seconds: todaySeconds,
+      week_seconds: weekSeconds,
+      active_started_at: activeSession?.started_at || null,
+    };
+  });
+
+  return summaries;
+}
+
+// ─── Room Profile Image ────────────────────────────────────────────────────────
+
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
+const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+
+/** Upload a room profile image to Supabase Storage. Returns the public URL. */
+export async function uploadRoomProfileImage(roomId: string, file: File): Promise<string> {
+  if (file.size > MAX_IMAGE_SIZE) throw new Error('Image file is too large. Maximum 5 MB.');
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) throw new Error('Unsupported image format. Use PNG, JPG, or WEBP.');
+
+  const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+  const path = `${roomId}/profile-image.${ext}`;
+
+  const { error: upErr } = await supabase.storage
+    .from('room-profiles')
+    .upload(path, file, { upsert: true, contentType: file.type });
+  if (upErr) throw upErr;
+
+  const { data: urlData } = supabase.storage
+    .from('room-profiles')
+    .getPublicUrl(path);
+
+  // Save the URL to the room record
+  const { error: dbErr } = await supabase
+    .from('study_rooms')
+    .update({ profile_image_url: urlData.publicUrl })
+    .eq('id', roomId);
+  if (dbErr) throw dbErr;
+
+  return urlData.publicUrl;
+}
+
+/** Remove a room profile image from Storage and clear the DB field. */
+export async function removeRoomProfileImage(roomId: string): Promise<void> {
+  // List files in the room's folder and remove them
+  const { data: files, error: listErr } = await supabase.storage
+    .from('room-profiles')
+    .list(roomId);
+  if (!listErr && files && files.length > 0) {
+    const paths = files.map(f => `${roomId}/${f.name}`);
+    await supabase.storage.from('room-profiles').remove(paths);
+  }
+
+  // Clear the DB field
+  const { error: dbErr } = await supabase
+    .from('study_rooms')
+    .update({ profile_image_url: null })
+    .eq('id', roomId);
+  if (dbErr) throw dbErr;
 }
