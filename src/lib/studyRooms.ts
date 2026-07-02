@@ -18,17 +18,32 @@ function randomInviteCode(): string {
   return s;
 }
 
-async function genUniqueRoomCode(): Promise<string> {
-  // Retry a few times on rare collision with the UNIQUE constraint.
-  for (let i = 0; i < 5; i++) {
-    const { data, error } = await supabase.rpc('gen_room_code');
-    if (error) throw error;
-    const code = data as string;
-    const { data: existing } = await supabase
-      .from('study_rooms').select('id').eq('room_code', code).maybeSingle();
-    if (!existing) return code;
+function randomRoomCode(): string {
+  // Short human-typeable code, e.g. "TM-48291"
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const l1 = letters[Math.floor(Math.random() * 26)];
+  const l2 = letters[Math.floor(Math.random() * 26)];
+  const num = Math.floor(10000 + Math.random() * 90000);
+  return `${l1}${l2}-${num}`;
+}
+
+/** Log a Supabase error with full details for debugging. */
+function logSupabaseError(context: string, error: unknown) {
+  if (import.meta.env.DEV) {
+    // eslint-disable-next-line no-console
+    console.error(`[StudyRooms] ${context}:`, error);
   }
-  throw new Error('Could not generate a unique room code');
+}
+
+/** Translate a Supabase/Postgres error into a user-friendly message. */
+function friendlyRoomError(error: unknown): string {
+  if (error && typeof error === 'object') {
+    const e = error as { code?: string; message?: string };
+    if (e.code === '42501') return 'Permission denied — please sign in and try again.';
+    if (e.code === '23505') return 'Room code collision — please try again.';
+    if (e.message?.includes('gen_room_code')) return 'Could not generate a room code. Please try again.';
+  }
+  return 'Room creation failed. Please try again.';
 }
 
 // ─── Room CRUD ────────────────────────────────────────────────────────────────
@@ -38,37 +53,58 @@ export async function createRoom(input: {
   description?: string;
   avatar_url?: string | null;
   theme_color?: string;
-}, ownerId: string): Promise<StudyRoom> {
-  const invite_code = randomInviteCode();
-  const room_code = await genUniqueRoomCode();
+}, _ownerId: string): Promise<StudyRoom> {
+  // 1. Verify the user is authenticated.
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('You must be signed in to create a room.');
 
-  const { data: room, error } = await supabase
-    .from('study_rooms')
-    .insert({
-      owner_id: ownerId,
-      name: input.name.trim(),
-      description: (input.description || '').trim(),
-      avatar_url: input.avatar_url ?? null,
-      theme_color: input.theme_color || '#1B2A4A',
-      invite_code,
-      room_code,
-    })
-    .select()
-    .single();
-  if (error) throw error;
+  // 2. Generate codes client-side (UNIQUE constraint + retry handles collisions).
+  // 3. Insert the room. owner_id is set by the database DEFAULT auth.uid().
+  let room: StudyRoom | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const invite_code = randomInviteCode();
+    const room_code = randomRoomCode();
+    const { data, error } = await supabase
+      .from('study_rooms')
+      .insert({
+        name: input.name.trim(),
+        description: (input.description || '').trim(),
+        avatar_url: input.avatar_url ?? null,
+        theme_color: input.theme_color || '#1B2A4A',
+        invite_code,
+        room_code,
+      })
+      .select()
+      .single();
+    if (error) {
+      logSupabaseError('createRoom insert', error);
+      // 23505 = unique_violation — collision on room_code/invite_code, retry
+      if ((error as { code?: string }).code === '23505' && attempt < 2) continue;
+      throw new Error(friendlyRoomError(error));
+    }
+    room = data as StudyRoom;
+    break;
+  }
+  if (!room) throw new Error('Room creation failed. Please try again.');
 
-  // Owner is automatically an approved member.
+  // 4. Insert the creator as an approved owner member.
+  //    user_id is set by DEFAULT auth.uid(); status='approved'.
   const { error: mErr } = await supabase
     .from('study_room_members')
     .insert({
       room_id: room.id,
-      user_id: ownerId,
+      user_id: user.id,
       status: 'approved',
       joined_at: new Date().toISOString(),
     });
-  if (mErr) throw mErr;
+  if (mErr) {
+    logSupabaseError('createRoom member insert', mErr);
+    // Transaction-like rollback: delete the room so we don't leave an orphan.
+    await supabase.from('study_rooms').delete().eq('id', room.id);
+    throw new Error(friendlyRoomError(mErr));
+  }
 
-  return room as StudyRoom;
+  return room;
 }
 
 export async function updateRoom(

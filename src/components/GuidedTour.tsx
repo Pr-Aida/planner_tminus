@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, X, Check, Sparkles } from 'lucide-react';
 // Bump APP_VERSION and add a new entry to WHATS_NEW_UPDATES whenever you ship
 // a meaningful change. Users whose last_seen_version is older than APP_VERSION
 // will automatically see the What's New tour on next login.
-export const APP_VERSION = '1.2';
+export const APP_VERSION = '1.3';
 
 export interface WhatsNewUpdate {
   version: string;
@@ -50,6 +50,26 @@ export const WHATS_NEW_UPDATES: WhatsNewUpdate[] = [
         title: "What's New: Delete Account",
         body: 'You can now permanently delete your account from Profile > Preferences. This removes all your data including habits, notes, reminders, and your avatar — nothing is left behind.',
         badge: 'New',
+      },
+    ],
+  },
+  {
+    version: '1.3',
+    title: 'Study Rooms',
+    summary: 'Create private focus rooms. Invite by link or username — only Activity time is shared, everything else stays private.',
+    steps: [
+      {
+        target: 'tour-study-rooms',
+        title: "What's New: Study Rooms",
+        body: 'Create private focus rooms and invite others by link or username. Invite links never give direct access — people can only request to join, and you approve them. Inside a room, only your Activity-section time is shared. Your habits, notes, reminders, and all other planner data stay completely private.',
+        badge: 'New',
+      },
+      {
+        target: 'tour-activities',
+        title: "What's New: Activity Sharing",
+        body: 'Your Activity-section time can now be shared in Study Rooms. You control what you share with privacy toggles: share today, share weekly, show active now, or hide all your activity from a room. Habits, notes, and reminders are never shared.',
+        badge: 'New',
+        requireView: 'daily',
       },
     ],
   },
@@ -128,8 +148,13 @@ export const ONBOARDING_STEPS: TourStep[] = [
   {
     target: 'tour-activities',
     title: 'Activity Log',
-    body: 'Log what you did today with start and end times. The app calculates the duration automatically and includes it in your daily summary. Add an optional note to each activity.',
+    body: 'Log what you did today with start and end times. The app calculates the duration automatically and includes it in your daily summary. Add an optional note to each activity. This is the only data you can optionally share in Study Rooms.',
     requireView: 'daily',
+  },
+  {
+    target: 'tour-study-rooms',
+    title: 'Study Rooms',
+    body: 'Create private focus rooms and invite others by link or username. Invite links never give direct access — people can only request to join, and you approve them. Inside a room, only your Activity-section time is shared. Your habits, notes, reminders, and all other planner data stay completely private.',
   },
   {
     target: 'tour-notes',
@@ -283,7 +308,10 @@ export default function GuidedTour({
       const top = Math.min(rect.top + rect.height + 16, viewport.h - 280);
       return { top, left, placement: 'below' as const };
     }
-    return { top: rect.top - 16, left, placement: 'above' as const };
+    // Above: tooltip is translated up by 100%, so `top` is its bottom edge.
+    // Clamp so the tooltip (max ~260px tall) stays on-screen on mobile.
+    const top = Math.max(260, rect.top - 16);
+    return { top, left, placement: 'above' as const };
   })();
 
   const mask = !isIntro && rect

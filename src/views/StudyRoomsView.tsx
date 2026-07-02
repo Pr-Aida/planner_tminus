@@ -194,6 +194,7 @@ function CreateRoomModal({
   const [theme, setTheme] = useState(THEME_COLORS[0]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   async function handleCreate() {
     if (!name.trim()) return;
@@ -201,9 +202,12 @@ function CreateRoomModal({
     setError(null);
     try {
       const room = await createRoom({ name, description, theme_color: theme }, userId);
-      onCreated(room.id);
+      setSuccess('Study Room created successfully.');
+      setTimeout(() => onCreated(room.id), 900);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Could not create room');
+      const msg = e instanceof Error ? e.message : 'Room creation failed. Please try again.';
+      setError(msg);
+      if (import.meta.env.DEV) console.error('[CreateRoom]', e);
     } finally {
       setSaving(false);
     }
@@ -257,6 +261,12 @@ function CreateRoomModal({
       {error && (
         <div className="rounded-lg px-4 py-3 text-sm mb-4" style={{ background: '#FEE2E2', color: '#B91C1C' }}>
           {error}
+        </div>
+      )}
+
+      {success && (
+        <div className="rounded-lg px-4 py-3 text-sm mb-4 flex items-center gap-2" style={{ background: '#E6F6EF', color: '#059669' }}>
+          <Check size={16} /> {success}
         </div>
       )}
 

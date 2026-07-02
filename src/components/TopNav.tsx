@@ -394,6 +394,7 @@ export default function TopNav({
           {notificationsNode}
 
           <button
+            data-tour="tour-study-rooms"
             onClick={onOpenStudyRooms}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all duration-150"
             style={{
