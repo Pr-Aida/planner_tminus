@@ -28,6 +28,7 @@ import type { CountdownConfig } from './components/CountdownBar';
 import StudyRoomsView from './views/StudyRoomsView';
 import JoinRoomView from './views/JoinRoomView';
 import RoomNotifications from './components/RoomNotifications';
+import { ThemeProvider, useTheme, type ThemeMode } from './lib/theme';
 
 type AuthScreen = 'sign-in' | 'sign-up' | 'forgot-password' | 'reset-password';
 type TourMode = 'onboarding' | 'whats-new';
@@ -65,6 +66,8 @@ export default function App() {
     clock2_label: '',
     clock2_visible: false,
   });
+
+  const [themePref, setThemePref] = useState<ThemeMode>('light');
 
   // ─── Calendar & View State ──────────────────────────────────────────────
   const [calMode, setCalMode] = useState<CalendarMode>('shamsi');
@@ -171,6 +174,7 @@ export default function App() {
             clock2_label: p.clock2_label || '',
             clock2_visible: !!p.clock2_visible,
           });
+          setThemePref((p.theme_pref as ThemeMode) || 'light');
 
           if (!p.onboarding_completed) {
             // Brand new user — show full onboarding
@@ -628,6 +632,7 @@ export default function App() {
   // ─── Profile save ──────────────────────────────────────────────────────────
   const handleProfileSaved = useCallback((updated: UserProfile) => {
     setProfile(updated);
+    setThemePref(updated.theme_pref || 'light');
   }, []);
 
   // ─── View sync (prefetch monthly) ────────────────────────────────────────
@@ -649,9 +654,9 @@ export default function App() {
   // ─── Auth Loading ─────────────────────────────────────────────────────────
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#EDEDEE' }}>
-        <div className="w-10 h-10 border-4 border-gray-300 border-t-[#7B1C3E] rounded-full animate-spin" />
-      </div>
+      <ThemeProvider initialTheme={themePref}>
+        <AuthLoadingScreen />
+      </ThemeProvider>
     );
   }
 
@@ -716,165 +721,358 @@ export default function App() {
   const latestUpdate = whatsNewUpdates[whatsNewUpdates.length - 1];
 
   return (
-    <div className="min-h-screen" style={{ background: '#EDEDEE' }}>
-      {showTour && (
+    <ThemeProvider initialTheme={themePref}>
+    <MainAppContent
+      showTour={showTour}
+      tourMode={tourMode}
+      whatsNewSteps={tourMode === 'whats-new' ? whatsNewSteps : undefined}
+      whatsNewTitle={latestUpdate?.title ? `What's New in ${latestUpdate.title}` : "What's New"}
+      whatsNewSummary={latestUpdate?.summary}
+      onTourFinish={handleTourFinish}
+      onTourSkip={handleTourSkip}
+      onTourRequireView={(v) => { setShowStudyRooms(false); setViewMode(v as ViewMode); }}
+      showProfile={showProfile}
+      profile={profile}
+      userId={user?.id ?? null}
+      onProfileClose={() => setShowProfile(false)}
+      onProfileSaved={handleProfileSaved}
+      onAccountDeleted={() => { setShowProfile(false); }}
+      calMode={calMode}
+      onCalModeChange={handleCalModeChange}
+      viewMode={viewMode}
+      onViewChange={(v) => { setShowStudyRooms(false); setViewMode(v as ViewMode); }}
+      currentGregYear={currentGregYear}
+      currentShYear={calMode === 'shamsi' ? shDate.year : gregorianToSh(gregDate).year}
+      currentShMonth={currentShMonth}
+      countdown={countdown}
+      onCountdownSave={handleCountdownSave}
+      userAvatar={profile?.avatar_url}
+      userInitial={(profile?.display_name || profile?.username || 'U').charAt(0).toUpperCase()}
+      onSignOut={handleSignOut}
+      onOpenProfile={() => setShowProfile(true)}
+      onRestartTour={handleRestartTour}
+      onOpenWhatsNew={handleOpenWhatsNew}
+      onOpenStudyRooms={() => setShowStudyRooms(true)}
+      studyRoomsActive={showStudyRooms}
+      notificationsNode={user ? (
+        <div className="flex items-center gap-1.5">
+          <RoomNotifications
+            userId={user.id}
+            onOpenRoom={(roomId) => { setShowStudyRooms(true); pendingOpenRoomId.current = roomId; }}
+          />
+        </div>
+      ) : null}
+      timezone={profile?.timezone_pref || 'UTC'}
+      clockSettings={clockSettings}
+      onClockSettingsChange={handleClockSettingsChange}
+      coverImage={coverImage}
+      onCoverChange={handleCoverChange}
+      showStudyRooms={showStudyRooms}
+      studyRoomsUserId={user?.id}
+      initialOpenRoomId={pendingOpenRoomId.current}
+      shDate={shDate}
+      gregDate={gregDate}
+      onShDateChange={setShDate}
+      onGregDateChange={setGregDate}
+      onToday={goToday}
+      onPrevDay={goPrevDay}
+      onNextDay={goNextDay}
+      currentDayData={currentDayData}
+      habits={habits}
+      currentKey={currentKey}
+      isToday={isTodayKey(currentKey, profile?.timezone_pref)}
+      currentDayReminders={currentDayReminders}
+      onDataChange={handleDayDataChange}
+      onAddHabitToTemplate={handleAddHabit}
+      onAddHabitToDay={handleAddHabitToDay}
+      onDeleteHabit={handleDeleteHabit}
+      onRenameHabit={handleRenameHabit}
+      onHideHabitForDay={handleHideHabitForDay}
+      onRemoveExtraHabit={handleRemoveExtraHabit}
+      onSaveTemplate={handleSaveTemplate}
+      onUpdateReminderStatus={handleUpdateReminderStatus}
+      getDayData={getDayData}
+      getDayNote={getDayNote}
+      setDayNote={handleSetDayNote}
+      weeklyNote={monthlyNotes.get(weeklyNoteKey) || ''}
+      onWeeklyNoteChange={handleWeeklyNoteChange}
+      viewShYear={viewShYear}
+      viewShMonth={viewShMonth}
+      viewGregYear={viewGregYear}
+      viewGregMonth={viewGregMonth}
+      onViewShYearChange={setViewShYear}
+      onViewShMonthChange={setViewShMonth}
+      onViewGregYearChange={setViewGregYear}
+      onViewGregMonthChange={setViewGregMonth}
+      monthlyNote={monthlyNotes.get(currentMonthKey) || ''}
+      onMonthlyNoteChange={handleMonthlyNoteChange}
+      reminders={reminders}
+      onAddReminder={handleAddReminder}
+      onDeleteReminder={handleDeleteReminder}
+      viewShYearForYear={viewShYearForYear}
+      viewGregYearForYear={viewGregYearForYear}
+      onViewShYearChangeForYear={setViewShYearForYear}
+      onViewGregYearChangeForYear={setViewGregYearForYear}
+      onPickMonth={(month, mode) => {
+        if (calMode === 'shamsi') {
+          setViewShYear(viewShYearForYear);
+          setViewShMonth(month);
+          setShDate({ year: viewShYearForYear, month, day: 1 });
+        } else {
+          setViewGregMonth(month);
+          setGregDate({ year: viewGregYearForYear, month, day: 1 });
+        }
+        setViewMode(mode);
+        setShowStudyRooms(false);
+      }}
+      profileLoading={profileLoading}
+    />
+    </ThemeProvider>
+  );
+}
+
+function AuthLoadingScreen() {
+  const { colors } = useTheme();
+  return (
+    <div className="min-h-screen flex items-center justify-center" style={{ background: colors.bg }}>
+      <div className="w-10 h-10 border-4 rounded-full animate-spin" style={{ borderColor: colors.border, borderTopColor: colors.accent }} />
+    </div>
+  );
+}
+
+interface MainAppContentProps {
+  showTour: boolean;
+  tourMode: 'onboarding' | 'whats-new';
+  whatsNewSteps: any[];
+  whatsNewTitle: string;
+  whatsNewSummary?: string;
+  onTourFinish: () => void;
+  onTourSkip: () => void;
+  onTourRequireView: (v: string) => void;
+  showProfile: boolean;
+  profile: UserProfile | null;
+  userId: string | null;
+  onProfileClose: () => void;
+  onProfileSaved: (p: UserProfile) => void;
+  onAccountDeleted: () => void;
+  calMode: CalendarMode;
+  onCalModeChange: (m: CalendarMode) => void;
+  viewMode: ViewMode;
+  onViewChange: (v: string) => void;
+  currentGregYear: number;
+  currentShYear: number;
+  currentShMonth: number;
+  countdown: CountdownConfig | null;
+  onCountdownSave: (cfg: CountdownConfig | null) => void;
+  userAvatar?: string | null;
+  userInitial: string;
+  onSignOut: () => void;
+  onOpenProfile: () => void;
+  onRestartTour: () => void;
+  onOpenWhatsNew: () => void;
+  onOpenStudyRooms: () => void;
+  studyRoomsActive: boolean;
+  notificationsNode?: React.ReactNode;
+  timezone: string;
+  clockSettings: ClockSettings;
+  onClockSettingsChange: (s: ClockSettings) => void;
+  coverImage: string | null;
+  onCoverChange: (d: string | null) => void;
+  showStudyRooms: boolean;
+  studyRoomsUserId?: string;
+  initialOpenRoomId?: string | null;
+  shDate: ShDate;
+  gregDate: GregDate;
+  onShDateChange: (d: ShDate) => void;
+  onGregDateChange: (d: GregDate) => void;
+  onToday: () => void;
+  onPrevDay: () => void;
+  onNextDay: () => void;
+  currentDayData: DailyData;
+  habits: Habit[];
+  currentKey: string;
+  isToday: boolean;
+  currentDayReminders: Reminder[];
+  onDataChange: (patch: Partial<DailyData>) => void;
+  onAddHabitToTemplate: (name: string, type: HabitType, unit: string | null) => void;
+  onAddHabitToDay: (name: string, type: HabitType, unit: string | null) => void;
+  onDeleteHabit: (id: string) => void;
+  onRenameHabit: (id: string, name: string) => void;
+  onHideHabitForDay: (id: string) => void;
+  onRemoveExtraHabit: (id: string) => void;
+  onSaveTemplate: () => void;
+  onUpdateReminderStatus: (id: string, status: ReminderStatus) => void;
+  getDayData: (key: string) => DailyData;
+  getDayNote: (key: string) => string;
+  setDayNote: (key: string, note: string) => void;
+  weeklyNote: string;
+  onWeeklyNoteChange: (note: string) => void;
+  viewShYear: number;
+  viewShMonth: number;
+  viewGregYear: number;
+  viewGregMonth: number;
+  onViewShYearChange: (y: number) => void;
+  onViewShMonthChange: (m: number) => void;
+  onViewGregYearChange: (y: number) => void;
+  onViewGregMonthChange: (m: number) => void;
+  monthlyNote: string;
+  onMonthlyNoteChange: (key: string, note: string) => void;
+  reminders: Reminder[];
+  onAddReminder: (dateKey: string, title: string, offset: ReminderOffset) => void;
+  onDeleteReminder: (id: string) => void;
+  viewShYearForYear: number;
+  viewGregYearForYear: number;
+  onViewShYearChangeForYear: (y: number) => void;
+  onViewGregYearChangeForYear: (y: number) => void;
+  onPickMonth: (month: number, mode: ViewMode) => void;
+  profileLoading: boolean;
+}
+
+function MainAppContent(props: MainAppContentProps) {
+  const { colors } = useTheme();
+
+  return (
+    <div className="min-h-screen" style={{ background: colors.bg }}>
+      {props.showTour && (
         <GuidedTour
-          mode={tourMode}
-          whatsNewSteps={tourMode === 'whats-new' ? whatsNewSteps : undefined}
-          whatsNewTitle={latestUpdate?.title ? `What's New in ${latestUpdate.title}` : "What's New"}
-          whatsNewSummary={latestUpdate?.summary}
-          onFinish={handleTourFinish}
-          onSkip={handleTourSkip}
-          onRequireView={(v) => { setShowStudyRooms(false); setViewMode(v as ViewMode); }}
+          mode={props.tourMode}
+          whatsNewSteps={props.whatsNewSteps}
+          whatsNewTitle={props.whatsNewTitle}
+          whatsNewSummary={props.whatsNewSummary}
+          onFinish={props.onTourFinish}
+          onSkip={props.onTourSkip}
+          onRequireView={props.onTourRequireView}
         />
       )}
 
-      {showProfile && profile && (
+      {props.showProfile && props.profile && (
         <ProfileView
-          profile={profile}
-          userId={user?.id ?? null}
-          onClose={() => setShowProfile(false)}
-          onSaved={handleProfileSaved}
-          onAccountDeleted={() => { setShowProfile(false); }}
+          profile={props.profile}
+          userId={props.userId}
+          onClose={props.onProfileClose}
+          onSaved={props.onProfileSaved}
+          onAccountDeleted={props.onAccountDeleted}
         />
       )}
 
       <TopNav
-        calMode={calMode}
-        onCalModeChange={handleCalModeChange}
-        viewMode={viewMode}
-        onViewChange={(v) => { setShowStudyRooms(false); setViewMode(v as ViewMode); }}
-        currentGregYear={currentGregYear}
-        currentShYear={calMode === 'shamsi' ? shDate.year : gregorianToSh(gregDate).year}
-        currentShMonth={currentShMonth}
-        countdown={countdown}
-        onCountdownSave={handleCountdownSave}
-        userAvatar={profile?.avatar_url}
-        userInitial={(profile?.display_name || profile?.username || 'U').charAt(0).toUpperCase()}
-        onSignOut={handleSignOut}
-        onOpenProfile={() => setShowProfile(true)}
-        onRestartTour={handleRestartTour}
-        onOpenWhatsNew={handleOpenWhatsNew}
-        onOpenStudyRooms={() => setShowStudyRooms(true)}
-        studyRoomsActive={showStudyRooms}
-        notificationsNode={user ? (
-          <div className="flex items-center gap-1.5">
-            <RoomNotifications
-              userId={user.id}
-              onOpenRoom={(roomId) => { setShowStudyRooms(true); pendingOpenRoomId.current = roomId; }}
-            />
-          </div>
-        ) : null}
-        timezone={profile?.timezone_pref || 'UTC'}
-        clockSettings={clockSettings}
-        onClockSettingsChange={handleClockSettingsChange}
+        calMode={props.calMode}
+        onCalModeChange={props.onCalModeChange}
+        viewMode={props.viewMode}
+        onViewChange={props.onViewChange}
+        currentGregYear={props.currentGregYear}
+        currentShYear={props.currentShYear}
+        currentShMonth={props.currentShMonth}
+        countdown={props.countdown}
+        onCountdownSave={props.onCountdownSave}
+        userAvatar={props.userAvatar}
+        userInitial={props.userInitial}
+        onSignOut={props.onSignOut}
+        onOpenProfile={props.onOpenProfile}
+        onRestartTour={props.onRestartTour}
+        onOpenWhatsNew={props.onOpenWhatsNew}
+        onOpenStudyRooms={props.onOpenStudyRooms}
+        studyRoomsActive={props.studyRoomsActive}
+        notificationsNode={props.notificationsNode}
+        timezone={props.timezone}
+        clockSettings={props.clockSettings}
+        onClockSettingsChange={props.onClockSettingsChange}
       />
 
-      <HeroBanner imageDataUrl={coverImage} onImageChange={handleCoverChange} />
+      <HeroBanner imageDataUrl={props.coverImage} onImageChange={props.onCoverChange} />
 
-      {showStudyRooms && user ? (
+      {props.showStudyRooms && props.studyRoomsUserId ? (
         <StudyRoomsView
-          userId={user.id}
-          initialOpenRoomId={pendingOpenRoomId.current}
+          userId={props.studyRoomsUserId}
+          initialOpenRoomId={props.initialOpenRoomId}
           onOpenRoom={() => {}}
         />
       ) : (
       <div className="max-w-5xl mx-auto px-4 md:px-6 pt-6 pb-16">
         <DateBar
-          calMode={calMode}
-          shDate={shDate}
-          gregDate={gregDate}
-          onShDateChange={setShDate}
-          onGregDateChange={setGregDate}
-          onToday={goToday}
-          onPrevDay={goPrevDay}
-          onNextDay={goNextDay}
+          calMode={props.calMode}
+          shDate={props.shDate}
+          gregDate={props.gregDate}
+          onShDateChange={props.onShDateChange}
+          onGregDateChange={props.onGregDateChange}
+          onToday={props.onToday}
+          onPrevDay={props.onPrevDay}
+          onNextDay={props.onNextDay}
         />
 
-        {viewMode === 'daily' && (
+        {props.viewMode === 'daily' && (
           <DailyView
-            data={currentDayData}
-            habits={habits}
-            dateKey={currentKey}
-            isToday={isTodayKey(currentKey, profile?.timezone_pref)}
-            reminders={currentDayReminders}
-            onDataChange={handleDayDataChange}
-            onAddHabitToTemplate={handleAddHabit}
-            onAddHabitToDay={handleAddHabitToDay}
-            onDeleteHabit={handleDeleteHabit}
-            onRenameHabit={handleRenameHabit}
-            onHideHabitForDay={handleHideHabitForDay}
-            onRemoveExtraHabit={handleRemoveExtraHabit}
-            onSaveTemplate={handleSaveTemplate}
-            onUpdateReminderStatus={handleUpdateReminderStatus}
+            data={props.currentDayData}
+            habits={props.habits}
+            dateKey={props.currentKey}
+            isToday={props.isToday}
+            reminders={props.currentDayReminders}
+            onDataChange={props.onDataChange}
+            onAddHabitToTemplate={props.onAddHabitToTemplate}
+            onAddHabitToDay={props.onAddHabitToDay}
+            onDeleteHabit={props.onDeleteHabit}
+            onRenameHabit={props.onRenameHabit}
+            onHideHabitForDay={props.onHideHabitForDay}
+            onRemoveExtraHabit={props.onRemoveExtraHabit}
+            onSaveTemplate={props.onSaveTemplate}
+            onUpdateReminderStatus={props.onUpdateReminderStatus}
           />
         )}
 
-        {viewMode === 'weekly' && (
+        {props.viewMode === 'weekly' && (
           <WeeklyView
-            calMode={calMode}
-            shDate={shDate}
-            gregDate={gregDate}
-            getDayData={getDayData}
-            habits={habits}
-            weeklyNote={monthlyNotes.get(weeklyNoteKey) || ''}
-            onWeeklyNoteChange={handleWeeklyNoteChange}
+            calMode={props.calMode}
+            shDate={props.shDate}
+            gregDate={props.gregDate}
+            getDayData={props.getDayData}
+            habits={props.habits}
+            weeklyNote={props.weeklyNote}
+            onWeeklyNoteChange={props.onWeeklyNoteChange}
           />
         )}
 
-        {viewMode === 'monthly' && (
+        {props.viewMode === 'monthly' && (
           <MonthlyView
-            calMode={calMode}
-            viewShYear={viewShYear}
-            viewShMonth={viewShMonth}
-            viewGregYear={viewGregYear}
-            viewGregMonth={viewGregMonth}
-            onViewShYearChange={setViewShYear}
-            onViewShMonthChange={setViewShMonth}
-            onViewGregYearChange={setViewGregYear}
-            onViewGregMonthChange={setViewGregMonth}
-            getDayData={getDayData}
-            getDayNote={getDayNote}
-            setDayNote={handleSetDayNote}
-            habits={habits}
-            monthlyNote={monthlyNotes.get(currentMonthKey) || ''}
-            onMonthlyNoteChange={handleMonthlyNoteChange}
-            reminders={reminders}
-            onAddReminder={handleAddReminder}
-            onUpdateReminderStatus={handleUpdateReminderStatus}
-            onDeleteReminder={handleDeleteReminder}
-            timezone={profile?.timezone_pref}
+            calMode={props.calMode}
+            viewShYear={props.viewShYear}
+            viewShMonth={props.viewShMonth}
+            viewGregYear={props.viewGregYear}
+            viewGregMonth={props.viewGregMonth}
+            onViewShYearChange={props.onViewShYearChange}
+            onViewShMonthChange={props.onViewShMonthChange}
+            onViewGregYearChange={props.onViewGregYearChange}
+            onViewGregMonthChange={props.onViewGregMonthChange}
+            getDayData={props.getDayData}
+            getDayNote={props.getDayNote}
+            setDayNote={props.setDayNote}
+            habits={props.habits}
+            monthlyNote={props.monthlyNote}
+            onMonthlyNoteChange={props.onMonthlyNoteChange}
+            reminders={props.reminders}
+            onAddReminder={props.onAddReminder}
+            onUpdateReminderStatus={props.onUpdateReminderStatus}
+            onDeleteReminder={props.onDeleteReminder}
+            timezone={props.timezone}
           />
         )}
 
-        {viewMode === 'yearly' && (
+        {props.viewMode === 'yearly' && (
           <YearlyView
-            calMode={calMode}
-            viewShYear={viewShYearForYear}
-            viewGregYear={viewGregYearForYear}
-            onViewShYearChange={setViewShYearForYear}
-            onViewGregYearChange={setViewGregYearForYear}
-            reminders={reminders}
-            timezone={profile?.timezone_pref}
-            onPickMonth={(month, mode) => {
-              if (calMode === 'shamsi') {
-                setViewShYear(viewShYearForYear);
-                setViewShMonth(month);
-                setShDate({ year: viewShYearForYear, month, day: 1 });
-              } else {
-                setViewGregMonth(month);
-                setGregDate({ year: viewGregYearForYear, month, day: 1 });
-              }
-              setViewMode(mode);
-              setShowStudyRooms(false);
-            }}
+            calMode={props.calMode}
+            viewShYear={props.viewShYearForYear}
+            viewGregYear={props.viewGregYearForYear}
+            onViewShYearChange={props.onViewShYearChangeForYear}
+            onViewGregYearChange={props.onViewGregYearChangeForYear}
+            reminders={props.reminders}
+            timezone={props.timezone}
+            onPickMonth={props.onPickMonth}
           />
         )}
       </div>
       )}
 
-      {profileLoading && !profile && (
-        <div className="fixed bottom-4 right-4 text-xs" style={{ color: '#9CA3AF' }}>Loading profile…</div>
+      {props.profileLoading && !props.profile && (
+        <div className="fixed bottom-4 right-4 text-xs" style={{ color: colors.textTertiary }}>Loading profile…</div>
       )}
     </div>
   );

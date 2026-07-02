@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { ImageIcon, X } from 'lucide-react';
+import { useTheme } from '../lib/theme';
 
 interface Props {
   imageDataUrl: string | null;
@@ -8,6 +9,7 @@ interface Props {
 
 export default function HeroBanner({ imageDataUrl, onImageChange }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const { colors } = useTheme();
 
   function handleClick() {
     if (!imageDataUrl) inputRef.current?.click();
@@ -26,7 +28,7 @@ export default function HeroBanner({ imageDataUrl, onImageChange }: Props) {
     <div
       className="relative w-full overflow-hidden"
       style={{
-        background: '#1B2A4A',
+        background: colors.heroBg,
         minHeight: imageDataUrl ? '220px' : '52px',
         cursor: imageDataUrl ? 'default' : 'pointer',
         transition: 'min-height 0.3s',

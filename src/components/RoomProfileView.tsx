@@ -339,7 +339,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
           onRemove={async (uid) => { await removeMember(room.id, uid); load(); }}
           onApprove={async (uid) => { await approveMember(room.id, uid); load(); }}
           onReject={async (uid) => { await rejectMember(room.id, uid); load(); }}
-          onTransfer={async (uid) => { await transferOwnership(room.id, uid); load(); }}
+          onTransfer={async (uid, oldRole) => { await transferOwnership(room.id, uid, oldRole); load(); }}
           onReload={load}
         />
       )}
@@ -917,7 +917,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
   onRemove: (uid: string) => void;
   onApprove: (uid: string) => void;
   onReject: (uid: string) => void;
-  onTransfer: (uid: string) => Promise<void>;
+  onTransfer: (uid: string, oldRole: 'member' | 'admin') => Promise<void>;
   onReload: () => void;
 }) {
   const myMember = members.find(m => m.user_id === currentUserId);
@@ -931,7 +931,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
   const [searching, setSearching] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [memberMenuOpen, setMemberMenuOpen] = useState<string | null>(null);
-  const [transferTarget, setTransferTarget] = useState<RoomMember | null>(null);
+  const [roleAction, setRoleAction] = useState<{ type: 'transfer' | 'transferKeepAdmin' | 'makeAdmin'; member: RoomMember } | null>(null);
   const [transferring, setTransferring] = useState(false);
 
   async function handleSearch() {
@@ -1145,13 +1145,13 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                     </button>
                     {memberMenuOpen === m.user_id && (
                       <div
-                        className="absolute right-0 top-full mt-1 z-50 rounded-lg py-1 min-w-[160px]"
+                        className="absolute right-0 top-full mt-1 z-50 rounded-lg py-1 min-w-[180px]"
                         style={{ background: '#fff', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', border: '1px solid #E8E8E8' }}
                         onClick={e => e.stopPropagation()}
                       >
                         {m.role !== 'admin' && (
                           <button
-                            onClick={() => { handleMakeAdmin(m.user_id); setMemberMenuOpen(null); }}
+                            onClick={() => { setRoleAction({ type: 'makeAdmin', member: m }); setMemberMenuOpen(null); }}
                             className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-left hover:bg-gray-50"
                             style={{ border: 'none', background: 'transparent', color: '#1B2A4A', cursor: 'pointer' }}
                           >
@@ -1168,11 +1168,18 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                           </button>
                         )}
                         <button
-                          onClick={() => { setTransferTarget(m); setMemberMenuOpen(null); }}
+                          onClick={() => { setRoleAction({ type: 'transfer', member: m }); setMemberMenuOpen(null); }}
                           className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-left hover:bg-gray-50"
                           style={{ border: 'none', background: 'transparent', color: '#92400E', cursor: 'pointer' }}
                         >
                           <UserCog size={12} /> Transfer Ownership
+                        </button>
+                        <button
+                          onClick={() => { setRoleAction({ type: 'transferKeepAdmin', member: m }); setMemberMenuOpen(null); }}
+                          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-left hover:bg-gray-50"
+                          style={{ border: 'none', background: 'transparent', color: '#92400E', cursor: 'pointer' }}
+                        >
+                          <UserCog size={12} /> Transfer Ownership + Keep Me Admin
                         </button>
                         <button
                           onClick={() => { onRemove(m.user_id); setMemberMenuOpen(null); }}
@@ -1191,39 +1198,70 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
         </div>
       </div>
 
-      {/* Transfer ownership confirmation modal */}
-      {transferTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => !transferring && setTransferTarget(null)}>
+      {/* Role action confirmation modals */}
+      {roleAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => !transferring && setRoleAction(null)}>
           <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: '#fff' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-start gap-3 mb-4">
               <AlertTriangle size={20} color="#92400E" style={{ flexShrink: 0, marginTop: 1 }} />
               <div>
-                <h3 className="text-sm font-bold mb-2" style={{ color: '#1B2A4A' }}>Transfer Ownership</h3>
+                <h3 className="text-sm font-bold mb-2" style={{ color: '#1B2A4A' }}>
+                  {roleAction.type === 'makeAdmin' ? 'Make Admin' : 'Transfer Ownership'}
+                </h3>
                 <p className="text-xs" style={{ color: '#6B6B6B' }}>
-                  Are you sure you want to transfer ownership to{' '}
-                  <strong style={{ color: '#1B2A4A' }}>
-                    {transferTarget.display_name || transferTarget.username || 'this member'}
-                  </strong>
-                  ? You will no longer be the owner.
+                  {roleAction.type === 'transfer' && (
+                    <>
+                      Are you sure you want to transfer ownership to{' '}
+                      <strong style={{ color: '#1B2A4A' }}>
+                        {roleAction.member.display_name || roleAction.member.username || 'this member'}
+                      </strong>
+                      ? You will become a normal member.
+                    </>
+                  )}
+                  {roleAction.type === 'transferKeepAdmin' && (
+                    <>
+                      Are you sure you want to transfer ownership to{' '}
+                      <strong style={{ color: '#1B2A4A' }}>
+                        {roleAction.member.display_name || roleAction.member.username || 'this member'}
+                      </strong>
+                      ? and keep yourself as admin?
+                    </>
+                  )}
+                  {roleAction.type === 'makeAdmin' && (
+                    <>
+                      Make{' '}
+                      <strong style={{ color: '#1B2A4A' }}>
+                        {roleAction.member.display_name || roleAction.member.username || 'this member'}
+                      </strong>
+                      {' '}an admin of this room?
+                    </>
+                  )}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={async () => {
-                  setTransferring(true);
-                  try { await onTransfer(transferTarget.user_id); setTransferTarget(null); }
-                  catch (e) { console.error(e); }
-                  finally { setTransferring(false); }
+                  if (roleAction.type === 'makeAdmin') {
+                    await handleMakeAdmin(roleAction.member.user_id);
+                    setRoleAction(null);
+                  } else {
+                    setTransferring(true);
+                    try {
+                      await onTransfer(roleAction.member.user_id, roleAction.type === 'transferKeepAdmin' ? 'admin' : 'member');
+                      setRoleAction(null);
+                    } catch (e) { console.error(e); }
+                    finally { setTransferring(false); }
+                  }
                 }}
                 disabled={transferring}
                 className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
-                style={{ background: transferring ? '#9CA3AF' : '#92400E', border: 'none', cursor: transferring ? 'not-allowed' : 'pointer' }}
+                style={{ background: transferring ? '#9CA3AF' : roleAction.type === 'makeAdmin' ? themeColor : '#92400E', border: 'none', cursor: transferring ? 'not-allowed' : 'pointer' }}
               >
-                {transferring ? 'Transferring…' : 'Yes, transfer'}
+                {transferring ? 'Transferring…' : roleAction.type === 'makeAdmin' ? 'Yes, make admin' : 'Yes, transfer'}
               </button>
               <button
-                onClick={() => setTransferTarget(null)}
+                onClick={() => setRoleAction(null)}
                 disabled={transferring}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold"
                 style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: transferring ? 'not-allowed' : 'pointer' }}
@@ -1497,7 +1535,7 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
                   <strong style={{ color: '#1B2A4A' }}>
                     {approvedOthers.find(m => m.user_id === transferTarget)?.username || 'this member'}
                   </strong>
-                  ? You will no longer be the owner.
+                  ?{oldOwnerRole === 'admin' ? ' You will become an admin.' : ' You will become a normal member.'}
                 </p>
               </div>
             </div>

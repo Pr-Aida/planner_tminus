@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { Camera, X, Check, User as UserIcon, Trash2, AlertTriangle } from 'lucide-react';
+import { Camera, X, Check, User as UserIcon, Trash2, AlertTriangle, Sun, Moon } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { updateOwnUsername, validateUsername } from '../lib/auth';
+import { useTheme, type ThemeMode } from '../lib/theme';
 import type { UserProfile, CalendarMode } from '../types';
 import { TIMEZONES } from '../types';
 
@@ -17,6 +18,7 @@ type Tab = 'profile' | 'preferences';
 
 export default function ProfileView({ profile, onClose, onSaved, onAccountDeleted, userId }: Props) {
   const [tab, setTab] = useState<Tab>('profile');
+  const { theme, setTheme, colors } = useTheme();
 
   // Profile fields
   const [displayName, setDisplayName] = useState(profile.display_name);
@@ -28,6 +30,7 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
   // Preferences
   const [calendarPref, setCalendarPref] = useState<CalendarMode>(profile.calendar_pref);
   const [timezonePref, setTimezonePref] = useState(profile.timezone_pref);
+  const [themePref, setThemePref] = useState<ThemeMode>((profile.theme_pref as ThemeMode) || 'light');
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +53,7 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
     setAvatarUrl(profile.avatar_url);
     setCalendarPref(profile.calendar_pref);
     setTimezonePref(profile.timezone_pref);
+    setThemePref((profile.theme_pref as ThemeMode) || 'light');
   }, [profile]);
 
   function esc(e: React.KeyboardEvent) {
@@ -126,6 +130,7 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
         avatar_url: avatarUrl,
         calendar_pref: calendarPref,
         timezone_pref: timezonePref,
+        theme_pref: themePref,
       };
 
       // Username change goes through the edge function (server-side uniqueness).
@@ -166,18 +171,18 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
   return (
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.5)' }}
+      style={{ background: colors.overlay }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       onKeyDown={esc}
       tabIndex={-1}
     >
       <div
         className="w-full max-w-lg rounded-2xl overflow-hidden flex flex-col"
-        style={{ background: '#fff', boxShadow: '0 12px 40px rgba(0,0,0,0.25)', maxHeight: '90vh' }}
+        style={{ background: colors.bgCard, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', maxHeight: '90vh' }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: '#E8EBF4' }}>
-          <h2 className="text-base font-bold" style={{ color: '#1B2A4A' }}>Profile & Settings</h2>
+        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: colors.borderLight }}>
+          <h2 className="text-base font-bold" style={{ color: colors.textPrimary }}>Profile & Settings</h2>
           <button
             onClick={onClose}
             className="flex items-center justify-center rounded-full w-7 h-7 transition-colors hover:bg-gray-100"
@@ -358,6 +363,34 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                 <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>Used for date display defaults.</p>
               </Field>
 
+              <Field label="Appearance">
+                <div className="flex rounded-lg overflow-hidden" style={{ border: '1.5px solid #E8EBF4' }}>
+                  <button
+                    onClick={() => { setThemePref('light'); setTheme('light'); }}
+                    className="flex-1 py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all"
+                    style={{
+                      background: themePref === 'light' ? '#7B1C3E' : '#fff',
+                      color: themePref === 'light' ? '#fff' : '#6B6B6B',
+                      border: 'none', cursor: 'pointer',
+                    }}
+                  >
+                    <Sun size={13} /> Light
+                  </button>
+                  <button
+                    onClick={() => { setThemePref('dark'); setTheme('dark'); }}
+                    className="flex-1 py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all"
+                    style={{
+                      background: themePref === 'dark' ? '#7B1C3E' : '#fff',
+                      color: themePref === 'dark' ? '#fff' : '#6B6B6B',
+                      border: 'none', cursor: 'pointer',
+                    }}
+                  >
+                    <Moon size={13} /> Dark
+                  </button>
+                </div>
+                <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>Toggle dark mode for the entire app.</p>
+              </Field>
+
               <div
                 className="rounded-lg p-4 flex items-start gap-3"
                 style={{ background: '#F8F9FC', border: '1px solid #E8EBF4' }}
@@ -437,11 +470,11 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
         </div>
 
         {/* Footer */}
-        <div className="flex gap-3 px-6 py-4 border-t" style={{ borderColor: '#E8EBF4' }}>
+        <div className="flex gap-3 px-6 py-4 border-t" style={{ borderColor: colors.borderLight }}>
           <button
             onClick={onClose}
             className="flex-1 py-2.5 rounded-lg text-sm font-semibold transition-colors"
-            style={{ background: '#F2F2F2', color: '#1B2A4A', border: 'none', cursor: 'pointer' }}
+            style={{ background: colors.bgInput, color: colors.textPrimary, border: 'none', cursor: 'pointer' }}
           >
             Cancel
           </button>
@@ -450,7 +483,7 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
             disabled={saving || usernameStatus === 'invalid'}
             className="flex-1 py-2.5 rounded-lg text-sm font-bold text-white transition-opacity"
             style={{
-              background: '#7B1C3E', border: 'none',
+              background: colors.accent, border: 'none',
               cursor: saving || usernameStatus === 'invalid' ? 'not-allowed' : 'pointer',
               opacity: saving || usernameStatus === 'invalid' ? 0.6 : 1,
             }}
@@ -480,9 +513,10 @@ function onBlur(e: React.FocusEvent<HTMLInputElement>) {
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  const { colors } = useTheme();
   return (
     <div>
-      <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#1B2A4A' }}>
+      <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: colors.textPrimary }}>
         {label}
       </label>
       {children}
@@ -491,13 +525,14 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  const { colors } = useTheme();
   return (
     <button
       onClick={onClick}
       className="px-4 py-2 text-xs font-bold rounded-t-lg transition-colors"
       style={{
-        color: active ? '#7B1C3E' : '#6B6B6B',
-        borderBottom: active ? '2px solid #7B1C3E' : '2px solid transparent',
+        color: active ? colors.accent : colors.textSecondary,
+        borderBottom: active ? `2px solid ${colors.accent}` : '2px solid transparent',
         background: 'none', border: 'none', cursor: 'pointer',
       }}
     >

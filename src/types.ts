@@ -189,6 +189,7 @@ export interface UserProfile {
   clock2_tz: string;      // empty = not configured
   clock2_label: string;
   clock2_visible: boolean;
+  theme_pref: 'light' | 'dark';
 }
 
 export const TIMEZONES = [

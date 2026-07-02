@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { CalendarDropdown } from './CalendarDropdown';
 import CountdownBar from './CountdownBar';
-import { Sparkles, Edit2, X, Plus, Clock, Check, Users } from 'lucide-react';
+import { Sparkles, Edit2, X, Plus, Clock, Check, Users, Menu } from 'lucide-react';
 import type { CalendarMode, ViewMode } from '../types';
 import { TIMEZONES } from '../types';
 import type { CountdownConfig } from './CountdownBar';
+import { useTheme } from '../lib/theme';
 
 // ─── Clock settings shape passed from App ────────────────────────────────────
 export interface ClockSettings {
@@ -122,6 +123,7 @@ function ClockEditor({ initial, profileTz, isFirst, onSave, onClose }: ClockEdit
   const [tz, setTz] = useState(initial.tz === 'auto' ? profileTz : initial.tz);
   const [label, setLabel] = useState(initial.label);
   const ref = useRef<HTMLDivElement>(null);
+  const { colors } = useTheme();
 
   useEffect(() => {
     function onClickOut(e: MouseEvent) {
@@ -151,29 +153,29 @@ function ClockEditor({ initial, profileTz, isFirst, onSave, onClose }: ClockEdit
       className="absolute z-[200] rounded-xl p-4"
       style={{
         top: '110%', left: '50%', transform: 'translateX(-50%)',
-        width: 280, background: '#fff',
+        width: 280, background: colors.bgCard,
         boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
       }}
     >
       <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#1B2A4A' }}>
+        <span className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.textPrimary }}>
           {isFirst ? 'Clock 1' : 'Clock 2'}
         </span>
         <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-          <X size={14} color="#9CA3AF" />
+          <X size={14} color={colors.textTertiary} />
         </button>
       </div>
 
       <div className="space-y-3">
         <div>
-          <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: '#6B6B6B' }}>
+          <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: colors.textSecondary }}>
             Timezone
           </label>
           <select
             value={tz}
             onChange={e => { setTz(e.target.value); autoLabel(e.target.value); }}
             className="w-full rounded-lg px-3 py-2 text-xs outline-none"
-            style={{ border: '1.5px solid #E8EBF4', background: '#F8F9FC', color: '#111', fontFamily: 'inherit' }}
+            style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgSubtle, color: colors.textPrimary, fontFamily: 'inherit' }}
           >
             {isFirst && <option value={profileTz}>Auto (from profile: {profileTz})</option>}
             {(TIMEZONES as readonly string[]).filter(t => t !== profileTz || !isFirst).map(t => (
@@ -183,8 +185,8 @@ function ClockEditor({ initial, profileTz, isFirst, onSave, onClose }: ClockEdit
         </div>
 
         <div>
-          <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: '#6B6B6B' }}>
-            Label <span style={{ color: '#9CA3AF', fontWeight: 400 }}>(optional)</span>
+          <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: colors.textSecondary }}>
+            Label <span style={{ color: colors.textTertiary, fontWeight: 400 }}>(optional)</span>
           </label>
           <input
             type="text"
@@ -193,7 +195,7 @@ function ClockEditor({ initial, profileTz, isFirst, onSave, onClose }: ClockEdit
             placeholder={tz.split('/').pop()?.replace(/_/g, ' ') || 'My Clock'}
             maxLength={20}
             className="w-full rounded-lg px-3 py-2 text-xs outline-none"
-            style={{ border: '1.5px solid #E8EBF4', background: '#F8F9FC', color: '#111', fontFamily: 'inherit' }}
+            style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgSubtle, color: colors.textPrimary, fontFamily: 'inherit' }}
             onKeyDown={e => e.key === 'Enter' && handleSave()}
           />
         </div>
@@ -203,14 +205,14 @@ function ClockEditor({ initial, profileTz, isFirst, onSave, onClose }: ClockEdit
         <button
           onClick={onClose}
           className="flex-1 py-2 rounded-lg text-xs font-semibold"
-          style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: 'pointer' }}
+          style={{ background: colors.bgInput, color: colors.textSecondary, border: 'none', cursor: 'pointer' }}
         >
           Cancel
         </button>
         <button
           onClick={handleSave}
           className="flex-1 py-2 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-1"
-          style={{ background: '#1B2A4A', border: 'none', cursor: 'pointer' }}
+          style={{ background: colors.textPrimary, border: 'none', cursor: 'pointer' }}
         >
           <Check size={12} /> Save
         </button>
@@ -228,9 +230,12 @@ export default function TopNav({
   timezone = 'UTC',
   clockSettings, onClockSettingsChange,
 }: Props) {
+  const { colors } = useTheme();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
   const [editingClock, setEditingClock] = useState<1 | 2 | null>(null);
 
   useEffect(() => {
@@ -241,6 +246,12 @@ export default function TopNav({
         !buttonRef.current.contains(event.target as Node)
       ) {
         setShowUserMenu(false);
+      }
+      if (
+        mobileMenuRef.current &&
+        !mobileMenuRef.current.contains(event.target as Node)
+      ) {
+        setShowMobileMenu(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -275,7 +286,7 @@ export default function TopNav({
     <div className="sticky top-0 z-50" style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.22)' }}>
       <nav
         className="flex items-center px-4 md:px-8 gap-2"
-        style={{ background: '#1B2A4A', height: '56px' }}
+        style={{ background: colors.navBg, height: '56px' }}
       >
         {/* Left: Calendar toggle */}
         <div className="flex-shrink-0">
@@ -389,11 +400,11 @@ export default function TopNav({
           )}
         </div>
 
-        {/* Right: View tabs + Rooms + avatar */}
+        {/* Right: View tabs + Rooms + avatar (desktop) */}
         <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
           {notificationsNode}
 
-          <div className="flex gap-1" data-tour="tour-view-tabs">
+          <div className="hidden sm:flex gap-1" data-tour="tour-view-tabs">
             {tabs.map(tab => (
               <button
                 key={tab.key}
@@ -401,8 +412,8 @@ export default function TopNav({
                 data-tour={tab.tour}
                 className="px-3 md:px-4 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all duration-150"
                 style={{
-                  background: !studyRoomsActive && viewMode === tab.key ? '#7B1C3E' : 'transparent',
-                  color: !studyRoomsActive && viewMode === tab.key ? '#fff' : 'rgba(255,255,255,0.65)',
+                  background: !studyRoomsActive && viewMode === tab.key ? colors.navAccent : 'transparent',
+                  color: !studyRoomsActive && viewMode === tab.key ? '#fff' : colors.navText,
                   border: 'none', cursor: 'pointer',
                 }}
               >
@@ -414,16 +425,25 @@ export default function TopNav({
               onClick={onOpenStudyRooms}
               className="flex items-center gap-1.5 px-3 md:px-4 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all duration-150"
               style={{
-                background: studyRoomsActive ? '#7B1C3E' : 'transparent',
-                color: studyRoomsActive ? '#fff' : 'rgba(255,255,255,0.65)',
+                background: studyRoomsActive ? colors.navAccent : 'transparent',
+                color: studyRoomsActive ? '#fff' : colors.navText,
                 border: 'none', cursor: 'pointer',
               }}
               title="Study Rooms"
             >
               <Users size={14} />
-              <span className="hidden sm:inline">Rooms</span>
+              <span className="hidden lg:inline">Rooms</span>
             </button>
           </div>
+
+          {/* Mobile hamburger menu button */}
+          <button
+            onClick={() => setShowMobileMenu(!showMobileMenu)}
+            className="sm:hidden flex items-center justify-center rounded-md p-1.5 transition-all"
+            style={{ background: showMobileMenu ? 'rgba(255,255,255,0.1)' : 'transparent', color: colors.navTextActive, border: 'none', cursor: 'pointer' }}
+          >
+            <Menu size={20} />
+          </button>
 
           <button
             ref={buttonRef}
@@ -442,7 +462,7 @@ export default function TopNav({
             ) : (
               <div
                 className="rounded-full flex items-center justify-center text-xs font-bold text-white"
-                style={{ width: 28, height: 28, background: '#7B1C3E' }}
+                style={{ width: 28, height: 28, background: colors.navAccent }}
               >
                 {userInitial}
               </div>
@@ -454,30 +474,30 @@ export default function TopNav({
               ref={menuRef}
               data-tour="tour-settings-help"
               className="absolute top-12 right-4 md:right-8 w-60 rounded-lg py-2"
-              style={{ background: '#fff', boxShadow: '0 4px 20px rgba(27,42,74,0.20)' }}
+              style={{ background: colors.bgCard, boxShadow: '0 4px 20px rgba(0,0,0,0.25)' }}
             >
-              <MenuButton onClick={() => { setShowUserMenu(false); onOpenProfile(); }} color="#1B2A4A">
+              <MenuButton onClick={() => { setShowUserMenu(false); onOpenProfile(); }} color={colors.textPrimary}>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
                 </svg>
                 Profile & Settings
               </MenuButton>
 
-              <MenuButton onClick={() => { setShowUserMenu(false); onOpenWhatsNew(); }} color="#059669">
+              <MenuButton onClick={() => { setShowUserMenu(false); onOpenWhatsNew(); }} color={colors.success}>
                 <Sparkles size={16} />
                 What's New
               </MenuButton>
 
-              <MenuButton onClick={() => { setShowUserMenu(false); onRestartTour(); }} color="#1B2A4A">
+              <MenuButton onClick={() => { setShowUserMenu(false); onRestartTour(); }} color={colors.textPrimary}>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
                 </svg>
                 Feature Tour
               </MenuButton>
 
-              <div style={{ height: 1, background: '#E8EBF4', margin: '4px 0' }} />
+              <div style={{ height: 1, background: colors.borderLight, margin: '4px 0' }} />
 
-              <MenuButton onClick={() => { setShowUserMenu(false); onSignOut(); }} color="#B91C1C">
+              <MenuButton onClick={() => { setShowUserMenu(false); onSignOut(); }} color={colors.error}>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 12l-3-3m0 0l3-3m-3 3h12.75" />
                 </svg>
@@ -487,6 +507,43 @@ export default function TopNav({
           )}
         </div>
       </nav>
+
+      {/* Mobile dropdown menu */}
+      {showMobileMenu && (
+        <div
+          ref={mobileMenuRef}
+          className="sm:hidden absolute left-0 right-0 z-50 py-2 px-4"
+          style={{ background: colors.navBg, boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}
+        >
+          <div className="flex flex-col gap-1">
+            {tabs.map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => { onViewChange(tab.key); setShowMobileMenu(false); }}
+                className="px-3 py-2 rounded-md text-sm font-semibold text-left transition-all"
+                style={{
+                  background: !studyRoomsActive && viewMode === tab.key ? colors.navAccent : 'transparent',
+                  color: !studyRoomsActive && viewMode === tab.key ? '#fff' : colors.navText,
+                  border: 'none', cursor: 'pointer',
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+            <button
+              onClick={() => { onOpenStudyRooms(); setShowMobileMenu(false); }}
+              className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-semibold text-left transition-all"
+              style={{
+                background: studyRoomsActive ? colors.navAccent : 'transparent',
+                color: studyRoomsActive ? '#fff' : colors.navText,
+                border: 'none', cursor: 'pointer',
+              }}
+            >
+              <Users size={16} /> Rooms
+            </button>
+          </div>
+        </div>
+      )}
 
       <CountdownBar
         countdown={countdown}
@@ -499,12 +556,13 @@ export default function TopNav({
 }
 
 function MenuButton({ onClick, color, children }: { onClick: () => void; color: string; children: React.ReactNode }) {
+  const { colors } = useTheme();
   return (
     <button
       onClick={onClick}
       className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-3 transition-colors"
       style={{ color, border: 'none', background: 'transparent', cursor: 'pointer' }}
-      onMouseEnter={e => e.currentTarget.style.background = '#F5F5F5'}
+      onMouseEnter={e => e.currentTarget.style.background = colors.bgHover}
       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
     >
       {children}
