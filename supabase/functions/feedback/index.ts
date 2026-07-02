@@ -10,7 +10,6 @@ const corsHeaders = {
 const supabaseUrl = Deno.env.get("SUPABASE_URL") as string;
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") as string;
 const anonKey = Deno.env.get("SUPABASE_ANON_KEY") as string;
-// Resend API key for sending email notifications (server-side only, never exposed to frontend)
 const resendApiKey = Deno.env.get("RESEND_API_KEY") as string;
 const adminEmail = "tminus.planner@gmail.com";
 
@@ -30,14 +29,12 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254;
 }
 
-// Simple SHA-256 hash for IP-based rate limiting (guests)
 async function hashIP(ip: string): Promise<string> {
   const data = new TextEncoder().encode(ip + "tminus-salt-v1");
   const buf = await crypto.subtle.digest("SHA-256", data);
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-// Check rate limit: max 5/hour for logged-in, max 2/hour for guests
 async function checkRateLimit(
   admin: ReturnType<typeof createClient>,
   userId: string | null,
@@ -72,13 +69,11 @@ async function submitFeedback(req: Request): Promise<Response> {
   const message = typeof body.message === "string" ? body.message.trim() : "";
   const contactEmail = typeof body.contact_email === "string" ? body.contact_email.trim() : "";
 
-  // Validation
   if (!VALID_TYPES.includes(feedbackType)) return json({ error: "Invalid feedback type." }, 400);
   if (!subject || subject.length > MAX_SUBJECT) return json({ error: "Subject is required (max 120 chars)." }, 400);
   if (!message || message.length > MAX_MESSAGE) return json({ error: "Message is required (max 2000 chars)." }, 400);
   if (contactEmail && !isValidEmail(contactEmail)) return json({ error: "Invalid contact email." }, 400);
 
-  // Determine user from JWT (optional — guests allowed)
   let userId: string | null = null;
   let username: string | null = null;
   if (authHeader.startsWith("Bearer ")) {
@@ -87,13 +82,11 @@ async function submitFeedback(req: Request): Promise<Response> {
     const { data: userData } = await anon.auth.getUser(jwt);
     if (userData.user) {
       userId = userData.user.id;
-      // Fetch username from profiles
       const { data: profile } = await anon.from("profiles").select("username").eq("id", userId).maybeSingle();
       username = profile?.username || null;
     }
   }
 
-  // Rate limiting
   const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
@@ -104,7 +97,8 @@ async function submitFeedback(req: Request): Promise<Response> {
   const rateCheck = await checkRateLimit(admin, userId, ipHash);
   if (!rateCheck.allowed) return json({ error: rateCheck.reason }, 429);
 
-  // Insert feedback (using service role to bypass RLS for the insert)
+  console.log("[feedback] Inserting feedback from:", username || "guest", "type:", feedbackType);
+
   const { data: feedback, error: insertErr } = await admin
     .from("feedback_messages")
     .insert({
@@ -120,22 +114,29 @@ async function submitFeedback(req: Request): Promise<Response> {
     .single();
 
   if (insertErr || !feedback) {
+    console.error("[feedback] Insert failed:", insertErr?.message || "no data returned");
     return json({ error: "Could not save feedback. Please try again." }, 500);
   }
 
-  // Record rate limit entry
-  await admin.from("feedback_rate_limits").insert({
-    user_id: userId,
-    ip_hash: ipHash,
-  });
+  console.log("[feedback] Saved successfully, id:", feedback.id);
 
-  // Send email notification (best-effort — don't fail the request if email fails)
+  await admin.from("feedback_rate_limits").insert({ user_id: userId, ip_hash: ipHash });
+
+  // Send email notification
   let emailSent = false;
   let emailError: string | null = null;
   try {
-    emailSent = await sendFeedbackEmail(admin, feedback);
+    console.log("[feedback] Attempting to send email notification...");
+    emailSent = await sendFeedbackEmail(feedback);
+    if (!emailSent) {
+      emailError = "Email provider API key is missing or invalid.";
+      console.warn("[feedback] Email not sent:", emailError);
+    } else {
+      console.log("[feedback] Email sent successfully to:", adminEmail);
+    }
   } catch (err) {
     emailError = (err as Error).message;
+    console.error("[feedback] Email send error:", emailError);
   }
 
   return json({
@@ -148,12 +149,8 @@ async function submitFeedback(req: Request): Promise<Response> {
 }
 
 // ─── Send email notification via Resend ───────────────────────────────────────
-async function sendFeedbackEmail(
-  admin: ReturnType<typeof createClient>,
-  feedback: Record<string, unknown>
-): Promise<boolean> {
+async function sendFeedbackEmail(feedback: Record<string, unknown>): Promise<boolean> {
   if (!resendApiKey) {
-    // No API key configured — skip email, feedback is still saved
     console.log("[feedback] RESEND_API_KEY not configured — skipping email notification");
     return false;
   }
@@ -172,7 +169,7 @@ async function sendFeedbackEmail(
 
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <h2 style="color: #7B1C3E; margin-bottom: 8px;">New ${typeLabel}</h2>
+      <h2 style="color: #7B1C3E; margin-bottom: 8px;">New T Minus Feedback: ${typeLabel}</h2>
       <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
         <tr><td style="padding: 4px 0; color: #6B6B6B; width: 120px;">Type:</td><td style="padding: 4px 0; color: #1B2A4A; font-weight: 600;">${typeLabel}</td></tr>
         <tr><td style="padding: 4px 0; color: #6B6B6B;">From:</td><td style="padding: 4px 0; color: #1B2A4A;">${username}</td></tr>
@@ -189,7 +186,9 @@ async function sendFeedbackEmail(
     </div>
   `;
 
-  const textBody = `New ${typeLabel}\n\nType: ${typeLabel}\nFrom: ${username}\nContact email: ${contactEmail}\nSubmitted: ${submittedAt} UTC\n\nSubject: ${feedback.subject}\n\nMessage:\n${feedback.message}\n\nYou can view and reply to this feedback in the admin Feedback Inbox inside the T Minus website.`;
+  const textBody = `New T Minus Feedback: ${typeLabel}\n\nType: ${typeLabel}\nFrom: ${username}\nContact email: ${contactEmail}\nSubmitted: ${submittedAt} UTC\n\nSubject: ${feedback.subject}\n\nMessage:\n${feedback.message}\n\nYou can view and reply to this feedback in the admin Feedback Inbox inside the T Minus website.`;
+
+  console.log("[feedback] Calling Resend API...");
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -200,7 +199,7 @@ async function sendFeedbackEmail(
     body: JSON.stringify({
       from: "T Minus Feedback <onboarding@resend.dev>",
       to: adminEmail,
-      subject: `[${typeLabel}] ${feedback.subject}`,
+      subject: `New T Minus Feedback: ${typeLabel} - ${feedback.subject}`,
       html,
       text: textBody,
     }),
@@ -212,6 +211,7 @@ async function sendFeedbackEmail(
     return false;
   }
 
+  console.log("[feedback] Resend API returned success");
   return true;
 }
 
@@ -235,7 +235,6 @@ async function replyToFeedback(req: Request): Promise<Response> {
   if (uErr || !userData.user) return json({ error: "Unauthorized." }, 401);
   const adminId = userData.user.id;
 
-  // Verify admin
   const { data: adminProfile } = await anon.from("profiles").select("is_admin").eq("id", adminId).maybeSingle();
   if (!adminProfile?.is_admin) return json({ error: "Forbidden. Admin only." }, 403);
 
@@ -250,7 +249,6 @@ async function replyToFeedback(req: Request): Promise<Response> {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  // Get the original feedback to find recipient
   const { data: feedback, error: fbErr } = await admin
     .from("feedback_messages")
     .select("user_id, username, subject")
@@ -259,7 +257,6 @@ async function replyToFeedback(req: Request): Promise<Response> {
 
   if (fbErr || !feedback) return json({ error: "Feedback not found." }, 404);
 
-  // Insert the reply
   const { data: reply, error: replyErr } = await admin
     .from("feedback_replies")
     .insert({
@@ -273,7 +270,6 @@ async function replyToFeedback(req: Request): Promise<Response> {
 
   if (replyErr || !reply) return json({ error: "Could not save reply." }, 500);
 
-  // Create in-app notification for the user (only if they have an account)
   if (feedback.user_id) {
     await admin.from("feedback_notifications").insert({
       user_id: feedback.user_id,
@@ -284,7 +280,6 @@ async function replyToFeedback(req: Request): Promise<Response> {
     });
   }
 
-  // Update feedback status to "reviewed"
   await admin.from("feedback_messages")
     .update({ status: "reviewed", updated_at: new Date().toISOString() })
     .eq("id", feedbackId);
@@ -302,7 +297,6 @@ async function updateStatus(req: Request): Promise<Response> {
   const { data: userData, error: uErr } = await anon.auth.getUser(jwt);
   if (uErr || !userData.user) return json({ error: "Unauthorized." }, 401);
 
-  // Verify admin
   const { data: adminProfile } = await anon.from("profiles").select("is_admin").eq("id", userData.user.id).maybeSingle();
   if (!adminProfile?.is_admin) return json({ error: "Forbidden. Admin only." }, 403);
 
@@ -347,6 +341,7 @@ Deno.serve(async (req: Request) => {
     }
     return json({ error: "Not found." }, 404);
   } catch (err) {
+    console.error("[feedback] Unhandled error:", (err as Error).message);
     return json({ error: (err as Error).message || "Server error." }, 500);
   }
 });

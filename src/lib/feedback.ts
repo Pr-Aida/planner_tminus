@@ -71,8 +71,10 @@ export async function submitFeedback(params: {
 
   const body = await res.json().catch(() => ({} as SubmitResult));
   if (!res.ok) {
+    console.error('[feedback] Submit failed:', res.status, (body as SubmitResult).error);
     return { ok: false, saved: false, email_sent: false, email_error: null, error: (body as SubmitResult).error || 'Submission failed.' };
   }
+  console.log('[feedback] Submit result:', { saved: (body as SubmitResult).ok, email_sent: (body as SubmitResult).email_sent, email_error: (body as SubmitResult).email_error });
   return body as SubmitResult;
 }
 
