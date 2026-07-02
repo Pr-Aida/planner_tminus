@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Plus, Users, KeyRound, ArrowLeft, Check, Loader2 } from 'lucide-react';
-import type { StudyRoom, RoomMemberStatus } from '../types';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Plus, Users, KeyRound, ArrowLeft, Check, Loader2, MoreVertical, Trash2, LogOut, DoorOpen, UserCog, X, AlertTriangle } from 'lucide-react';
+import type { StudyRoom, RoomMemberStatus, RoomMember } from '../types';
 import {
-  fetchMyRooms, createRoom, fetchRoomByCode,
+  fetchMyRooms, createRoom, fetchRoomByCode, deleteRoom, leaveRoom, transferOwnership, fetchMembers,
 } from '../lib/studyRooms';
 import RoomProfileView from '../components/RoomProfileView';
 
@@ -14,7 +14,7 @@ interface Props {
 
 const THEME_COLORS = ['#1B2A4A', '#7B1C3E', '#059669', '#B45309', '#2563EB', '#7c3aed'];
 
-export default function StudyRoomsView({ userId, onOpenRoom, initialOpenRoomId }: Props) {
+export default function StudyRoomsView({ userId, initialOpenRoomId }: Props) {
   const [rooms, setRooms] = useState<(StudyRoom & { my_status: RoomMemberStatus })[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -81,7 +81,13 @@ export default function StudyRoomsView({ userId, onOpenRoom, initialOpenRoomId }
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {rooms.map(room => (
-            <RoomCard key={room.id} room={room} onOpen={() => onOpenRoom(room.id)} />
+            <RoomCard
+              key={room.id}
+              room={room}
+              userId={userId}
+              onOpen={() => setOpenRoomId(room.id)}
+              onLeftOrDeleted={load}
+            />
           ))}
         </div>
       )}
@@ -132,8 +138,15 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
   );
 }
 
-// ─── Room card ────────────────────────────────────────────────────────────────
-function RoomCard({ room, onOpen }: { room: StudyRoom & { my_status: RoomMemberStatus }; onOpen: () => void }) {
+// ─── Room card with three-dot action menu ──────────────────────────────────────
+function RoomCard({
+  room, userId, onOpen, onLeftOrDeleted,
+}: {
+  room: StudyRoom & { my_status: RoomMemberStatus };
+  userId: string;
+  onOpen: () => void;
+  onLeftOrDeleted: () => void;
+}) {
   const statusLabel: Record<RoomMemberStatus, string> = {
     approved: 'Member',
     pending: 'Request pending',
@@ -143,41 +156,296 @@ function RoomCard({ room, onOpen }: { room: StudyRoom & { my_status: RoomMemberS
     left: 'Left',
     removed: 'Removed',
   };
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirm, setConfirm] = useState<null | 'delete' | 'leave' | 'transfer'>(null);
+  const [members, setMembers] = useState<RoomMember[]>([]);
+  const [transferTarget, setTransferTarget] = useState('');
+  const [busy, setBusy] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const isOwner = room.owner_id === userId;
+  const myStatus = room.my_status;
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (confirm !== 'transfer') return;
+    fetchMembers(room.id).then(setMembers).catch(() => {});
+  }, [confirm, room.id]);
+
+  const approvedOthers = members.filter(
+    (m) => m.status === 'approved' && m.user_id !== userId
+  );
+
+  const handleDelete = async () => {
+    setBusy(true);
+    try { await deleteRoom(room.id); onLeftOrDeleted(); }
+    catch (e) { console.error(e); }
+    finally { setBusy(false); setConfirm(null); }
+  };
+
+  const handleLeave = async () => {
+    setBusy(true);
+    try { await leaveRoom(room.id, userId); onLeftOrDeleted(); }
+    catch (e) { console.error(e); }
+    finally { setBusy(false); setConfirm(null); }
+  };
+
+  const handleTransferAndLeave = async () => {
+    if (!transferTarget) return;
+    setBusy(true);
+    try {
+      await transferOwnership(room.id, transferTarget);
+      await leaveRoom(room.id, userId);
+      onLeftOrDeleted();
+    } catch (e) { console.error(e); }
+    finally { setBusy(false); setConfirm(null); }
+  };
+
   return (
-    <button
-      onClick={onOpen}
-      className="text-left rounded-xl p-4 transition-all hover:opacity-90"
-      style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)', border: 'none', cursor: 'pointer' }}
-    >
-      <div className="flex items-center gap-3 mb-3">
-        {room.avatar_url ? (
-          <img src={room.avatar_url} alt="" className="rounded-lg object-cover" style={{ width: 44, height: 44 }} />
-        ) : (
-          <div
-            className="rounded-lg flex items-center justify-center text-white font-bold"
-            style={{ width: 44, height: 44, background: room.theme_color }}
-          >
-            {room.name.charAt(0).toUpperCase()}
+    <>
+      <div
+        onClick={onOpen}
+        className="relative rounded-xl p-4 cursor-pointer transition-all duration-150 group"
+        style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)', border: '1.5px solid #F2F2F2' }}
+        onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 20px rgba(27,42,74,0.18)'; e.currentTarget.style.borderColor = '#7B1C3E'; }}
+        onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 2px 12px rgba(27,42,74,0.10)'; e.currentTarget.style.borderColor = '#F2F2F2'; }}
+      >
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            {room.avatar_url ? (
+              <img src={room.avatar_url} alt="" className="rounded-lg object-cover flex-shrink-0" style={{ width: 44, height: 44 }} />
+            ) : (
+              <div
+                className="rounded-lg flex items-center justify-center text-white font-bold flex-shrink-0"
+                style={{ width: 44, height: 44, background: room.theme_color }}
+              >
+                {room.name.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold truncate" style={{ color: '#1B2A4A' }}>{room.name}</p>
+              <p className="text-xs" style={{ color: '#9CA3AF' }}>Code: {room.room_code}</p>
+            </div>
           </div>
+
+          {/* Three-dot menu */}
+          <div ref={menuRef} className="relative flex-shrink-0">
+            <button
+              onClick={(e) => { e.stopPropagation(); setMenuOpen(o => !o); }}
+              className="p-1.5 rounded-lg transition-colors"
+              style={{ background: menuOpen ? '#F2F2F2' : 'transparent', border: 'none', cursor: 'pointer' }}
+              aria-label="Room actions"
+            >
+              <MoreVertical size={18} color="#6B6B6B" />
+            </button>
+
+            {menuOpen && (
+              <div
+                className="absolute right-0 top-full mt-1 z-50 rounded-xl py-1.5 min-w-[180px]"
+                style={{ background: '#fff', boxShadow: '0 8px 30px rgba(27,42,74,0.18)', border: '1px solid #E8E8E8' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={() => { setMenuOpen(false); onOpen(); }}
+                  className="w-full flex items-center gap-2.5 px-4 py-2 text-xs font-semibold text-left transition-colors hover:bg-gray-50"
+                  style={{ color: '#1B2A4A', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                >
+                  <DoorOpen size={14} /> Open Room
+                </button>
+
+                <div className="my-1" style={{ borderTop: '1px solid #F2F2F2' }} />
+
+                {isOwner && (
+                  <button
+                    onClick={() => { setMenuOpen(false); setConfirm('transfer'); }}
+                    className="w-full flex items-center gap-2.5 px-4 py-2 text-xs font-semibold text-left transition-colors hover:bg-gray-50"
+                    style={{ color: '#92400E', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                  >
+                    <UserCog size={14} /> Transfer Ownership
+                  </button>
+                )}
+
+                <button
+                  onClick={() => { setMenuOpen(false); setConfirm('leave'); }}
+                  className="w-full flex items-center gap-2.5 px-4 py-2 text-xs font-semibold text-left transition-colors hover:bg-gray-50"
+                  style={{ color: '#B45309', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                >
+                  <LogOut size={14} /> Leave Room
+                </button>
+
+                {isOwner && (
+                  <button
+                    onClick={() => { setMenuOpen(false); setConfirm('delete'); }}
+                    className="w-full flex items-center gap-2.5 px-4 py-2 text-xs font-semibold text-left transition-colors hover:bg-red-50"
+                    style={{ color: '#B91C1C', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                  >
+                    <Trash2 size={14} /> Delete Room
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {room.description && (
+          <p className="text-xs mb-3 line-clamp-2" style={{ color: '#6B6B6B' }}>{room.description}</p>
         )}
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold truncate" style={{ color: '#1B2A4A' }}>{room.name}</p>
-          <p className="text-xs" style={{ color: '#9CA3AF' }}>Code: {room.room_code}</p>
+
+        <span
+          className="inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+          style={{
+            background: room.my_status === 'approved' ? '#E6F6EF' : '#FEF3C7',
+            color: room.my_status === 'approved' ? '#059669' : '#B45309',
+          }}
+        >
+          {statusLabel[room.my_status]}
+        </span>
+      </div>
+
+      {/* Delete confirmation */}
+      {confirm === 'delete' && (
+        <ConfirmModal
+          title="Delete Room"
+          message="Are you sure you want to delete this room? This will remove the room for all members. This action cannot be undone."
+          confirmLabel="Yes, delete room"
+          danger
+          busy={busy}
+          onConfirm={handleDelete}
+          onCancel={() => setConfirm(null)}
+        />
+      )}
+
+      {/* Leave confirmation */}
+      {confirm === 'leave' && (
+        <ConfirmModal
+          title="Leave Room"
+          message={isOwner
+            ? (approvedOthers.length > 0
+              ? "You must transfer ownership to another approved member before leaving this room, or delete the room completely."
+              : "There are no other approved members to transfer ownership to. You can either keep the room or delete it.")
+            : "Are you sure you want to leave this room? The room will remain available for other members."}
+          confirmLabel={isOwner ? undefined : "Yes, leave room"}
+          busy={busy}
+          onConfirm={isOwner ? () => setConfirm(null) : handleLeave}
+          onCancel={() => setConfirm(null)}
+          extraActions={isOwner && approvedOthers.length > 0 ? (
+            <button
+              onClick={() => setConfirm('transfer')}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold"
+              style={{ background: '#FEF3C7', color: '#92400E', border: 'none', cursor: 'pointer' }}
+            >
+              Transfer ownership
+            </button>
+          ) : undefined}
+        />
+      )}
+
+      {/* Transfer ownership modal */}
+      {confirm === 'transfer' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => setConfirm(null)}>
+          <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: '#fff' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold" style={{ color: '#1B2A4A' }}>Transfer Ownership</h3>
+              <button onClick={() => setConfirm(null)} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}><X size={16} color="#6B6B6B" /></button>
+            </div>
+            {approvedOthers.length === 0 ? (
+              <p className="text-xs" style={{ color: '#6B6B6B' }}>
+                There are no other approved members to transfer ownership to. You can either keep the room or delete it.
+              </p>
+            ) : (
+              <>
+                <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>
+                  Select an approved member to become the new owner. You will leave the room after transfer.
+                </p>
+                <select
+                  value={transferTarget}
+                  onChange={e => setTransferTarget(e.target.value)}
+                  className="w-full rounded-lg px-3 py-2 text-xs mb-3 outline-none"
+                  style={{ border: '1.5px solid #C8C8C8', background: '#F8F8F8', color: '#111' }}
+                >
+                  <option value="">Select a member…</option>
+                  {approvedOthers.map(m => (
+                    <option key={m.user_id} value={m.user_id}>
+                      {m.username || m.user_id.slice(0, 8)}{m.role === 'admin' ? ' (admin)' : ''}
+                    </option>
+                  ))}
+                </select>
+                {transferTarget && (
+                  <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>
+                    Are you sure you want to transfer ownership to{' '}
+                    <strong style={{ color: '#1B2A4A' }}>
+                      {approvedOthers.find(m => m.user_id === transferTarget)?.username || 'this member'}
+                    </strong>
+                    ? They will become the new room owner.
+                  </p>
+                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleTransferAndLeave}
+                    disabled={!transferTarget || busy}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+                    style={{ background: !transferTarget || busy ? '#9CA3AF' : '#92400E', border: 'none', cursor: !transferTarget || busy ? 'not-allowed' : 'pointer' }}
+                  >
+                    {busy ? 'Transferring…' : 'Transfer & leave'}
+                  </button>
+                  <button onClick={() => setConfirm(null)} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: 'pointer' }}>Cancel</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ─── Reusable confirmation modal ────────────────────────────────────────────────
+function ConfirmModal({
+  title, message, confirmLabel, danger, busy, onConfirm, onCancel, extraActions,
+}: {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  danger?: boolean;
+  busy?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+  extraActions?: React.ReactNode;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={onCancel}>
+      <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: '#fff' }} onClick={e => e.stopPropagation()}>
+        <div className="flex items-start gap-3 mb-4">
+          {danger && <AlertTriangle size={20} color="#B91C1C" style={{ flexShrink: 0, marginTop: 1 }} />}
+          <div>
+            <h3 className="text-sm font-bold mb-2" style={{ color: '#1B2A4A' }}>{title}</h3>
+            <p className="text-xs" style={{ color: '#6B6B6B' }}>{message}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {confirmLabel && (
+            <button
+              onClick={onConfirm}
+              disabled={busy}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+              style={{ background: busy ? '#9CA3AF' : (danger ? '#B91C1C' : '#1B2A4A'), border: 'none', cursor: busy ? 'not-allowed' : 'pointer' }}
+            >
+              {busy ? 'Working…' : confirmLabel}
+            </button>
+          )}
+          {extraActions}
+          <button onClick={onCancel} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: 'pointer' }}>Cancel</button>
         </div>
       </div>
-      {room.description && (
-        <p className="text-xs mb-3 line-clamp-2" style={{ color: '#6B6B6B' }}>{room.description}</p>
-      )}
-      <span
-        className="inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
-        style={{
-          background: room.my_status === 'approved' ? '#E6F6EF' : '#FEF3C7',
-          color: room.my_status === 'approved' ? '#059669' : '#B45309',
-        }}
-      >
-        {statusLabel[room.my_status]}
-      </span>
-    </button>
+    </div>
   );
 }
 
