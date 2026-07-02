@@ -11,8 +11,8 @@ interface ProfileRow { id: string; display_name: string; username: string; avata
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function randomInviteCode(): string {
-  // 22 chars of base62 — unguessable, used in invite links
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  // 22 chars of uppercase alphanumeric — unguessable, used in invite links
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let s = '';
   for (let i = 0; i < 22; i++) s += alphabet[Math.floor(Math.random() * alphabet.length)];
   return s;
@@ -234,10 +234,11 @@ export async function fetchRoomById(roomId: string): Promise<StudyRoom | null> {
 
 /** Look up a room by invite code (for invite-link landing page). */
 export async function fetchRoomByInviteCode(code: string): Promise<StudyRoom | null> {
-  const normalized = code.trim().toUpperCase();
+  const normalized = code.trim();
   if (!normalized) return null;
+  // Use ilike for case-insensitive matching (handles existing mixed-case codes)
   const { data, error } = await supabase
-    .from('study_rooms').select('*').eq('invite_code', normalized).maybeSingle();
+    .from('study_rooms').select('*').ilike('invite_code', normalized).maybeSingle();
   if (error) throw error;
   return (data as StudyRoom) || null;
 }
@@ -563,6 +564,8 @@ export async function unreadNotificationCount(userId: string): Promise<number> {
 
 // ─── Study Timer / Focus Timer ─────────────────────────────────────────────────
 
+export type SessionStatus = 'running' | 'paused' | 'ended';
+
 export interface StudySession {
   id: string;
   room_id: string;
@@ -570,6 +573,10 @@ export interface StudySession {
   started_at: string;
   ended_at: string | null;
   duration_seconds: number | null;
+  status: SessionStatus;
+  paused_at: string | null;
+  accumulated_seconds: number;
+  created_at: string;
 }
 
 export interface MemberTimerSummary {
@@ -577,17 +584,22 @@ export interface MemberTimerSummary {
   username: string;
   display_name: string;
   avatar_url: string | null;
+  status: SessionStatus;
   is_studying: boolean;
   today_seconds: number;
   week_seconds: number;
   active_started_at: string | null;
+  finished_for_day: boolean;
 }
 
-/** Start a study timer for the current user in a room. Creates a new session with ended_at = null. */
-export async function startStudySession(roomId: string, userId: string): Promise<StudySession> {
+/** Start a study timer for the current user in a room. Creates a new session with status='running'. */
+export async function startStudySession(roomId: string, _userId: string): Promise<StudySession> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('You must be signed in to start a timer.');
+
   const { data, error } = await supabase
     .from('room_study_sessions')
-    .insert({ room_id: roomId, user_id: userId })
+    .insert({ room_id: roomId, user_id: user.id, status: 'running', accumulated_seconds: 0 })
     .select('*')
     .single();
   if (error) {
@@ -597,36 +609,117 @@ export async function startStudySession(roomId: string, userId: string): Promise
   return data as StudySession;
 }
 
-/** Stop the active study timer for the current user in a room. Sets ended_at and duration_seconds. */
-export async function stopStudySession(roomId: string, userId: string): Promise<void> {
+/** Pause the running timer. Keeps accumulated time. */
+export async function pauseStudySession(roomId: string, _userId: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('You must be signed in.');
+
+  // Find the running session
   const { data: active, error: findErr } = await supabase
     .from('room_study_sessions')
-    .select('id, started_at')
+    .select('id, started_at, accumulated_seconds')
     .eq('room_id', roomId)
-    .eq('user_id', userId)
-    .is('ended_at', null)
+    .eq('user_id', user.id)
+    .eq('status', 'running')
     .maybeSingle();
   if (findErr) throw findErr;
-  if (!active) throw new Error('No active timer found.');
+  if (!active) throw new Error('No running timer found.');
 
+  // Calculate current accumulated time
+  const now = new Date();
+  const start = new Date(active.started_at);
+  const newAccumulated = (active.accumulated_seconds || 0) + Math.floor((now.getTime() - start.getTime()) / 1000);
+
+  // Update to paused with accumulated time
   const { error: updateErr } = await supabase
     .from('room_study_sessions')
     .update({
+      status: 'paused',
+      paused_at: now.toISOString(),
+      accumulated_seconds: newAccumulated,
+    })
+    .eq('id', active.id);
+  if (updateErr) throw updateErr;
+}
+
+/** Resume a paused timer. Starts a new segment from now. */
+export async function resumeStudySession(roomId: string, _userId: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('You must be signed in.');
+
+  // Find the paused session
+  const { data: paused, error: findErr } = await supabase
+    .from('room_study_sessions')
+    .select('id, accumulated_seconds')
+    .eq('room_id', roomId)
+    .eq('user_id', user.id)
+    .eq('status', 'paused')
+    .maybeSingle();
+  if (findErr) throw findErr;
+  if (!paused) throw new Error('No paused timer found.');
+
+  // Update to running with a new started_at (keeping accumulated_seconds)
+  const { error: updateErr } = await supabase
+    .from('room_study_sessions')
+    .update({
+      status: 'running',
+      started_at: new Date().toISOString(),
+      paused_at: null,
+    })
+    .eq('id', paused.id);
+  if (updateErr) throw updateErr;
+}
+
+/** End study for today. Finalizes the session with total time. */
+export async function endStudySession(roomId: string, _userId: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('You must be signed in.');
+
+  // Find any active session (running or paused)
+  const { data: active, error: findErr } = await supabase
+    .from('room_study_sessions')
+    .select('id, started_at, status, accumulated_seconds')
+    .eq('room_id', roomId)
+    .eq('user_id', user.id)
+    .in('status', ['running', 'paused'])
+    .maybeSingle();
+  if (findErr) throw findErr;
+  if (!active) return; // No active session, nothing to end
+
+  let totalSeconds = active.accumulated_seconds || 0;
+
+  // If running, add current segment time
+  if (active.status === 'running') {
+    const now = new Date();
+    const start = new Date(active.started_at);
+    totalSeconds += Math.floor((now.getTime() - start.getTime()) / 1000);
+  }
+
+  // Mark as ended with total duration
+  const { error: updateErr } = await supabase
+    .from('room_study_sessions')
+    .update({
+      status: 'ended',
       ended_at: new Date().toISOString(),
-      duration_seconds: Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000),
+      duration_seconds: totalSeconds,
     })
     .eq('id', active.id);
   if (updateErr) throw updateErr;
 }
 
 /** Get the current user's active session in a room (if any). */
-export async function getMyActiveSession(roomId: string, userId: string): Promise<StudySession | null> {
+export async function getMyActiveSession(roomId: string, _userId: string): Promise<StudySession | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
   const { data, error } = await supabase
     .from('room_study_sessions')
     .select('*')
     .eq('room_id', roomId)
-    .eq('user_id', userId)
-    .is('ended_at', null)
+    .eq('user_id', user.id)
+    .in('status', ['running', 'paused'])
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
   if (error) throw error;
   return (data as StudySession) || null;
@@ -642,7 +735,7 @@ export async function getRoomTimerSummaries(roomId: string): Promise<MemberTimer
   // 2. Fetch all sessions for this room (RLS allows approved members to see all)
   const { data: sessions, error } = await supabase
     .from('room_study_sessions')
-    .select('user_id, started_at, ended_at, duration_seconds')
+    .select('user_id, started_at, ended_at, duration_seconds, status, accumulated_seconds, paused_at')
     .eq('room_id', roomId);
   if (error) throw error;
 
@@ -655,29 +748,50 @@ export async function getRoomTimerSummaries(roomId: string): Promise<MemberTimer
 
   const summaries: MemberTimerSummary[] = approved.map(m => {
     const userSessions = (sessions || []).filter(s => s.user_id === m.user_id);
-    const activeSession = userSessions.find(s => !s.ended_at);
+    const activeSession = userSessions.find(s => (s.status === 'running' || s.status === 'paused'));
 
     let todaySeconds = 0;
     let weekSeconds = 0;
 
     for (const s of userSessions) {
-      const start = new Date(s.started_at);
-      const end = s.ended_at ? new Date(s.ended_at) : now;
-      const duration = s.duration_seconds ?? Math.floor((end.getTime() - start.getTime()) / 1000);
+      const sessStatus = s.status as SessionStatus;
+      let sessionSeconds = s.duration_seconds || 0;
 
-      if (end >= startOfToday) todaySeconds += duration;
-      if (end >= startOfWeek) weekSeconds += duration;
+      // If running/paused, calculate current time
+      if (sessStatus === 'running' && s.started_at) {
+        const start = new Date(s.started_at);
+        sessionSeconds = (s.accumulated_seconds || 0) + Math.floor((now.getTime() - start.getTime()) / 1000);
+      } else if (sessStatus === 'paused') {
+        sessionSeconds = s.accumulated_seconds || 0;
+      }
+
+      // Check if session belongs to today/week
+      const sessionEnd = s.ended_at ? new Date(s.ended_at) : now;
+      const sessionStart = new Date(s.started_at);
+
+      // For today: if session ended or was active today
+      if (sessionEnd >= startOfToday || sessionStart >= startOfToday) {
+        todaySeconds += sessionSeconds;
+      }
+      if (sessionEnd >= startOfWeek || sessionStart >= startOfWeek) {
+        weekSeconds += sessionSeconds;
+      }
     }
+
+    const status: SessionStatus = activeSession?.status || 'ended';
+    const finishedForDay = userSessions.some(s => s.status === 'ended' && new Date(s.ended_at || '') >= startOfToday);
 
     return {
       user_id: m.user_id,
       username: m.username,
       display_name: m.display_name,
       avatar_url: m.avatar_url,
-      is_studying: !!activeSession,
+      status,
+      is_studying: status === 'running',
       today_seconds: todaySeconds,
       week_seconds: weekSeconds,
       active_started_at: activeSession?.started_at || null,
+      finished_for_day: finishedForDay && !activeSession,
     };
   });
 

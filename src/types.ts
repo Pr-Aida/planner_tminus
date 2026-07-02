@@ -87,15 +87,20 @@ export interface RoomStudySession {
   created_at: string;
 }
 
+// Re-export SessionStatus from types
+export type SessionStatus = 'running' | 'paused' | 'ended';
+
 export interface MemberTimerSummary {
   user_id: string;
   username: string;
   display_name: string;
   avatar_url: string | null;
+  status: SessionStatus;
   is_studying: boolean;
   today_seconds: number;
   week_seconds: number;
   active_started_at: string | null;
+  finished_for_day: boolean;
 }
 
 export type ReminderStatus = 'pending' | 'completed' | 'not_completed' | 'postponed' | 'cancelled';

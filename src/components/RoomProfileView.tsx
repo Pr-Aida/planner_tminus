@@ -11,7 +11,8 @@ import {
   approveMember, rejectMember, removeMember, leaveRoom, transferOwnership,
   updateMySharing, requestToJoin, searchUserByUsername, inviteByUsername,
   acceptInvite, declineInvite,
-  startStudySession, stopStudySession, getMyActiveSession, getRoomTimerSummaries,
+  startStudySession, pauseStudySession, resumeStudySession, endStudySession,
+  getMyActiveSession, getRoomTimerSummaries,
   uploadRoomProfileImage, removeRoomProfileImage,
 } from '../lib/studyRooms';
 
@@ -105,8 +106,9 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
 
   const isOwner = room.owner_id === userId;
   const myStatus = myMembership?.status;
+  const [requesting, setRequesting] = useState(false);
 
-  // Non-approved users: show limited view
+  // Non-approved users: show limited view with request/join option
   if (!isOwner && myStatus !== 'approved') {
     return (
       <div className="max-w-2xl mx-auto px-4 py-6">
@@ -114,12 +116,67 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
           <ArrowLeft size={15} /> Back
         </button>
         <RoomHeader room={room} />
-        <div className="mt-6 rounded-xl p-5 text-center" style={{ background: '#FEF3C7' }}>
-          <Clock size={24} color="#B45309" className="mx-auto mb-2" />
-          <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>
-            {myStatus === 'pending' ? 'Your request is pending approval.' : 'You are not a member of this room.'}
-          </p>
-        </div>
+
+        {myStatus === 'pending' && (
+          <div className="mt-6 rounded-xl p-5 text-center" style={{ background: '#FEF3C7' }}>
+            <Clock size={24} color="#B45309" className="mx-auto mb-2" />
+            <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>Your request is pending approval.</p>
+            <p className="text-xs mt-2" style={{ color: '#6B6B6B' }}>The room owner will review your request.</p>
+          </div>
+        )}
+
+        {myStatus === 'invited' && (
+          <div className="mt-6 space-y-3">
+            <div className="rounded-xl p-5 text-center" style={{ background: '#E6F6EF' }}>
+              <UserPlus size={24} color="#059669" className="mx-auto mb-2" />
+              <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>You've been invited to join this room.</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={async () => { setRequesting(true); await acceptInvite(room.id, userId); load(); setRequesting(false); }}
+                disabled={requesting}
+                className="flex-1 py-2.5 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-1.5"
+                style={{ background: '#059669', border: 'none', cursor: requesting ? 'not-allowed' : 'pointer' }}
+              >
+                {requesting ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Accept Invitation
+              </button>
+              <button
+                onClick={async () => { setRequesting(true); await declineInvite(room.id, userId); load(); setRequesting(false); }}
+                disabled={requesting}
+                className="flex-1 py-2.5 rounded-lg text-xs font-semibold"
+                style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: requesting ? 'not-allowed' : 'pointer' }}
+              >
+                Decline
+              </button>
+            </div>
+          </div>
+        )}
+
+        {(!myStatus || myStatus === 'left' || myStatus === 'removed' || myStatus === 'declined' || myStatus === 'rejected') && (
+          <div className="mt-6 space-y-3">
+            {!room.invite_enabled ? (
+              <div className="rounded-xl p-5 text-center" style={{ background: '#FEE2E2' }}>
+                <p className="text-sm font-bold" style={{ color: '#B91C1C' }}>This room is not accepting new members.</p>
+              </div>
+            ) : (
+              <>
+                <div className="rounded-xl p-5 text-center" style={{ background: '#FEF3C7' }}>
+                  <Users size={24} color="#B45309" className="mx-auto mb-2" />
+                  <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>Join this room to study with others.</p>
+                  <p className="text-xs mt-2" style={{ color: '#6B6B6B' }}>Your request will be sent to the room owner for approval.</p>
+                </div>
+                <button
+                  onClick={async () => { setRequesting(true); await requestToJoin(room.id, userId); load(); setRequesting(false); }}
+                  disabled={requesting}
+                  className="w-full py-2.5 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-1.5"
+                  style={{ background: '#1B2A4A', border: 'none', cursor: requesting ? 'not-allowed' : 'pointer' }}
+                >
+                  {requesting ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />} Request to Join
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -405,7 +462,7 @@ function formatTimer(seconds: number): string {
 }
 
 function StudyTimerSection({ roomId, userId }: { roomId: string; userId: string }) {
-  const [activeSession, setActiveSession] = useState<{ id: string; started_at: string } | null>(null);
+  const [activeSession, setActiveSession] = useState<{ id: string; started_at: string; status: string; accumulated_seconds: number } | null>(null);
   const [summaries, setSummaries] = useState<MemberTimerSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
@@ -419,7 +476,7 @@ function StudyTimerSection({ roomId, userId }: { roomId: string; userId: string 
         getMyActiveSession(roomId, userId),
         getRoomTimerSummaries(roomId),
       ]);
-      setActiveSession(active ? { id: active.id, started_at: active.started_at } : null);
+      setActiveSession(active ? { id: active.id, started_at: active.started_at, status: active.status, accumulated_seconds: active.accumulated_seconds || 0 } : null);
       setSummaries(sums);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -427,13 +484,25 @@ function StudyTimerSection({ roomId, userId }: { roomId: string; userId: string 
 
   useEffect(() => { load(); }, [load]);
 
+  // Refresh summaries every 10 seconds for live updates
   useEffect(() => {
-    if (activeSession) {
-      const update = () => setElapsed(Math.floor((Date.now() - new Date(activeSession.started_at).getTime()) / 1000));
+    const id = setInterval(() => {
+      getRoomTimerSummaries(roomId).then(setSummaries).catch(() => {});
+    }, 10000);
+    return () => clearInterval(id);
+  }, [roomId]);
+
+  useEffect(() => {
+    if (activeSession && activeSession.status === 'running') {
+      const update = () => setElapsed(activeSession.accumulated_seconds + Math.floor((Date.now() - new Date(activeSession.started_at).getTime()) / 1000));
       update();
       tickRef.current = setInterval(update, 1000);
       return () => { if (tickRef.current) clearInterval(tickRef.current); };
-    } else { setElapsed(0); }
+    } else if (activeSession && activeSession.status === 'paused') {
+      setElapsed(activeSession.accumulated_seconds);
+    } else {
+      setElapsed(0);
+    }
   }, [activeSession]);
 
   const handleStart = async () => {
@@ -443,10 +512,24 @@ function StudyTimerSection({ roomId, userId }: { roomId: string; userId: string 
     finally { setActing(false); }
   };
 
-  const handleStop = async () => {
+  const handlePause = async () => {
     setActing(true); setError(null);
-    try { await stopStudySession(roomId, userId); setActiveSession(null); await load(); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Could not stop timer'); }
+    try { await pauseStudySession(roomId, userId); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Could not pause timer'); }
+    finally { setActing(false); }
+  };
+
+  const handleResume = async () => {
+    setActing(true); setError(null);
+    try { await resumeStudySession(roomId, userId); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Could not resume timer'); }
+    finally { setActing(false); }
+  };
+
+  const handleEnd = async () => {
+    setActing(true); setError(null);
+    try { await endStudySession(roomId, userId); setActiveSession(null); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Could not end session'); }
     finally { setActing(false); }
   };
 
@@ -454,63 +537,170 @@ function StudyTimerSection({ roomId, userId }: { roomId: string; userId: string 
     <Loader2 size={16} className="animate-spin" color="#1B2A4A" /><span className="text-xs" style={{ color: '#6B6B6B' }}>Loading timer…</span>
   </div>;
 
+  const mySummary = summaries.find(s => s.user_id === userId);
+  const todaySeconds = mySummary?.today_seconds || 0;
+  const hasAccumulatedToday = todaySeconds > 0 || elapsed > 0;
+
   return (
     <div className="rounded-xl p-4 mb-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
       <div className="flex items-center gap-2 mb-3">
         <Timer size={16} color="#7B1C3E" />
         <p className="text-xs font-bold uppercase tracking-widest" style={{ color: '#7B1C3E' }}>Study Timer</p>
       </div>
+
+      {/* Timer controls for current user */}
       <div className="flex items-center justify-between gap-3 mb-4 pb-4" style={{ borderBottom: '1px solid #F2F2F2' }}>
         <div>
           {activeSession ? (
             <div>
-              <p className="text-sm font-bold font-mono" style={{ color: '#059669' }}>Studying: {formatTimer(elapsed)}</p>
-              <p className="text-xs" style={{ color: '#6B6B6B' }}>Timer is running</p>
+              <p className="text-sm font-bold font-mono" style={{ color: activeSession.status === 'running' ? '#059669' : '#B45309' }}>
+                {activeSession.status === 'running' ? 'Studying: ' : 'Paused: '}
+                {formatTimer(elapsed)}
+              </p>
+              <p className="text-xs" style={{ color: '#6B6B6B' }}>
+                {activeSession.status === 'running' ? 'Timer is running' : 'Timer is paused'}
+              </p>
             </div>
-          ) : <p className="text-sm font-semibold" style={{ color: '#1B2A4A' }}>Ready to study</p>}
+          ) : mySummary?.finished_for_day ? (
+            <div>
+              <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>Finished for today</p>
+              <p className="text-xs" style={{ color: '#6B6B6B' }}>Today: {formatDuration(todaySeconds)}</p>
+            </div>
+          ) : hasAccumulatedToday ? (
+            <div>
+              <p className="text-sm font-bold font-mono" style={{ color: '#1B2A4A' }}>{formatTimer(elapsed || todaySeconds)}</p>
+              <p className="text-xs" style={{ color: '#6B6B6B' }}>Ready to continue</p>
+            </div>
+          ) : (
+            <p className="text-sm font-semibold" style={{ color: '#1B2A4A' }}>Ready to study</p>
+          )}
         </div>
-        {activeSession ? (
-          <button onClick={handleStop} disabled={acting} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white"
-            style={{ background: acting ? '#9CA3AF' : '#B91C1C', border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
-            {acting ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />} Stop Study Timer
-          </button>
-        ) : (
-          <button onClick={handleStart} disabled={acting} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white"
-            style={{ background: acting ? '#9CA3AF' : '#059669', border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
-            {acting ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Start Study Timer
-          </button>
-        )}
+
+        <div className="flex items-center gap-2">
+          {activeSession?.status === 'running' && (
+            <>
+              <button onClick={handlePause} disabled={acting} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold"
+                style={{ background: '#FEF3C7', color: '#B45309', border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
+                {acting ? <Loader2 size={14} className="animate-spin" /> : null} Pause
+              </button>
+              <button onClick={handleEnd} disabled={acting} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-white"
+                style={{ background: acting ? '#9CA3AF' : '#B91C1C', border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
+                End Study
+              </button>
+            </>
+          )}
+
+          {activeSession?.status === 'paused' && (
+            <>
+              <button onClick={handleResume} disabled={acting} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-white"
+                style={{ background: acting ? '#9CA3AF' : '#059669', border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
+                {acting ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Resume
+              </button>
+              <button onClick={handleEnd} disabled={acting} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-white"
+                style={{ background: acting ? '#9CA3AF' : '#B91C1C', border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
+                End Study
+              </button>
+            </>
+          )}
+
+          {!activeSession && !mySummary?.finished_for_day && (
+            <button onClick={handleStart} disabled={acting} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white"
+              style={{ background: acting ? '#9CA3AF' : '#059669', border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
+              {acting ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Start Timer
+            </button>
+          )}
+
+          {!activeSession && mySummary?.finished_for_day && (
+            <button onClick={handleStart} disabled={acting} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white"
+              style={{ background: acting ? '#9CA3AF' : '#1B2A4A', border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
+              {acting ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Start New Session
+            </button>
+          )}
+        </div>
       </div>
+
       {error && <div className="rounded-lg px-3 py-2 text-xs mb-3" style={{ background: '#FEE2E2', color: '#B91C1C' }}>{error}</div>}
+
+      {/* Member timer status list */}
       <div className="space-y-2">
         {summaries.map(s => (
-          <div key={s.user_id} className="flex items-center gap-3">
-            {s.avatar_url ? (
-              <img src={s.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" />
-            ) : (
-              <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ background: '#1B2A4A' }}>
-                {(s.username || '?').charAt(0).toUpperCase()}
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold truncate" style={{ color: '#1B2A4A' }}>
-                {s.display_name || s.username}
-                {s.user_id === userId && <span className="ml-1.5 text-[9px] font-bold uppercase" style={{ color: '#9CA3AF' }}>(you)</span>}
-              </p>
-              <p className="text-[10px]" style={{ color: '#9CA3AF' }}>
-                Today: {formatDuration(s.today_seconds)} · This week: {formatDuration(s.week_seconds)}
-              </p>
-            </div>
-            {s.is_studying ? (
-              <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#E6F6EF', color: '#059669' }}>
-                <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#059669' }} /> Studying now
-              </span>
-            ) : (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: '#F2F2F2', color: '#9CA3AF' }}>Not studying</span>
-            )}
-          </div>
+          <MemberTimerRow key={s.user_id} s={s} userId={userId} />
         ))}
       </div>
+    </div>
+  );
+}
+
+function MemberTimerRow({ s, userId }: { s: MemberTimerSummary; userId: string }) {
+  // Live timer for running sessions (need to compute live)
+  const [liveElapsed, setLiveElapsed] = useState(s.today_seconds);
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (s.status === 'running' && s.active_started_at) {
+      const update = () => {
+        const elapsed = s.today_seconds + Math.floor((Date.now() - new Date(s.active_started_at).getTime()) / 1000);
+        setLiveElapsed(elapsed);
+      };
+      update();
+      tickRef.current = setInterval(update, 1000);
+      return () => { if (tickRef.current) clearInterval(tickRef.current); };
+    } else {
+      setLiveElapsed(s.today_seconds);
+    }
+  }, [s.status, s.active_started_at, s.today_seconds]);
+
+  const getStatusBadge = () => {
+    if (s.status === 'running') {
+      return (
+        <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#E6F6EF', color: '#059669' }}>
+          <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#059669' }} />
+          Studying now
+        </span>
+      );
+    }
+    if (s.status === 'paused') {
+      return (
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: '#FEF3C7', color: '#B45309' }}>
+          Paused
+        </span>
+      );
+    }
+    if (s.finished_for_day) {
+      return (
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: '#E6F6EF', color: '#059669' }}>
+          Finished today
+        </span>
+      );
+    }
+    return (
+      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: '#F2F2F2', color: '#9CA3AF' }}>
+        Not studying
+      </span>
+    );
+  };
+
+  return (
+    <div className="flex items-center gap-3">
+      {s.avatar_url ? (
+        <img src={s.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" />
+      ) : (
+        <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ background: '#1B2A4A' }}>
+          {(s.username || '?').charAt(0).toUpperCase()}
+        </div>
+      )}
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold truncate" style={{ color: '#1B2A4A' }}>
+          {s.display_name || s.username}
+          {s.user_id === userId && <span className="ml-1.5 text-[9px] font-bold uppercase" style={{ color: '#9CA3AF' }}>(you)</span>}
+        </p>
+        <p className="text-[10px]" style={{ color: '#9CA3AF' }}>
+          Today: {formatDuration(liveElapsed)}
+          {s.status === 'running' && <span className="font-mono ml-1" style={{ color: '#059669' }}>({formatTimer(liveElapsed)})</span>}
+          {' · '}This week: {formatDuration(s.week_seconds)}
+        </p>
+      </div>
+      {getStatusBadge()}
     </div>
   );
 }

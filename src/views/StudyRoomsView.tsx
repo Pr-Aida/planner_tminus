@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Users, KeyRound, ArrowLeft, Check, Loader2, MoreVertical, Trash2, LogOut, DoorOpen, UserCog, X, AlertTriangle } from 'lucide-react';
-import type { StudyRoom, RoomMemberStatus, RoomMember } from '../types';
+import { Plus, Users, KeyRound, ArrowLeft, Check, Loader2, MoreVertical, Trash2, LogOut, DoorOpen, UserCog, X, AlertTriangle, Mail } from 'lucide-react';
+import type { StudyRoom, RoomMemberStatus, RoomMember, RoomInvite } from '../types';
 import {
   fetchMyRooms, createRoom, fetchRoomByCode, deleteRoom, leaveRoom, transferOwnership, fetchMembers,
+  fetchMyInvites, acceptInvite, declineInvite,
 } from '../lib/studyRooms';
 import RoomProfileView from '../components/RoomProfileView';
 
@@ -16,6 +17,7 @@ const THEME_COLORS = ['#1B2A4A', '#7B1C3E', '#059669', '#B45309', '#2563EB', '#7
 
 export default function StudyRoomsView({ userId, initialOpenRoomId }: Props) {
   const [rooms, setRooms] = useState<(StudyRoom & { my_status: RoomMemberStatus })[]>([]);
+  const [invites, setInvites] = useState<(RoomInvite & { room_name?: string; inviter_name?: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
@@ -24,14 +26,18 @@ export default function StudyRoomsView({ userId, initialOpenRoomId }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetchMyRooms();
+      const [r, i] = await Promise.all([
+        fetchMyRooms(),
+        fetchMyInvites(userId),
+      ]);
       setRooms(r);
+      setInvites(i);
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [userId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -72,6 +78,32 @@ export default function StudyRoomsView({ userId, initialOpenRoomId }: Props) {
         </div>
       </div>
 
+      {/* Room Invitations Section */}
+      {invites.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <Mail size={16} color="#7B1C3E" />
+            <h2 className="text-sm font-bold uppercase tracking-widest" style={{ color: '#7B1C3E' }}>Room Invitations</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {invites.map(invite => (
+              <InvitationCard
+                key={invite.id}
+                invite={invite}
+                onAccept={async () => {
+                  await acceptInvite(invite.room_id, userId);
+                  load();
+                }}
+                onDecline={async () => {
+                  await declineInvite(invite.room_id, userId);
+                  load();
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="animate-spin" size={24} color="#9CA3AF" />
@@ -106,6 +138,59 @@ export default function StudyRoomsView({ userId, initialOpenRoomId }: Props) {
           onFound={(id) => { setShowJoin(false); setOpenRoomId(id); }}
         />
       )}
+    </div>
+  );
+}
+
+// ─── Invitation Card ────────────────────────────────────────────────────────
+function InvitationCard({
+  invite,
+  onAccept,
+  onDecline,
+}: {
+  invite: RoomInvite & { room_name?: string; inviter_name?: string };
+  onAccept: () => void;
+  onDecline: () => void;
+}) {
+  const [acting, setActing] = useState(false);
+  const [accepting, setAccepting] = useState(false);
+
+  const handleAccept = async () => {
+    setActing(true); setAccepting(true);
+    try { await onAccept(); }
+    finally { setActing(false); }
+  };
+
+  const handleDecline = async () => {
+    setActing(true); setAccepting(false);
+    try { await onDecline(); }
+    finally { setActing(false); }
+  };
+
+  return (
+    <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)', border: '1.5px solid #FEF3C7' }}>
+      <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>{invite.room_name || 'Study Room'}</p>
+      <p className="text-xs mt-1" style={{ color: '#6B6B6B' }}>
+        Invited by {invite.inviter_name || 'a member'}
+      </p>
+      <div className="flex gap-2 mt-3">
+        <button
+          onClick={handleAccept}
+          disabled={acting}
+          className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-bold text-white"
+          style={{ background: acting && accepting ? '#9CA3AF' : '#059669', border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}
+        >
+          {acting && accepting ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Accept
+        </button>
+        <button
+          onClick={handleDecline}
+          disabled={acting}
+          className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-semibold"
+          style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}
+        >
+          {acting && !accepting ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />} Decline
+        </button>
+      </div>
     </div>
   );
 }
