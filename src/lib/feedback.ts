@@ -15,6 +15,8 @@ export interface FeedbackMessage {
   status: FeedbackStatus;
   created_at: string;
   updated_at: string;
+  email_sent?: boolean;
+  email_error?: string | null;
 }
 
 export interface FeedbackReply {
@@ -191,6 +193,25 @@ export async function adminUpdateStatus(feedbackId: string, status: FeedbackStat
   const body = await res.json().catch(() => ({} as Record<string, unknown>));
   if (!res.ok) return { ok: false, error: (body as { error?: string }).error || 'Status update failed.' };
   return { ok: true };
+}
+
+export async function adminRetryEmail(feedbackId: string): Promise<{ ok: boolean; email_sent?: boolean; error?: string }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return { ok: false, error: 'Not authenticated.' };
+
+  const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/feedback/retry-email`;
+  const res = await fetch(fnUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ feedback_id: feedbackId }),
+  });
+
+  const body = await res.json().catch(() => ({} as Record<string, unknown>));
+  if (!res.ok) return { ok: false, error: (body as { error?: string }).error || 'Retry failed.' };
+  return { ok: true, email_sent: (body as { email_sent?: boolean }).email_sent };
 }
 
 // ─── Check if current user is admin ──────────────────────────────────────────

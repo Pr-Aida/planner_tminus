@@ -1005,19 +1005,26 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
             return (
               <div key={m.id} className="flex items-center gap-2.5 flex-wrap">
                 <MemberAvatar m={m} />
+                {/* Name + live timer on same row, then weekly under name */}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate" style={{ color: '#1B2A4A' }}>
-                    {m.display_name || m.username || 'Member'}
-                    {m.role === 'owner' && (
-                      <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#F5E6EC', color: '#7B1C3E' }}>Owner</span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-medium truncate" style={{ color: '#1B2A4A' }}>
+                      {m.display_name || m.username || 'Member'}
+                      {m.role === 'owner' && (
+                        <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#F5E6EC', color: '#7B1C3E' }}>Owner</span>
+                      )}
+                      {m.role === 'admin' && m.role !== 'owner' && (
+                        <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#EBF0FF', color: '#1B2A4A' }}>Admin</span>
+                      )}
+                      {m.user_id === currentUserId && (
+                        <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#E8EBF4', color: '#1B2A4A' }}>You</span>
+                      )}
+                    </p>
+                    {/* Live timer directly next to name — large, bold, readable */}
+                    {isStudying && ts?.active_started_at && (
+                      <MemberLiveTimer todaySeconds={ts.today_seconds} startedAt={ts.active_started_at} />
                     )}
-                    {m.role === 'admin' && m.role !== 'owner' && (
-                      <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#EBF0FF', color: '#1B2A4A' }}>Admin</span>
-                    )}
-                    {m.user_id === currentUserId && (
-                      <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#E8EBF4', color: '#1B2A4A' }}>You</span>
-                    )}
-                  </p>
+                  </div>
                   <p className="text-xs" style={{ color: '#9CA3AF' }}>@{m.username || m.user_id.slice(0, 8)}</p>
                   {/* Summary under name: weekly only when studying, full summary when not */}
                   {isStudying ? (
@@ -1029,12 +1036,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                   ) : null}
                 </div>
 
-                {/* Live timer next to name when studying — large, bold, readable */}
-                {isStudying && ts?.active_started_at && (
-                  <MemberLiveTimer todaySeconds={ts.today_seconds} startedAt={ts.active_started_at} />
-                )}
-
-                {/* Studying now badge */}
+                {/* Studying now badge on the right */}
                 {isStudying && (
                   <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#E6F6EF', color: '#059669' }}>
                     <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#059669' }} />

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Inbox, Reply, Clock, X, Send, Check, AlertCircle, Mail, User } from 'lucide-react';
 import {
-  adminFetchAllFeedback, adminFetchReplies, adminReplyToFeedback, adminUpdateStatus,
+  adminFetchAllFeedback, adminFetchReplies, adminReplyToFeedback, adminUpdateStatus, adminRetryEmail,
   type FeedbackMessage, type FeedbackReply, type FeedbackStatus,
 } from '../lib/feedback';
 
@@ -182,6 +182,35 @@ export default function FeedbackInbox({ onClose }: { onClose: () => void }) {
                   <MetaItem icon={<User size={12} />} label="From" value={selected.username ? `@${selected.username}` : 'Guest (not logged in)'} />
                   <MetaItem icon={<Mail size={12} />} label="Contact" value={selected.contact_email || 'Not provided'} />
                   <MetaItem icon={<Clock size={12} />} label="Submitted" value={formatDate(selected.created_at)} />
+                </div>
+
+                {/* Email notification status */}
+                <div className="mt-3 pt-3 flex items-center gap-3" style={{ borderTop: '1px solid #E8EBF4' }}>
+                  {selected.email_sent ? (
+                    <p className="text-xs flex items-center gap-1.5" style={{ color: '#059669' }}>
+                      <Check size={12} /> Email notification sent to admin
+                    </p>
+                  ) : (
+                    <>
+                      <p className="text-xs flex items-center gap-1.5" style={{ color: '#D97706' }}>
+                        <AlertCircle size={12} /> Email not sent: {selected.email_error || 'Unknown error'}
+                      </p>
+                      <button
+                        onClick={async () => {
+                          const r = await adminRetryEmail(selected.id);
+                          if (r.ok && r.email_sent) {
+                            setFeedback(prev => prev.map(f => f.id === selected.id ? { ...f, email_sent: true, email_error: null } : f));
+                          } else if (!r.ok) {
+                            alert(r.error || 'Retry failed. Make sure RESEND_API_KEY is set in Supabase secrets.');
+                          }
+                        }}
+                        className="text-xs px-2 py-0.5 rounded-md transition-colors"
+                        style={{ background: '#F5E6EC', color: '#7B1C3E' }}
+                      >
+                        Retry email
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 

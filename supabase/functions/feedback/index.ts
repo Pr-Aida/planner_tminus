@@ -129,7 +129,7 @@ async function submitFeedback(req: Request): Promise<Response> {
     console.log("[feedback] Attempting to send email notification...");
     emailSent = await sendFeedbackEmail(feedback);
     if (!emailSent) {
-      emailError = "Email provider API key is missing or invalid.";
+      emailError = "RESEND_API_KEY is missing or invalid. Email notification cannot be sent.";
       console.warn("[feedback] Email not sent:", emailError);
     } else {
       console.log("[feedback] Email sent successfully to:", adminEmail);
@@ -138,6 +138,11 @@ async function submitFeedback(req: Request): Promise<Response> {
     emailError = (err as Error).message;
     console.error("[feedback] Email send error:", emailError);
   }
+
+  // Record email status in the database
+  await admin.from("feedback_messages")
+    .update({ email_sent: emailSent, email_error: emailError })
+    .eq("id", feedback.id);
 
   return json({
     ok: true,
@@ -320,6 +325,53 @@ async function updateStatus(req: Request): Promise<Response> {
   return json({ ok: true }, 200);
 }
 
+// ─── Admin: retry email for a feedback message ────────────────────────────────
+async function retryEmail(req: Request): Promise<Response> {
+  const authHeader = req.headers.get("Authorization") || "";
+  if (!authHeader.startsWith("Bearer ")) return json({ error: "Unauthorized." }, 401);
+  const jwt = authHeader.replace("Bearer ", "");
+
+  const anon = createClient(supabaseUrl, anonKey);
+  const { data: userData, error: uErr } = await anon.auth.getUser(jwt);
+  if (uErr || !userData.user) return json({ error: "Unauthorized." }, 401);
+
+  const { data: adminProfile } = await anon.from("profiles").select("is_admin").eq("id", userData.user.id).maybeSingle();
+  if (!adminProfile?.is_admin) return json({ error: "Forbidden. Admin only." }, 403);
+
+  const body = await req.json().catch(() => ({} as Record<string, unknown>));
+  const feedbackId = typeof body.feedback_id === "string" ? body.feedback_id : "";
+  if (!feedbackId) return json({ error: "Feedback ID is required." }, 400);
+
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  const { data: feedback, error: fbErr } = await admin
+    .from("feedback_messages")
+    .select("*")
+    .eq("id", feedbackId)
+    .maybeSingle();
+
+  if (fbErr || !feedback) return json({ error: "Feedback not found." }, 404);
+
+  let emailSent = false;
+  let emailError: string | null = null;
+  try {
+    emailSent = await sendFeedbackEmail(feedback);
+    if (!emailSent) {
+      emailError = "RESEND_API_KEY is missing or invalid. Email notification cannot be sent.";
+    }
+  } catch (err) {
+    emailError = (err as Error).message;
+  }
+
+  await admin.from("feedback_messages")
+    .update({ email_sent: emailSent, email_error: emailError })
+    .eq("id", feedbackId);
+
+  return json({ ok: true, email_sent: emailSent, email_error: emailError }, 200);
+}
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -338,6 +390,9 @@ Deno.serve(async (req: Request) => {
     }
     if (path.endsWith("/status") && req.method === "POST") {
       return await updateStatus(req);
+    }
+    if (path.endsWith("/retry-email") && req.method === "POST") {
+      return await retryEmail(req);
     }
     return json({ error: "Not found." }, 404);
   } catch (err) {
