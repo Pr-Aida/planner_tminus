@@ -325,6 +325,7 @@ function RoomCard({
   const [members, setMembers] = useState<RoomMember[]>([]);
   const [transferTarget, setTransferTarget] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showTransferConfirm, setShowTransferConfirm] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const isOwner = room.owner_id === userId;
@@ -370,7 +371,7 @@ function RoomCard({
       // DON'T leave the room - previous owner stays as member
       onLeftOrDeleted();
     } catch (e) { console.error(e); }
-    finally { setBusy(false); setConfirm(null); }
+    finally { setBusy(false); setConfirm(null); setShowTransferConfirm(false); setTransferTarget(''); }
   };
 
   return (
@@ -514,7 +515,7 @@ function RoomCard({
 
       {/* Transfer ownership modal */}
       {confirm === 'transfer' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => setConfirm(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => !busy && setConfirm(null)}>
           <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: '#fff' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold" style={{ color: '#1B2A4A' }}>Transfer Ownership</h3>
@@ -524,7 +525,7 @@ function RoomCard({
               <p className="text-xs" style={{ color: '#6B6B6B' }}>
                 There are no other approved members to transfer ownership to. You can either keep the room or delete it.
               </p>
-            ) : (
+            ) : !showTransferConfirm ? (
               <>
                 <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>
                   Select an approved member to become the new owner. You will remain as a member after the transfer.
@@ -542,25 +543,40 @@ function RoomCard({
                     </option>
                   ))}
                 </select>
-                {transferTarget && (
-                  <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>
-                    Transfer ownership to{' '}
-                    <strong style={{ color: '#1B2A4A' }}>
-                      {approvedOthers.find(m => m.user_id === transferTarget)?.username || 'this member'}
-                    </strong>
-                    ? They will become the new room owner. You will stay as a member.
-                  </p>
-                )}
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={handleTransfer}
+                    onClick={() => setShowTransferConfirm(true)}
                     disabled={!transferTarget || busy}
                     className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
                     style={{ background: !transferTarget || busy ? '#9CA3AF' : '#92400E', border: 'none', cursor: !transferTarget || busy ? 'not-allowed' : 'pointer' }}
                   >
-                    {busy ? 'Transferring…' : 'Transfer Ownership'}
+                    Next
                   </button>
                   <button onClick={() => setConfirm(null)} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: 'pointer' }}>Cancel</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-start gap-3 mb-4">
+                  <AlertTriangle size={20} color="#92400E" style={{ flexShrink: 0, marginTop: 1 }} />
+                  <p className="text-xs" style={{ color: '#6B6B6B' }}>
+                    Are you sure you want to transfer ownership to{' '}
+                    <strong style={{ color: '#1B2A4A' }}>
+                      {approvedOthers.find(m => m.user_id === transferTarget)?.username || 'this member'}
+                    </strong>
+                    ? You will no longer be the owner.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleTransfer}
+                    disabled={busy}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+                    style={{ background: busy ? '#9CA3AF' : '#92400E', border: 'none', cursor: busy ? 'not-allowed' : 'pointer' }}
+                  >
+                    {busy ? 'Transferring…' : 'Yes, transfer'}
+                  </button>
+                  <button onClick={() => setShowTransferConfirm(false)} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: busy ? 'not-allowed' : 'pointer' }}>Back</button>
                 </div>
               </>
             )}

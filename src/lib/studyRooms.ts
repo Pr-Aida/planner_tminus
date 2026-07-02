@@ -186,31 +186,14 @@ export async function deleteRoom(roomId: string): Promise<void> {
   if (error) throw error;
 }
 
-/** Transfer room ownership to another approved member. Previous owner stays as member. */
-export async function transferOwnership(roomId: string, newOwnerId: string): Promise<void> {
-  // 1. Set the new owner on the room (only current owner can do this — RLS).
-  const { error: rErr } = await supabase
-    .from('study_rooms')
-    .update({ owner_id: newOwnerId })
-    .eq('id', roomId);
-  if (rErr) throw rErr;
-
-  // 2. Set the new owner's member role to 'owner' and status to 'approved'.
-  const { error: mErr } = await supabase
-    .from('study_room_members')
-    .update({ role: 'owner', status: 'approved' })
-    .eq('room_id', roomId).eq('user_id', newOwnerId);
-  if (mErr) throw mErr;
-
-  // 3. Demote the current user (the old owner) to 'member' role (NOT admin, just regular member).
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user) {
-    const { error: oldErr } = await supabase
-      .from('study_room_members')
-      .update({ role: 'member' })
-      .eq('room_id', roomId).eq('user_id', user.id);
-    if (oldErr) throw oldErr;
-  }
+/** Transfer room ownership to another approved member. Previous owner stays as member (or admin). */
+export async function transferOwnership(roomId: string, newOwnerId: string, oldOwnerRole: 'member' | 'admin' = 'member'): Promise<void> {
+  const { error } = await supabase.rpc('transfer_room_ownership', {
+    p_room_id: roomId,
+    p_new_owner_id: newOwnerId,
+    p_old_owner_role: oldOwnerRole,
+  });
+  if (error) throw error;
 }
 
 /** Make a member an admin (only owner can do this). */
@@ -411,13 +394,14 @@ export async function leaveRoom(roomId: string, userId: string): Promise<void> {
 /** Update the current user's sharing settings for a room. */
 export async function updateMySharing(
   roomId: string,
-  userId: string,
   patch: Partial<Pick<RoomMember, 'share_today' | 'share_weekly' | 'show_active_now' | 'hide_activity'>>,
 ): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('You must be signed in to update sharing preferences.');
   const { error } = await supabase
     .from('study_room_members')
     .update(patch)
-    .eq('room_id', roomId).eq('user_id', userId);
+    .eq('room_id', roomId).eq('user_id', user.id);
   if (error) throw error;
 }
 
@@ -669,6 +653,7 @@ export interface MemberTimerSummary {
   today_seconds: number;
   week_seconds: number;
   active_started_at: string | null;
+  active_accumulated_seconds: number;
   finished_for_day: boolean;
 }
 

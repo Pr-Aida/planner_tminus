@@ -6,9 +6,11 @@ interface Props {
   roomId: string;
   userId: string;
   isOwnerOrAdmin: boolean;
+  themeColor?: string;
 }
 
-export default function RoomChat({ roomId, userId, isOwnerOrAdmin }: Props) {
+export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }: Props) {
+  const accent = themeColor || '#7B1C3E';
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(true);
@@ -90,7 +92,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin }: Props) {
                 {m.avatar_url ? (
                   <img src={m.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0 mt-0.5" />
                 ) : (
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5" style={{ background: isOwn ? '#7B1C3E' : '#1B2A4A' }}>
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5" style={{ background: isOwn ? accent : '#1B2A4A' }}>
                     {(m.display_name || m.username || 'M').charAt(0).toUpperCase()}
                   </div>
                 )}
@@ -111,7 +113,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin }: Props) {
                   <div
                     className="inline-block rounded-lg px-3 py-1.5 text-sm break-words"
                     style={{
-                      background: m.is_deleted ? '#F3F4F6' : (isOwn ? '#7B1C3E' : '#F8F9FC'),
+                      background: m.is_deleted ? '#F3F4F6' : (isOwn ? accent : '#F8F9FC'),
                       color: m.is_deleted ? '#9CA3AF' : (isOwn ? '#FFFFFF' : '#1B2A4A'),
                       fontStyle: m.is_deleted ? 'italic' : 'normal',
                       textAlign: 'left',
@@ -160,7 +162,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin }: Props) {
           disabled={sending || !input.trim()}
           className="flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-semibold transition-opacity"
           style={{
-            background: input.trim() ? '#7B1C3E' : '#E8EBF4',
+            background: input.trim() ? accent : '#E8EBF4',
             color: input.trim() ? '#FFFFFF' : '#9CA3AF',
             border: 'none',
             cursor: input.trim() ? 'pointer' : 'default',

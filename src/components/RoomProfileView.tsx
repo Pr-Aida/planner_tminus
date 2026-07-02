@@ -40,13 +40,14 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 // ─── MemberAvatar helper ──────────────────────────────────────────────────────
-function MemberAvatar({ m }: { m: RoomMember }) {
+function MemberAvatar({ m, themeColor }: { m: RoomMember; themeColor?: string }) {
+  const bg = themeColor || '#1B2A4A';
   if (m.avatar_url) {
     return <img src={m.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />;
   }
   return (
     <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-      style={{ background: '#1B2A4A' }}>
+      style={{ background: bg }}>
       {(m.username || m.display_name || '?').charAt(0).toUpperCase()}
     </div>
   );
@@ -266,6 +267,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
   const inviteLink = `${window.location.origin}/room/${room.invite_code}`;
   const myMember = members.find(m => m.user_id === userId);
   const isAdmin = myMember?.role === 'admin' || isOwner;
+  const themeColor = room.theme_color || '#1B2A4A';
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: 'overview', label: 'Overview', icon: <Users size={14} /> },
@@ -291,7 +293,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
           onClick={() => copyToClipboard(inviteLink, 'link')}
           disabled={!room.invite_enabled}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
-          style={{ background: '#F2F2F2', color: '#1B2A4A', border: 'none', cursor: room.invite_enabled ? 'pointer' : 'not-allowed', opacity: room.invite_enabled ? 1 : 0.5 }}
+          style={{ background: room.invite_enabled ? themeColor : '#F2F2F2', color: room.invite_enabled ? '#fff' : '#9CA3AF', border: 'none', cursor: room.invite_enabled ? 'pointer' : 'not-allowed', opacity: room.invite_enabled ? 1 : 0.5 }}
         >
           {copied === 'link' ? <Check size={13} color="#059669" /> : <LinkIcon size={13} />}
           {copied === 'link' ? 'Copied!' : 'Copy invite link'}
@@ -299,7 +301,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
         <button
           onClick={() => copyToClipboard(room.room_code, 'code')}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold font-mono"
-          style={{ background: '#F2F2F2', color: '#1B2A4A', border: 'none', cursor: 'pointer' }}
+          style={{ background: '#F2F2F2', color: themeColor, border: `1px solid ${themeColor}20`, cursor: 'pointer' }}
         >
           {copied === 'code' ? <Check size={13} color="#059669" /> : <Copy size={13} />}
           {copied === 'code' ? 'Copied!' : room.room_code}
@@ -314,7 +316,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
             onClick={() => setTab(t.key)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold flex-1 justify-center transition-colors"
             style={{
-              background: tab === t.key ? '#1B2A4A' : 'transparent',
+              background: tab === t.key ? themeColor : 'transparent',
               color: tab === t.key ? '#fff' : '#6B6B6B',
               border: 'none', cursor: 'pointer',
             }}
@@ -337,16 +339,17 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
           onRemove={async (uid) => { await removeMember(room.id, uid); load(); }}
           onApprove={async (uid) => { await approveMember(room.id, uid); load(); }}
           onReject={async (uid) => { await rejectMember(room.id, uid); load(); }}
+          onTransfer={async (uid) => { await transferOwnership(room.id, uid); load(); }}
           onReload={load}
         />
       )}
 
       {tab === 'activity' && (
-        <ActivityTab roomId={room.id} userId={userId} />
+        <ActivityTab roomId={room.id} userId={userId} themeColor={themeColor} />
       )}
 
       {tab === 'chat' && (
-        <RoomChat roomId={room.id} userId={userId} isOwnerOrAdmin={isOwner || myMember?.role === 'admin'} />
+        <RoomChat roomId={room.id} userId={userId} isOwnerOrAdmin={isOwner || myMember?.role === 'admin'} themeColor={themeColor} />
       )}
 
       {tab === 'settings' && isAdmin && (
@@ -358,8 +361,8 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
           onUpdated={() => load()}
           onRegenerate={() => regenerateInviteCode(room.id).then(load)}
           onDelete={async () => { await deleteRoom(room.id); onBack(); }}
-          onTransfer={async (newOwnerId) => {
-            await transferOwnership(room.id, newOwnerId);
+          onTransfer={async (newOwnerId, oldRole) => {
+            await transferOwnership(room.id, newOwnerId, oldRole);
             load();
           }}
         />
@@ -435,15 +438,15 @@ function OverviewTab({ room, members, isOwner, userId, onUpdated }: {
 }) {
   const approved = members.filter(m => m.status === 'approved');
   const myM = members.find(m => m.user_id === userId);
+  const themeColor = room.theme_color || '#1B2A4A';
 
   return (
     <div className="space-y-4">
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         {[
-          { icon: <Users size={16} color="#7B1C3E" />, label: 'Members', value: approved.length },
-          { icon: <Clock size={16} color="#7B1C3E" />, label: 'Status', value: myM?.status === 'approved' ? 'Member' : (myM?.status || 'Guest') },
-          { icon: <Trophy size={16} color="#7B1C3E" />, label: 'Leaderboard', value: room.leaderboard_enabled ? 'On' : 'Off' },
+          { icon: <Users size={16} color={themeColor} />, label: 'Members', value: approved.length },
+          { icon: <Trophy size={16} color={themeColor} />, label: 'Leaderboard', value: room.leaderboard_enabled ? 'On' : 'Off' },
         ].map(s => (
           <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.08)' }}>
             <div className="flex justify-center mb-1">{s.icon}</div>
@@ -455,27 +458,27 @@ function OverviewTab({ room, members, isOwner, userId, onUpdated }: {
 
       {/* Sharing prefs (for own membership) */}
       {myM && (
-        <SharingPrefsCard member={myM} roomId={room.id} onUpdated={onUpdated} />
+        <SharingPrefsCard member={myM} roomId={room.id} onUpdated={onUpdated} themeColor={themeColor} />
       )}
     </div>
   );
 }
 
-function SharingPrefsCard({ member, roomId, onUpdated }: {
-  member: RoomMember; roomId: string; onUpdated: () => void;
+function SharingPrefsCard({ member, roomId, onUpdated, themeColor }: {
+  member: RoomMember; roomId: string; onUpdated: () => void; themeColor: string;
 }) {
   const [saving, setSaving] = useState(false);
   const toggle = async (field: 'share_today' | 'share_weekly' | 'show_active_now') => {
     setSaving(true);
     try {
-      await updateMySharing(roomId, { [field]: !member[field] });
+      await updateMySharing(roomId, { [field]: !member[field] } as Partial<Pick<RoomMember, 'share_today' | 'share_weekly' | 'show_active_now' | 'hide_activity'>>);
       onUpdated();
     } finally { setSaving(false); }
   };
 
   return (
     <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.08)' }}>
-      <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7B1C3E' }}>My sharing preferences</p>
+      <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: themeColor }}>My sharing preferences</p>
       {([
         { key: 'share_today', label: "Share today's activity" },
         { key: 'share_weekly', label: "Share weekly activity" },
@@ -488,7 +491,7 @@ function SharingPrefsCard({ member, roomId, onUpdated }: {
             disabled={saving}
             className="rounded-full transition-colors"
             style={{
-              width: 36, height: 20, background: member[p.key] ? '#1B2A4A' : '#D1D5DB',
+              width: 36, height: 20, background: member[p.key] ? themeColor : '#D1D5DB',
               position: 'relative', border: 'none', cursor: saving ? 'not-allowed' : 'pointer',
             }}
           >
@@ -504,7 +507,7 @@ function SharingPrefsCard({ member, roomId, onUpdated }: {
 }
 
 // ─── Activity tab ─────────────────────────────────────────────────────────────
-function ActivityTab({ roomId, userId }: { roomId: string; userId: string }) {
+function ActivityTab({ roomId, userId, themeColor }: { roomId: string; userId: string; themeColor: string }) {
   const [activity, setActivity] = useState<RoomMemberActivity[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -515,13 +518,13 @@ function ActivityTab({ roomId, userId }: { roomId: string; userId: string }) {
   return (
     <div className="space-y-4">
       {/* My Study Timer — personal timer controls for the current user */}
-      <StudyTimerSection roomId={roomId} userId={userId} />
+      <StudyTimerSection roomId={roomId} userId={userId} themeColor={themeColor} />
 
       {/* Room Activity Summary — shared study times for all approved members */}
       <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
         <div className="flex items-center gap-2 mb-3">
-          <Clock size={16} color="#7B1C3E" />
-          <p className="text-xs font-bold uppercase tracking-widest" style={{ color: '#7B1C3E' }}>Room Activity Summary</p>
+          <Clock size={16} color={themeColor} />
+          <p className="text-xs font-bold uppercase tracking-widest" style={{ color: themeColor }}>Room Activity Summary</p>
         </div>
         {loading ? (
           <div className="py-4 text-center"><Loader2 className="animate-spin mx-auto" size={18} color="#1B2A4A" /></div>
@@ -615,7 +618,34 @@ function MemberLiveTimer({ accumulatedSeconds, startedAt }: { accumulatedSeconds
   );
 }
 
-function StudyTimerSection({ roomId, userId }: { roomId: string; userId: string }) {
+/** Timer display for a member row: live-ticking when running, static when paused/stopped. */
+function MemberTimerDisplay({ value, color, isRunning, startedAt, accumulated }: {
+  value: number; color: string; isRunning: boolean; startedAt?: string | null; accumulated: number;
+}) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (isRunning && startedAt) {
+      const id = setInterval(() => setTick(t => t + 1), 1000);
+      return () => clearInterval(id);
+    }
+  }, [isRunning, startedAt]);
+
+  const displayValue = isRunning && startedAt
+    ? accumulated + Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)
+    : value;
+
+  return (
+    <span
+      key={tick}
+      className="text-lg font-bold tabular-nums flex-shrink-0 tracking-wider"
+      style={{ color, fontVariantNumeric: 'tabular-nums' }}
+    >
+      {formatClock(displayValue)}
+    </span>
+  );
+}
+
+function StudyTimerSection({ roomId, userId, themeColor }: { roomId: string; userId: string; themeColor: string }) {
   const [activeSession, setActiveSession] = useState<{ id: string; started_at: string; status: string; accumulated_seconds: number } | null>(null);
   const [summaries, setSummaries] = useState<MemberTimerSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -688,7 +718,7 @@ function StudyTimerSection({ roomId, userId }: { roomId: string; userId: string 
   };
 
   if (loading) return <div className="rounded-xl p-4 mb-4 flex items-center gap-2" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
-    <Loader2 size={16} className="animate-spin" color="#1B2A4A" /><span className="text-xs" style={{ color: '#6B6B6B' }}>Loading timer…</span>
+    <Loader2 size={16} className="animate-spin" color={themeColor} /><span className="text-xs" style={{ color: '#6B6B6B' }}>Loading timer…</span>
   </div>;
 
   const mySummary = summaries.find(s => s.user_id === userId);
@@ -698,8 +728,8 @@ function StudyTimerSection({ roomId, userId }: { roomId: string; userId: string 
   return (
     <div className="rounded-xl p-4 mb-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
       <div className="flex items-center gap-2 mb-3">
-        <Timer size={16} color="#7B1C3E" />
-        <p className="text-xs font-bold uppercase tracking-widest" style={{ color: '#7B1C3E' }}>Study Timer</p>
+        <Timer size={16} color={themeColor} />
+        <p className="text-xs font-bold uppercase tracking-widest" style={{ color: themeColor }}>Study Timer</p>
       </div>
 
       {/* Timer controls for current user */}
@@ -747,7 +777,7 @@ function StudyTimerSection({ roomId, userId }: { roomId: string; userId: string 
           {activeSession?.status === 'paused' && (
             <>
               <button onClick={handleResume} disabled={acting} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-white"
-                style={{ background: acting ? '#9CA3AF' : '#059669', border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
+                style={{ background: acting ? '#9CA3AF' : themeColor, border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
                 {acting ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Resume
               </button>
               <button onClick={handleEnd} disabled={acting} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-white"
@@ -759,14 +789,14 @@ function StudyTimerSection({ roomId, userId }: { roomId: string; userId: string 
 
           {!activeSession && !mySummary?.finished_for_day && (
             <button onClick={handleStart} disabled={acting} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white"
-              style={{ background: acting ? '#9CA3AF' : '#059669', border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
+              style={{ background: acting ? '#9CA3AF' : themeColor, border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
               {acting ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Start Timer
             </button>
           )}
 
           {!activeSession && mySummary?.finished_for_day && (
             <button onClick={handleStart} disabled={acting} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white"
-              style={{ background: acting ? '#9CA3AF' : '#1B2A4A', border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
+              style={{ background: acting ? '#9CA3AF' : themeColor, border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
               {acting ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Start New Session
             </button>
           )}
@@ -778,16 +808,16 @@ function StudyTimerSection({ roomId, userId }: { roomId: string; userId: string 
       {/* Member timer status list */}
       <div className="space-y-2">
         {summaries.map(s => (
-          <MemberTimerRow key={s.user_id} s={s} userId={userId} />
+          <MemberTimerRow key={s.user_id} s={s} userId={userId} themeColor={themeColor} />
         ))}
       </div>
     </div>
   );
 }
 
-function MemberTimerRow({ s, userId }: { s: MemberTimerSummary; userId: string }) {
-  // Live timer for running sessions (need to compute live)
-  const [liveElapsed, setLiveElapsed] = useState(s.today_seconds);
+function MemberTimerRow({ s, userId, themeColor }: { s: MemberTimerSummary; userId: string; themeColor: string }) {
+  // Live timer for running sessions; static for paused/ended
+  const [liveElapsed, setLiveElapsed] = useState(0);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -799,15 +829,31 @@ function MemberTimerRow({ s, userId }: { s: MemberTimerSummary; userId: string }
       update();
       tickRef.current = setInterval(update, 1000);
       return () => { if (tickRef.current) clearInterval(tickRef.current); };
+    } else if (s.status === 'paused') {
+      // Show the paused session duration (accumulated so far)
+      setLiveElapsed(s.active_accumulated_seconds || 0);
     } else {
-      setLiveElapsed(s.today_seconds);
+      setLiveElapsed(0);
     }
-  }, [s.status, s.active_started_at, s.active_accumulated_seconds, s.today_seconds]);
+  }, [s.status, s.active_started_at, s.active_accumulated_seconds]);
+
+  // Determine the timer to show between name and badge:
+  // - running: live elapsed (green)
+  // - paused: accumulated seconds (amber)
+  // - ended with today_seconds > 0: show today's total as the "latest session" (theme color)
+  // - no session: no timer
+  const showTimer = s.status === 'running' || s.status === 'paused' || (s.status === 'ended' && s.today_seconds > 0);
+  const timerValue = s.status === 'running'
+    ? liveElapsed
+    : s.status === 'paused'
+      ? (s.active_accumulated_seconds || 0)
+      : s.today_seconds;
+  const timerColor = s.status === 'running' ? '#059669' : s.status === 'paused' ? '#B45309' : themeColor;
 
   const getStatusBadge = () => {
     if (s.status === 'running') {
       return (
-        <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#E6F6EF', color: '#059669' }}>
+        <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#E6F6EF', color: '#059669' }}>
           <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#059669' }} />
           Studying now
         </span>
@@ -815,31 +861,27 @@ function MemberTimerRow({ s, userId }: { s: MemberTimerSummary; userId: string }
     }
     if (s.status === 'paused') {
       return (
-        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: '#FEF3C7', color: '#B45309' }}>
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#FEF3C7', color: '#B45309' }}>
           Paused
         </span>
       );
     }
     if (s.finished_for_day) {
       return (
-        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: '#E6F6EF', color: '#059669' }}>
-          Finished today
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#E6F6EF', color: '#059669' }}>
+          Stopped
         </span>
       );
     }
-    return (
-      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: '#F2F2F2', color: '#9CA3AF' }}>
-        Not studying
-      </span>
-    );
+    return null;
   };
 
   return (
     <div className="flex items-center gap-3">
       {s.avatar_url ? (
-        <img src={s.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" />
+        <img src={s.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
       ) : (
-        <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ background: '#1B2A4A' }}>
+        <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ background: themeColor }}>
           {(s.username || '?').charAt(0).toUpperCase()}
         </div>
       )}
@@ -849,13 +891,14 @@ function MemberTimerRow({ s, userId }: { s: MemberTimerSummary; userId: string }
             {s.display_name || s.username}
             {s.user_id === userId && <span className="ml-1.5 text-[9px] font-bold uppercase" style={{ color: '#9CA3AF' }}>(you)</span>}
           </p>
-          {/* Live timer next to name when studying — large, bold */}
-          {s.status === 'running' && (
-            <span className="text-lg font-bold tabular-nums" style={{ color: '#059669' }}>
-              {formatTimer(liveElapsed)}
+          {/* Timer between name and status badge — large, bold */}
+          {showTimer && (
+            <span className="text-lg font-bold tabular-nums flex-shrink-0" style={{ color: timerColor }}>
+              {formatTimer(timerValue)}
             </span>
           )}
         </div>
+        {/* Under name: only weekly total */}
         <p className="text-[10px]" style={{ color: '#9CA3AF' }}>
           This week: {formatDuration(s.week_seconds)}
         </p>
@@ -866,7 +909,7 @@ function MemberTimerRow({ s, userId }: { s: MemberTimerSummary; userId: string }
 }
 
 // ─── Members tab ───────────────────────────────────────────────────────────────
-function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove, onReject, onReload }: {
+function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove, onReject, onTransfer, onReload }: {
   room: StudyRoom;
   members: RoomMember[];
   currentUserId: string;
@@ -874,6 +917,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
   onRemove: (uid: string) => void;
   onApprove: (uid: string) => void;
   onReject: (uid: string) => void;
+  onTransfer: (uid: string) => Promise<void>;
   onReload: () => void;
 }) {
   const myMember = members.find(m => m.user_id === currentUserId);
@@ -887,6 +931,8 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
   const [searching, setSearching] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [memberMenuOpen, setMemberMenuOpen] = useState<string | null>(null);
+  const [transferTarget, setTransferTarget] = useState<RoomMember | null>(null);
+  const [transferring, setTransferring] = useState(false);
 
   async function handleSearch() {
     if (!inviteQuery.trim()) return;
@@ -942,12 +988,14 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
     return () => clearInterval(id);
   }, [room.id]);
 
+  const themeColor = room.theme_color || '#1B2A4A';
+
   return (
     <div className="space-y-4">
       {/* Invite by username (owner/admin only) */}
       {isAdmin && (
         <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
-          <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7B1C3E' }}>Invite by username</p>
+          <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: themeColor }}>Invite by username</p>
           <div className="flex gap-2 mb-2">
             <input
               value={inviteQuery}
@@ -959,7 +1007,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
             />
             <button onClick={handleSearch} disabled={searching || !inviteQuery.trim()}
               className="px-3 py-2 rounded-lg text-xs font-bold text-white flex items-center gap-1"
-              style={{ background: '#1B2A4A', border: 'none', cursor: searching || !inviteQuery.trim() ? 'not-allowed' : 'pointer', opacity: !inviteQuery.trim() ? 0.5 : 1 }}>
+              style={{ background: themeColor, border: 'none', cursor: searching || !inviteQuery.trim() ? 'not-allowed' : 'pointer', opacity: !inviteQuery.trim() ? 0.5 : 1 }}>
               {searching ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />} Search
             </button>
           </div>
@@ -970,7 +1018,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
               {inviteResult.avatar_url ? (
                 <img src={inviteResult.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover" />
               ) : (
-                <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white" style={{ background: '#1B2A4A' }}>
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white" style={{ background: themeColor }}>
                   {inviteResult.username.charAt(0).toUpperCase()}
                 </div>
               )}
@@ -980,7 +1028,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
               </div>
               <button onClick={handleInvite} disabled={inviting}
                 className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
-                style={{ background: '#1B2A4A', border: 'none', cursor: inviting ? 'not-allowed' : 'pointer' }}>
+                style={{ background: themeColor, border: 'none', cursor: inviting ? 'not-allowed' : 'pointer' }}>
                 {inviting ? <Loader2 size={13} className="animate-spin" /> : 'Invite'}
               </button>
             </div>
@@ -991,11 +1039,11 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
       {/* Pending requests */}
       {isAdmin && pending.length > 0 && (
         <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
-          <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7B1C3E' }}>Pending requests ({pending.length})</p>
+          <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: themeColor }}>Pending requests ({pending.length})</p>
           <div className="space-y-2">
             {pending.map(m => (
               <div key={m.id} className="flex items-center gap-2">
-                <MemberAvatar m={m} />
+                <MemberAvatar m={m} themeColor={themeColor} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate" style={{ color: '#1B2A4A' }}>{m.display_name || m.username || 'User'}</p>
                   <p className="text-xs" style={{ color: '#9CA3AF' }}>@{m.username || m.user_id.slice(0, 8)}</p>
@@ -1008,23 +1056,32 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
         </div>
       )}
 
-      {/* Approved members — avatar, name, live timer (when studying), weekly under name */}
+      {/* Approved members — avatar, name, timer (running/paused/stopped), weekly under name */}
       <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
-        <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7B1C3E' }}>Members ({approved.length})</p>
+        <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: themeColor }}>Members ({approved.length})</p>
         <div className="space-y-2.5">
           {approved.map(m => {
             const ts = timerSummaries.find(s => s.user_id === m.user_id);
             const isStudying = ts?.status === 'running';
+            const isPaused = ts?.status === 'paused';
+            const isStopped = ts && ts.status === 'ended' && ts.finished_for_day;
+            const showTimer = isStudying || isPaused || (ts && ts.status === 'ended' && (ts.today_seconds > 0));
+            const timerValue = isStudying && ts?.active_started_at
+              ? (ts.active_accumulated_seconds + Math.floor((Date.now() - new Date(ts.active_started_at).getTime()) / 1000))
+              : isPaused
+                ? (ts?.active_accumulated_seconds || 0)
+                : (ts?.today_seconds || 0);
+            const timerColor = isStudying ? '#059669' : isPaused ? '#B45309' : themeColor;
             return (
               <div key={m.id} className="flex items-center gap-2.5 flex-wrap">
-                <MemberAvatar m={m} />
-                {/* Name + live timer on same row, then weekly under name */}
+                <MemberAvatar m={m} themeColor={themeColor} />
+                {/* Name + timer on same row, then weekly under name */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-sm font-medium truncate" style={{ color: '#1B2A4A' }}>
                       {m.display_name || m.username || 'Member'}
                       {m.role === 'owner' && (
-                        <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#F5E6EC', color: '#7B1C3E' }}>Owner</span>
+                        <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: `${themeColor}15`, color: themeColor }}>Owner</span>
                       )}
                       {m.role === 'admin' && m.role !== 'owner' && (
                         <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#EBF0FF', color: '#1B2A4A' }}>Admin</span>
@@ -1033,9 +1090,9 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                         <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#E8EBF4', color: '#1B2A4A' }}>You</span>
                       )}
                     </p>
-                    {/* Live timer directly next to name — large, bold, readable */}
-                    {isStudying && ts?.active_started_at && (
-                      <MemberLiveTimer accumulatedSeconds={ts.active_accumulated_seconds} startedAt={ts.active_started_at} />
+                    {/* Timer between name and status badge — large, bold */}
+                    {showTimer && (
+                      <MemberTimerDisplay value={timerValue} color={timerColor} isRunning={isStudying} startedAt={ts?.active_started_at} accumulated={ts?.active_accumulated_seconds || 0} />
                     )}
                   </div>
                   <p className="text-xs" style={{ color: '#9CA3AF' }}>@{m.username || m.user_id.slice(0, 8)}</p>
@@ -1053,10 +1110,24 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                   </span>
                 )}
 
-                {/* Non-studying status badge */}
-                {ts && !isStudying && (
+                {/* Paused badge */}
+                {isPaused && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#FEF3C7', color: '#B45309' }}>
+                    Paused
+                  </span>
+                )}
+
+                {/* Stopped badge */}
+                {isStopped && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#E6F6EF', color: '#059669' }}>
+                    Stopped
+                  </span>
+                )}
+
+                {/* Idle badge */}
+                {ts && !isStudying && !isPaused && !isStopped && (
                   <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#F2F2F2', color: '#9CA3AF' }}>
-                    {ts.finished_for_day ? 'Finished' : 'Idle'}
+                    Idle
                   </span>
                 )}
 
@@ -1074,7 +1145,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                     </button>
                     {memberMenuOpen === m.user_id && (
                       <div
-                        className="absolute right-0 top-full mt-1 z-50 rounded-lg py-1 min-w-[140px]"
+                        className="absolute right-0 top-full mt-1 z-50 rounded-lg py-1 min-w-[160px]"
                         style={{ background: '#fff', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', border: '1px solid #E8E8E8' }}
                         onClick={e => e.stopPropagation()}
                       >
@@ -1097,11 +1168,18 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                           </button>
                         )}
                         <button
+                          onClick={() => { setTransferTarget(m); setMemberMenuOpen(null); }}
+                          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-left hover:bg-gray-50"
+                          style={{ border: 'none', background: 'transparent', color: '#92400E', cursor: 'pointer' }}
+                        >
+                          <UserCog size={12} /> Transfer Ownership
+                        </button>
+                        <button
                           onClick={() => { onRemove(m.user_id); setMemberMenuOpen(null); }}
                           className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-left hover:bg-red-50"
                           style={{ border: 'none', background: 'transparent', color: '#B91C1C', cursor: 'pointer' }}
                         >
-                          <Trash2 size={12} /> Remove
+                          <Trash2 size={12} /> Remove Member
                         </button>
                       </div>
                     )}
@@ -1112,6 +1190,50 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
           })}
         </div>
       </div>
+
+      {/* Transfer ownership confirmation modal */}
+      {transferTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => !transferring && setTransferTarget(null)}>
+          <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: '#fff' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-3 mb-4">
+              <AlertTriangle size={20} color="#92400E" style={{ flexShrink: 0, marginTop: 1 }} />
+              <div>
+                <h3 className="text-sm font-bold mb-2" style={{ color: '#1B2A4A' }}>Transfer Ownership</h3>
+                <p className="text-xs" style={{ color: '#6B6B6B' }}>
+                  Are you sure you want to transfer ownership to{' '}
+                  <strong style={{ color: '#1B2A4A' }}>
+                    {transferTarget.display_name || transferTarget.username || 'this member'}
+                  </strong>
+                  ? You will no longer be the owner.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={async () => {
+                  setTransferring(true);
+                  try { await onTransfer(transferTarget.user_id); setTransferTarget(null); }
+                  catch (e) { console.error(e); }
+                  finally { setTransferring(false); }
+                }}
+                disabled={transferring}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+                style={{ background: transferring ? '#9CA3AF' : '#92400E', border: 'none', cursor: transferring ? 'not-allowed' : 'pointer' }}
+              >
+                {transferring ? 'Transferring…' : 'Yes, transfer'}
+              </button>
+              <button
+                onClick={() => setTransferTarget(null)}
+                disabled={transferring}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: transferring ? 'not-allowed' : 'pointer' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1125,7 +1247,7 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
   onUpdated: () => void;
   onRegenerate: () => Promise<void>;
   onDelete: () => Promise<void>;
-  onTransfer: (newOwnerId: string) => Promise<void>;
+  onTransfer: (newOwnerId: string, oldOwnerRole: 'member' | 'admin') => Promise<void>;
 }) {
   const [name, setName] = useState(room.name);
   const [description, setDescription] = useState(room.description);
@@ -1139,6 +1261,8 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
   const [showTransfer, setShowTransfer] = useState(false);
   const [transferTarget, setTransferTarget] = useState('');
   const [transferring, setTransferring] = useState(false);
+  const [showTransferConfirm, setShowTransferConfirm] = useState(false);
+  const [oldOwnerRole, setOldOwnerRole] = useState<'member' | 'admin'>('member');
   const [imageUploading, setImageUploading] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
 
@@ -1175,7 +1299,7 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
     <div className="space-y-4">
       {/* Room info */}
       <div className="rounded-xl p-5" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
-        <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7B1C3E' }}>Room info</p>
+        <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: themeColor }}>Room info</p>
 
         <Field label="Room name">
           <input type="text" value={name} onChange={e => setName(e.target.value)} maxLength={60}
@@ -1251,7 +1375,7 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
 
         <button onClick={handleSave} disabled={saving}
           className="w-full py-2.5 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-1.5"
-          style={{ background: '#1B2A4A', border: 'none', cursor: saving ? 'not-allowed' : 'pointer' }}>
+          style={{ background: themeColor, border: 'none', cursor: saving ? 'not-allowed' : 'pointer' }}>
           {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <Check size={14} /> : null}
           {saving ? 'Saving…' : saved ? 'Saved!' : 'Save changes'}
         </button>
@@ -1259,7 +1383,7 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
 
       {/* Invite code */}
       <div className="rounded-xl p-5" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
-        <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7B1C3E' }}>Invite code</p>
+        <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: themeColor }}>Invite code</p>
         <div className="flex items-center gap-2">
           <span className="flex-1 font-mono text-sm font-bold px-3 py-2 rounded-lg" style={{ background: '#F8F9FC', color: '#1B2A4A' }}>{room.room_code}</span>
           <button
@@ -1280,7 +1404,7 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
           {/* Transfer ownership */}
           <div className="mb-4 pb-4" style={{ borderBottom: '1px solid #F2F2F2' }}>
             <p className="text-xs font-bold mb-1" style={{ color: '#1B2A4A' }}>Transfer ownership</p>
-            <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>Transfer ownership to another approved member. You will remain as a regular member.</p>
+            <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>Transfer ownership to another approved member. You will remain as a member or admin.</p>
             {approvedOthers.length === 0 ? (
               <p className="text-xs italic" style={{ color: '#9CA3AF' }}>No other approved members to transfer ownership to.</p>
             ) : !showTransfer ? (
@@ -1301,14 +1425,25 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
                   ))}
                 </select>
                 {transferTarget && (
-                  <p className="text-xs" style={{ color: '#6B6B6B' }}>
-                    Transfer ownership to <strong style={{ color: '#1B2A4A' }}>
-                      {approvedOthers.find(m => m.user_id === transferTarget)?.username || 'this member'}
-                    </strong>? They will become the new room owner. You will stay as a member.
-                  </p>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-xs" style={{ color: '#1B2A4A' }}>
+                      <input
+                        type="checkbox"
+                        checked={oldOwnerRole === 'admin'}
+                        onChange={e => setOldOwnerRole(e.target.checked ? 'admin' : 'member')}
+                      />
+                      Keep me as admin after transfer
+                    </label>
+                    <p className="text-xs" style={{ color: '#6B6B6B' }}>
+                      Transfer ownership to <strong style={{ color: '#1B2A4A' }}>
+                        {approvedOthers.find(m => m.user_id === transferTarget)?.username || 'this member'}
+                      </strong>? They will become the new room owner. You will stay as {oldOwnerRole === 'admin' ? 'an admin' : 'a member'}.
+                    </p>
+                  </div>
                 )}
                 <div className="flex items-center gap-2">
-                  <button onClick={async () => { setTransferring(true); try { await onTransfer(transferTarget); } finally { setTransferring(false); } }}
+                  <button
+                    onClick={() => setShowTransferConfirm(true)}
                     disabled={!transferTarget || transferring}
                     className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
                     style={{ background: !transferTarget || transferring ? '#9CA3AF' : '#92400E', border: 'none', cursor: !transferTarget || transferring ? 'not-allowed' : 'pointer' }}>
@@ -1345,6 +1480,48 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Transfer ownership confirmation modal */}
+      {showTransferConfirm && transferTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => !transferring && setShowTransferConfirm(false)}>
+          <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: '#fff' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-3 mb-4">
+              <AlertTriangle size={20} color="#92400E" style={{ flexShrink: 0, marginTop: 1 }} />
+              <div>
+                <h3 className="text-sm font-bold mb-2" style={{ color: '#1B2A4A' }}>Transfer Ownership</h3>
+                <p className="text-xs" style={{ color: '#6B6B6B' }}>
+                  Are you sure you want to transfer ownership to{' '}
+                  <strong style={{ color: '#1B2A4A' }}>
+                    {approvedOthers.find(m => m.user_id === transferTarget)?.username || 'this member'}
+                  </strong>
+                  ? You will no longer be the owner.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={async () => {
+                  setTransferring(true);
+                  try { await onTransfer(transferTarget, oldOwnerRole); setShowTransferConfirm(false); setShowTransfer(false); setTransferTarget(''); }
+                  catch (e) { console.error(e); }
+                  finally { setTransferring(false); }
+                }}
+                disabled={transferring}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+                style={{ background: transferring ? '#9CA3AF' : '#92400E', border: 'none', cursor: transferring ? 'not-allowed' : 'pointer' }}>
+                {transferring ? 'Transferring…' : 'Yes, transfer'}
+              </button>
+              <button
+                onClick={() => setShowTransferConfirm(false)}
+                disabled={transferring}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: transferring ? 'not-allowed' : 'pointer' }}>
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
