@@ -933,6 +933,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
   const [memberMenuOpen, setMemberMenuOpen] = useState<string | null>(null);
   const [roleAction, setRoleAction] = useState<{ type: 'transfer' | 'transferKeepAdmin' | 'makeAdmin'; member: RoomMember } | null>(null);
   const [transferring, setTransferring] = useState(false);
+  const [roleError, setRoleError] = useState<string | null>(null);
 
   async function handleSearch() {
     if (!inviteQuery.trim()) return;
@@ -965,17 +966,25 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
   }
 
   async function handleMakeAdmin(targetUserId: string) {
+    setRoleError(null);
     try {
       await makeAdmin(room.id, targetUserId);
       onReload();
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed to make admin.';
+      setRoleError(msg);
+    }
   }
 
   async function handleRemoveAdmin(targetUserId: string) {
+    setRoleError(null);
     try {
       await removeAdmin(room.id, targetUserId);
       onReload();
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed to remove admin.';
+      setRoleError(msg);
+    }
   }
 
   const themeColor = room.theme_color || '#1B2A4A';
@@ -1139,12 +1148,19 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
         </div>
       </div>
 
+      {/* Role action error */}
+      {roleError && (
+        <div className="rounded-lg px-3 py-2 text-xs" style={{ background: '#FEE2E2', color: '#B91C1C' }}>
+          {roleError}
+        </div>
+      )}
+
       {/* Role action confirmation modals */}
       {roleAction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => !transferring && setRoleAction(null)}>
           <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: '#fff' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-start gap-3 mb-4">
-              <AlertTriangle size={20} color="#92400E" style={{ flexShrink: 0, marginTop: 1 }} />
+              <AlertTriangle size={20} color={roleAction.type === 'makeAdmin' ? themeColor : '#92400E'} style={{ flexShrink: 0, marginTop: 1 }} />
               <div>
                 <h3 className="text-sm font-bold mb-2" style={{ color: '#1B2A4A' }}>
                   {roleAction.type === 'makeAdmin' ? 'Make Admin' : 'Transfer Ownership'}
@@ -1183,6 +1199,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
             <div className="flex items-center gap-2">
               <button
                 onClick={async () => {
+                  setRoleError(null);
                   if (roleAction.type === 'makeAdmin') {
                     await handleMakeAdmin(roleAction.member.user_id);
                     setRoleAction(null);
@@ -1191,7 +1208,10 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                     try {
                       await onTransfer(roleAction.member.user_id, roleAction.type === 'transferKeepAdmin' ? 'admin' : 'member');
                       setRoleAction(null);
-                    } catch (e) { console.error(e); }
+                    } catch (e) {
+                      const msg = e instanceof Error ? e.message : 'Failed to transfer ownership.';
+                      setRoleError(msg);
+                    }
                     finally { setTransferring(false); }
                   }
                 }}
