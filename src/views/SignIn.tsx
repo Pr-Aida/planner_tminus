@@ -35,11 +35,11 @@ export default function SignIn({ onSwitchToSignUp, onSwitchToForgot }: Props) {
       >
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center mb-3">
-            <img src="/logo.svg" alt="PLAN1405 logo" className="h-14 w-14 mb-1" />
+            <img src="/logo.svg" alt="T Minus logo" className="h-14 w-14 mb-1" />
           </div>
           <div className="inline-flex items-center justify-center mb-3">
             <span className="text-2xl font-extrabold tracking-widest" style={{ color: '#1B2A4A' }}>
-              PLAN<span style={{ color: '#7B1C3E' }}>1405</span>
+              T <span style={{ color: '#7B1C3E' }}>Minus</span>
             </span>
           </div>
           <h1 className="text-2xl font-bold" style={{ color: '#1B2A4A' }}>Welcome Back</h1>

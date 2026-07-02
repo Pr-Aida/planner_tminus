@@ -389,24 +389,9 @@ export default function TopNav({
           )}
         </div>
 
-        {/* Right: View tabs + avatar */}
+        {/* Right: View tabs + Rooms + avatar */}
         <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
           {notificationsNode}
-
-          <button
-            data-tour="tour-study-rooms"
-            onClick={onOpenStudyRooms}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all duration-150"
-            style={{
-              background: studyRoomsActive ? 'rgba(255,255,255,0.15)' : 'transparent',
-              color: studyRoomsActive ? '#fff' : 'rgba(255,255,255,0.65)',
-              border: 'none', cursor: 'pointer',
-            }}
-            title="Study Rooms"
-          >
-            <Users size={14} />
-            <span className="hidden sm:inline">Rooms</span>
-          </button>
 
           <div className="flex gap-1" data-tour="tour-view-tabs">
             {tabs.map(tab => (
@@ -416,14 +401,28 @@ export default function TopNav({
                 data-tour={tab.tour}
                 className="px-3 md:px-4 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all duration-150"
                 style={{
-                  background: viewMode === tab.key ? '#7B1C3E' : 'transparent',
-                  color: viewMode === tab.key ? '#fff' : 'rgba(255,255,255,0.65)',
+                  background: !studyRoomsActive && viewMode === tab.key ? '#7B1C3E' : 'transparent',
+                  color: !studyRoomsActive && viewMode === tab.key ? '#fff' : 'rgba(255,255,255,0.65)',
                   border: 'none', cursor: 'pointer',
                 }}
               >
                 {tab.label}
               </button>
             ))}
+            <button
+              data-tour="tour-study-rooms"
+              onClick={onOpenStudyRooms}
+              className="flex items-center gap-1.5 px-3 md:px-4 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all duration-150"
+              style={{
+                background: studyRoomsActive ? '#7B1C3E' : 'transparent',
+                color: studyRoomsActive ? '#fff' : 'rgba(255,255,255,0.65)',
+                border: 'none', cursor: 'pointer',
+              }}
+              title="Study Rooms"
+            >
+              <Users size={14} />
+              <span className="hidden sm:inline">Rooms</span>
+            </button>
           </div>
 
           <button

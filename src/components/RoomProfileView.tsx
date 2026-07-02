@@ -7,7 +7,7 @@ import type { StudyRoom, RoomMember, RoomMemberActivity } from '../types';
 import {
   fetchRoomById, fetchMembers, fetchMyMembership, fetchRoomActivity,
   updateRoom, regenerateInviteCode, deleteRoom,
-  approveMember, rejectMember, removeMember, leaveRoom,
+  approveMember, rejectMember, removeMember, leaveRoom, transferOwnership,
   updateMySharing, requestToJoin, searchUserByUsername, inviteByUsername,
   acceptInvite, declineInvite,
 } from '../lib/studyRooms';

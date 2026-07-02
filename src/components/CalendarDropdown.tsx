@@ -46,9 +46,9 @@ export function CalendarDropdown({ mode, currentYear, currentShYear, onChange }:
           padding: '4px 0',
         }}
       >
-        <img src="/logo.svg" alt="PLAN1405 logo" className="h-7 w-7" style={{ flexShrink: 0 }} />
+        <img src="/logo.svg" alt="T Minus logo" className="h-7 w-7" style={{ flexShrink: 0 }} />
         <span>
-          PLAN <span style={{ color: '#C8A0B0' }}>{displayYear}</span>
+          T Minus <span style={{ color: '#C8A0B0' }}>{displayYear}</span>
         </span>
         {open ? <ChevronUp size={14} strokeWidth={2.5} /> : <ChevronDown size={14} strokeWidth={2.5} />}
       </button>

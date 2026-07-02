@@ -404,12 +404,12 @@ export default function GuidedTour({
               >
                 {isWhatsNew
                   ? <Sparkles size={28} color="#059669" />
-                  : <img src="/logo.svg" alt="PLAN1405 logo" className="h-10 w-10" />
+                  : <img src="/logo.svg" alt="T Minus logo" className="h-10 w-10" />
                 }
               </div>
 
               <h2 className="text-lg font-extrabold mb-1" style={{ color: '#1B2A4A' }}>
-                {isWhatsNew ? (whatsNewTitle || "What's New") : 'Welcome to PLAN1405'}
+                {isWhatsNew ? (whatsNewTitle || "What's New") : 'Welcome to T Minus'}
               </h2>
 
               {isWhatsNew && whatsNewSummary && (

@@ -725,7 +725,7 @@ export default function App() {
           whatsNewSummary={latestUpdate?.summary}
           onFinish={handleTourFinish}
           onSkip={handleTourSkip}
-          onRequireView={(v) => setViewMode(v as ViewMode)}
+          onRequireView={(v) => { setShowStudyRooms(false); setViewMode(v as ViewMode); }}
         />
       )}
 
@@ -742,7 +742,7 @@ export default function App() {
         calMode={calMode}
         onCalModeChange={handleCalModeChange}
         viewMode={viewMode}
-        onViewChange={setViewMode}
+        onViewChange={(v) => { setShowStudyRooms(false); setViewMode(v as ViewMode); }}
         currentGregYear={currentGregYear}
         currentShYear={calMode === 'shamsi' ? shDate.year : gregorianToSh(gregDate).year}
         currentShMonth={currentShMonth}
@@ -863,6 +863,7 @@ export default function App() {
                 setGregDate({ year: viewGregYearForYear, month, day: 1 });
               }
               setViewMode(mode);
+              setShowStudyRooms(false);
             }}
           />
         )}

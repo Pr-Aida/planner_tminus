@@ -160,6 +160,33 @@ export async function deleteRoom(roomId: string): Promise<void> {
   if (error) throw error;
 }
 
+/** Transfer room ownership to another approved member, then demote self to admin. */
+export async function transferOwnership(roomId: string, newOwnerId: string): Promise<void> {
+  // 1. Set the new owner on the room (only current owner can do this — RLS).
+  const { error: rErr } = await supabase
+    .from('study_rooms')
+    .update({ owner_id: newOwnerId })
+    .eq('id', roomId);
+  if (rErr) throw rErr;
+
+  // 2. Set the new owner's member role to 'owner' and status to 'approved'.
+  const { error: mErr } = await supabase
+    .from('study_room_members')
+    .update({ role: 'owner', status: 'approved' })
+    .eq('room_id', roomId).eq('user_id', newOwnerId);
+  if (mErr) throw mErr;
+
+  // 3. Demote the current user (the old owner) to 'admin' member.
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) {
+    const { error: oldErr } = await supabase
+      .from('study_room_members')
+      .update({ role: 'admin' })
+      .eq('room_id', roomId).eq('user_id', user.id);
+    if (oldErr) throw oldErr;
+  }
+}
+
 /** Rooms the current user owns or is an approved/invited/pending member of. */
 export async function fetchMyRooms(): Promise<(StudyRoom & { my_status: RoomMemberStatus })[]> {
   // The rooms SELECT policy already returns rooms I own or have a
