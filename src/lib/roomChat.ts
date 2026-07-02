@@ -48,11 +48,9 @@ export async function fetchChatMessages(roomId: string): Promise<ChatMessage[]> 
   const rows = (data || []) as unknown as ChatRow[];
   if (rows.length === 0) return [];
 
-  const userIds = [...new Set(rows.map(r => r.user_id))];
-  const { data: profiles } = await supabase
-    .from('profiles')
-    .select('id, username, display_name, avatar_url')
-    .in('id', userIds);
+  // Fetch profiles via SECURITY DEFINER RPC to bypass RLS safely.
+  // This returns only safe fields: id, username, display_name, avatar_url.
+  const { data: profiles } = await supabase.rpc('get_room_member_profiles', { p_room_id: roomId });
 
   const profileMap = new Map<string, ProfileRow>();
   ((profiles || []) as unknown as ProfileRow[]).forEach(p => profileMap.set(p.id, p));

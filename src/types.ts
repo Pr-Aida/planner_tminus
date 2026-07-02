@@ -100,6 +100,7 @@ export interface MemberTimerSummary {
   today_seconds: number;
   week_seconds: number;
   active_started_at: string | null;
+  active_accumulated_seconds: number;
   finished_for_day: boolean;
 }
 

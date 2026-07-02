@@ -898,6 +898,7 @@ export async function getRoomTimerSummaries(roomId: string): Promise<MemberTimer
         today_seconds: todaySeconds,
         week_seconds: weekSeconds,
         active_started_at: activeSession?.started_at || null,
+        active_accumulated_seconds: activeSession?.accumulated_seconds || 0,
         finished_for_day: finishedForDay && !activeSession,
       };
     });

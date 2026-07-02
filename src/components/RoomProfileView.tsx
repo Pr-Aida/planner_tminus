@@ -594,15 +594,16 @@ function formatClock(totalSeconds: number): string {
 }
 
 /** Live ticking timer for a member who is currently studying. Updates every second. */
-function MemberLiveTimer({ todaySeconds, startedAt }: { todaySeconds: number; startedAt: string }) {
+function MemberLiveTimer({ accumulatedSeconds, startedAt }: { accumulatedSeconds: number; startedAt: string }) {
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(id);
   }, []);
-  // todaySeconds is the accumulated total when the session started; add elapsed since startedAt.
+  // accumulatedSeconds is the session's accumulated time before the current run;
+  // add elapsed since startedAt for the live display.
   const elapsed = tick >= 0 ? (Date.now() - new Date(startedAt).getTime()) / 1000 : 0;
-  const live = todaySeconds + elapsed;
+  const live = accumulatedSeconds + elapsed;
   return (
     <span
       key={tick}
@@ -792,7 +793,7 @@ function MemberTimerRow({ s, userId }: { s: MemberTimerSummary; userId: string }
   useEffect(() => {
     if (s.status === 'running' && s.active_started_at) {
       const update = () => {
-        const elapsed = s.today_seconds + Math.floor((Date.now() - new Date(s.active_started_at).getTime()) / 1000);
+        const elapsed = s.active_accumulated_seconds + Math.floor((Date.now() - new Date(s.active_started_at).getTime()) / 1000);
         setLiveElapsed(elapsed);
       };
       update();
@@ -801,7 +802,7 @@ function MemberTimerRow({ s, userId }: { s: MemberTimerSummary; userId: string }
     } else {
       setLiveElapsed(s.today_seconds);
     }
-  }, [s.status, s.active_started_at, s.today_seconds]);
+  }, [s.status, s.active_started_at, s.active_accumulated_seconds, s.today_seconds]);
 
   const getStatusBadge = () => {
     if (s.status === 'running') {
@@ -1034,7 +1035,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                     </p>
                     {/* Live timer directly next to name — large, bold, readable */}
                     {isStudying && ts?.active_started_at && (
-                      <MemberLiveTimer todaySeconds={ts.today_seconds} startedAt={ts.active_started_at} />
+                      <MemberLiveTimer accumulatedSeconds={ts.active_accumulated_seconds} startedAt={ts.active_started_at} />
                     )}
                   </div>
                   <p className="text-xs" style={{ color: '#9CA3AF' }}>@{m.username || m.user_id.slice(0, 8)}</p>

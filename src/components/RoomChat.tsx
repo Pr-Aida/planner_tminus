@@ -83,7 +83,6 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin }: Props) {
         ) : (
           messages.map(m => {
             const isOwn = m.user_id === userId;
-            const displayName = m.display_name || m.username || 'Member';
 
             return (
               <div key={m.id} className={`flex gap-2 ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -92,7 +91,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin }: Props) {
                   <img src={m.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0 mt-0.5" />
                 ) : (
                   <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5" style={{ background: isOwn ? '#7B1C3E' : '#1B2A4A' }}>
-                    {displayName.charAt(0).toUpperCase()}
+                    {(m.display_name || m.username || 'M').charAt(0).toUpperCase()}
                   </div>
                 )}
 
@@ -100,8 +99,11 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin }: Props) {
                 <div className={`group flex-1 min-w-0 max-w-[75%] ${isOwn ? 'text-right' : 'text-left'}`}>
                   <div className="flex items-center gap-1.5 mb-0.5" style={{ flexDirection: isOwn ? 'row-reverse' : 'row' }}>
                     <span className="text-xs font-semibold truncate" style={{ color: '#1B2A4A' }}>
-                      {isOwn ? 'You' : displayName}
+                      {isOwn ? 'You' : (m.display_name || m.username || 'Member')}
                     </span>
+                    {!isOwn && m.username && m.display_name && (
+                      <span className="text-[10px] flex-shrink-0" style={{ color: '#9CA3AF' }}>@{m.username}</span>
+                    )}
                     <span className="text-[10px] flex-shrink-0" style={{ color: '#9CA3AF' }}>
                       {formatTime(m.created_at)}
                     </span>
