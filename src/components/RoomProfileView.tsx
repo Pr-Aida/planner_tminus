@@ -577,6 +577,37 @@ function formatTimer(seconds: number): string {
   return `${h}:${m}:${s}`;
 }
 
+/** Format seconds as HH:MM:SS clock display. */
+function formatClock(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${pad(h)}:${pad(m)}:${pad(sec)}`;
+}
+
+/** Live ticking timer for a member who is currently studying. Updates every second. */
+function MemberLiveTimer({ todaySeconds, startedAt }: { todaySeconds: number; startedAt: string }) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  // todaySeconds is the accumulated total when the session started; add elapsed since startedAt.
+  const elapsed = tick >= 0 ? (Date.now() - new Date(startedAt).getTime()) / 1000 : 0;
+  const live = todaySeconds + elapsed;
+  return (
+    <span
+      key={tick}
+      className="text-lg font-bold tabular-nums flex-shrink-0 tracking-wider"
+      style={{ color: '#1B2A4A', fontVariantNumeric: 'tabular-nums' }}
+    >
+      {formatClock(live)}
+    </span>
+  );
+}
+
 function StudyTimerSection({ roomId, userId }: { roomId: string; userId: string }) {
   const [activeSession, setActiveSession] = useState<{ id: string; started_at: string; status: string; accumulated_seconds: number } | null>(null);
   const [summaries, setSummaries] = useState<MemberTimerSummary[]>([]);
@@ -964,12 +995,13 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
         </div>
       )}
 
-      {/* Approved members — avatar, name, role, studying status, inline study times */}
+      {/* Approved members — avatar, name, live timer (when studying), weekly under name */}
       <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
         <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7B1C3E' }}>Members ({approved.length})</p>
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {approved.map(m => {
             const ts = timerSummaries.find(s => s.user_id === m.user_id);
+            const isStudying = ts?.status === 'running';
             return (
               <div key={m.id} className="flex items-center gap-2.5 flex-wrap">
                 <MemberAvatar m={m} />
@@ -987,28 +1019,34 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                     )}
                   </p>
                   <p className="text-xs" style={{ color: '#9CA3AF' }}>@{m.username || m.user_id.slice(0, 8)}</p>
+                  {/* Summary under name: weekly only when studying, full summary when not */}
+                  {isStudying ? (
+                    <p className="text-xs mt-0.5" style={{ color: '#6B6B6B' }}>This week: {formatDuration(ts!.week_seconds)}</p>
+                  ) : ts ? (
+                    <p className="text-xs mt-0.5" style={{ color: '#6B6B6B' }}>
+                      Today: {formatDuration(ts.today_seconds)} · This week: {formatDuration(ts.week_seconds)}
+                    </p>
+                  ) : null}
                 </div>
 
-                {/* Studying status badge */}
-                {ts?.is_studying && (
+                {/* Live timer next to name when studying — large, bold, readable */}
+                {isStudying && ts?.active_started_at && (
+                  <MemberLiveTimer todaySeconds={ts.today_seconds} startedAt={ts.active_started_at} />
+                )}
+
+                {/* Studying now badge */}
+                {isStudying && (
                   <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#E6F6EF', color: '#059669' }}>
                     <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#059669' }} />
-                    Studying
+                    Studying now
                   </span>
                 )}
 
-                {/* Inline study times on the same row */}
-                {ts && !ts.is_studying && (
+                {/* Non-studying status badge */}
+                {ts && !isStudying && (
                   <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#F2F2F2', color: '#9CA3AF' }}>
-                    {ts.finished_for_day ? 'Finished' : 'Not studying'}
+                    {ts.finished_for_day ? 'Finished' : 'Idle'}
                   </span>
-                )}
-                {ts && (
-                  <div className="flex items-center gap-2 text-xs flex-shrink-0" style={{ color: '#6B6B6B' }}>
-                    <span>Today: <strong style={{ color: '#1B2A4A' }}>{formatDuration(ts.today_seconds)}</strong></span>
-                    <span style={{ color: '#D1D5DB' }}>|</span>
-                    <span>Week: <strong style={{ color: '#1B2A4A' }}>{formatDuration(ts.week_seconds)}</strong></span>
-                  </div>
                 )}
 
                 {/* Member actions (owner only) */}
