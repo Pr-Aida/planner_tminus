@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ArrowLeft, Copy, Check, RefreshCw, Users, Clock, Trophy, Settings,
   UserPlus, Trash2, X, Loader2, Link as LinkIcon, Search, LogOut, AlertTriangle,
-  UserCog, Play, Square, Timer, ImageIcon,
+  UserCog, Play, Square, Timer, ImageIcon, MoreVertical,
 } from 'lucide-react';
 import type { StudyRoom, RoomMember, RoomMemberActivity, MemberTimerSummary } from '../types';
 import {
