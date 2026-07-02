@@ -27,22 +27,53 @@ function randomRoomCode(): string {
   return `${l1}${l2}-${num}`;
 }
 
-/** Log a Supabase error with full details for debugging. */
+/** Log a Supabase error with full details for debugging. Always logs — not gated on DEV. */
 function logSupabaseError(context: string, error: unknown) {
-  if (import.meta.env.DEV) {
+  // eslint-disable-next-line no-console
+  console.error(`[StudyRooms] ${context} failed:`, error);
+  if (error && typeof error === 'object') {
+    const e = error as { code?: string; message?: string; hint?: string; details?: string; table?: string };
     // eslint-disable-next-line no-console
-    console.error(`[StudyRooms] ${context}:`, error);
+    console.error(`[StudyRooms]   code:    ${e.code ?? '(none)'}`);
+    // eslint-disable-next-line no-console
+    console.error(`[StudyRooms]   message: ${e.message ?? '(none)'}`);
+    // eslint-disable-next-line no-console
+    console.error(`[StudyRooms]   hint:    ${e.hint ?? '(none)'}`);
+    // eslint-disable-next-line no-console
+    console.error(`[StudyRooms]   details: ${e.details ?? '(none)'}`);
   }
 }
 
-/** Translate a Supabase/Postgres error into a user-friendly message. */
-function friendlyRoomError(error: unknown): string {
+/** Build a user-facing error message that includes the real Supabase error, not a generic one. */
+function describeError(error: unknown): string {
   if (error && typeof error === 'object') {
-    const e = error as { code?: string; message?: string };
-    if (e.code === '42501') return 'Permission denied — please sign in and try again.';
-    if (e.code === '23505') return 'Room code collision — please try again.';
-    if (e.message?.includes('gen_room_code')) return 'Could not generate a room code. Please try again.';
+    const e = error as { code?: string; message?: string; hint?: string };
+    const code = e.code ?? '';
+    const msg = e.message ?? (error instanceof Error ? error.message : String(error));
+    // RLS / permission error
+    if (code === '42501') {
+      return `Permission denied (RLS blocked the operation). ${msg}`;
+    }
+    // Unique constraint violation
+    if (code === '23505') {
+      return 'A room with that code already exists. Please try again.';
+    }
+    // Not-null violation
+    if (code === '23502') {
+      return `Missing required field: ${msg}`;
+    }
+    // Check constraint violation
+    if (code === '23514') {
+      return `Invalid value: ${msg}`;
+    }
+    // Foreign key violation
+    if (code === '23503') {
+      return `Referenced record not found: ${msg}`;
+    }
+    // If we have a message, show it
+    if (msg) return msg;
   }
+  if (error instanceof Error) return error.message;
   return 'Room creation failed. Please try again.';
 }
 
@@ -80,7 +111,7 @@ export async function createRoom(input: {
       logSupabaseError('createRoom insert', error);
       // 23505 = unique_violation — collision on room_code/invite_code, retry
       if ((error as { code?: string }).code === '23505' && attempt < 2) continue;
-      throw new Error(friendlyRoomError(error));
+      throw new Error(describeError(error));
     }
     room = data as StudyRoom;
     break;
@@ -88,20 +119,21 @@ export async function createRoom(input: {
   if (!room) throw new Error('Room creation failed. Please try again.');
 
   // 4. Insert the creator as an approved owner member.
-  //    user_id is set by DEFAULT auth.uid(); status='approved'.
+  //    user_id is set by DEFAULT auth.uid(); status='approved'; role='owner'.
   const { error: mErr } = await supabase
     .from('study_room_members')
     .insert({
       room_id: room.id,
       user_id: user.id,
       status: 'approved',
+      role: 'owner',
       joined_at: new Date().toISOString(),
     });
   if (mErr) {
     logSupabaseError('createRoom member insert', mErr);
     // Transaction-like rollback: delete the room so we don't leave an orphan.
     await supabase.from('study_rooms').delete().eq('id', room.id);
-    throw new Error(friendlyRoomError(mErr));
+    throw new Error(describeError(mErr));
   }
 
   return room;

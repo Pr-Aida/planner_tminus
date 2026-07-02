@@ -25,10 +25,13 @@ export interface StudyRoom {
   updated_at: string;
 }
 
+export type RoomMemberRole = 'owner' | 'admin' | 'member';
+
 export interface RoomMember {
   id: string;
   room_id: string;
   user_id: string;
+  role: RoomMemberRole;
   status: RoomMemberStatus;
   share_today: boolean;
   share_weekly: boolean;

@@ -207,7 +207,8 @@ function CreateRoomModal({
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Room creation failed. Please try again.';
       setError(msg);
-      if (import.meta.env.DEV) console.error('[CreateRoom]', e);
+      // eslint-disable-next-line no-console
+      console.error('[CreateRoom] full error:', e);
     } finally {
       setSaving(false);
     }

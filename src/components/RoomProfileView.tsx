@@ -624,7 +624,7 @@ function MembersTab({
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate" style={{ color: '#1B2A4A' }}>
                   {m.display_name || m.username}
-                  {m.user_id === room.owner_id && (
+                  {m.role === 'owner' && (
                     <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#F5E6EC', color: '#7B1C3E' }}>Admin</span>
                   )}
                   {m.user_id === currentUserId && (
