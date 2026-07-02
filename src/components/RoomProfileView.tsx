@@ -978,16 +978,6 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
     } catch (e) { console.error(e); }
   }
 
-  // Fetch timer summaries so we can show inline study times per member
-  const [timerSummaries, setTimerSummaries] = useState<MemberTimerSummary[]>([]);
-  useEffect(() => {
-    getRoomTimerSummaries(room.id).then(setTimerSummaries).catch(() => {});
-    const id = setInterval(() => {
-      getRoomTimerSummaries(room.id).then(setTimerSummaries).catch(() => {});
-    }, 15000);
-    return () => clearInterval(id);
-  }, [room.id]);
-
   const themeColor = room.theme_color || '#1B2A4A';
 
   return (
@@ -1056,26 +1046,14 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
         </div>
       )}
 
-      {/* Approved members — avatar, name, timer (running/paused/stopped), weekly under name */}
+      {/* Approved members — avatar, name, role badge, management menu */}
       <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
         <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: themeColor }}>Members ({approved.length})</p>
         <div className="space-y-2.5">
           {approved.map(m => {
-            const ts = timerSummaries.find(s => s.user_id === m.user_id);
-            const isStudying = ts?.status === 'running';
-            const isPaused = ts?.status === 'paused';
-            const isStopped = ts && ts.status === 'ended' && ts.finished_for_day;
-            const showTimer = isStudying || isPaused || (ts && ts.status === 'ended' && (ts.today_seconds > 0));
-            const timerValue = isStudying && ts?.active_started_at
-              ? (ts.active_accumulated_seconds + Math.floor((Date.now() - new Date(ts.active_started_at).getTime()) / 1000))
-              : isPaused
-                ? (ts?.active_accumulated_seconds || 0)
-                : (ts?.today_seconds || 0);
-            const timerColor = isStudying ? '#059669' : isPaused ? '#B45309' : themeColor;
             return (
-              <div key={m.id} className="flex items-center gap-2.5 flex-wrap">
+              <div key={m.id} className="flex items-center gap-2.5">
                 <MemberAvatar m={m} themeColor={themeColor} />
-                {/* Name + timer on same row, then weekly under name */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-sm font-medium truncate" style={{ color: '#1B2A4A' }}>
@@ -1083,53 +1061,16 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                       {m.role === 'owner' && (
                         <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: `${themeColor}15`, color: themeColor }}>Owner</span>
                       )}
-                      {m.role === 'admin' && m.role !== 'owner' && (
+                      {m.role === 'admin' && (
                         <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#EBF0FF', color: '#1B2A4A' }}>Admin</span>
                       )}
                       {m.user_id === currentUserId && (
                         <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#E8EBF4', color: '#1B2A4A' }}>You</span>
                       )}
                     </p>
-                    {/* Timer between name and status badge — large, bold */}
-                    {showTimer && (
-                      <MemberTimerDisplay value={timerValue} color={timerColor} isRunning={isStudying} startedAt={ts?.active_started_at} accumulated={ts?.active_accumulated_seconds || 0} />
-                    )}
                   </div>
                   <p className="text-xs" style={{ color: '#9CA3AF' }}>@{m.username || m.user_id.slice(0, 8)}</p>
-                  {/* Under name: only weekly study time */}
-                  {ts && (
-                    <p className="text-xs mt-0.5" style={{ color: '#6B6B6B' }}>This week: {formatDuration(ts.week_seconds)}</p>
-                  )}
                 </div>
-
-                {/* Studying now badge on the right */}
-                {isStudying && (
-                  <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#E6F6EF', color: '#059669' }}>
-                    <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#059669' }} />
-                    Studying now
-                  </span>
-                )}
-
-                {/* Paused badge */}
-                {isPaused && (
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#FEF3C7', color: '#B45309' }}>
-                    Paused
-                  </span>
-                )}
-
-                {/* Stopped badge */}
-                {isStopped && (
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#E6F6EF', color: '#059669' }}>
-                    Stopped
-                  </span>
-                )}
-
-                {/* Idle badge */}
-                {ts && !isStudying && !isPaused && !isStopped && (
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#F2F2F2', color: '#9CA3AF' }}>
-                    Idle
-                  </span>
-                )}
 
                 {/* Member actions (owner only) */}
                 {isOwner && m.user_id !== room.owner_id && (
@@ -1224,7 +1165,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                       <strong style={{ color: '#1B2A4A' }}>
                         {roleAction.member.display_name || roleAction.member.username || 'this member'}
                       </strong>
-                      ? and keep yourself as admin?
+                      {' '}and keep yourself as admin?
                     </>
                   )}
                   {roleAction.type === 'makeAdmin' && (
