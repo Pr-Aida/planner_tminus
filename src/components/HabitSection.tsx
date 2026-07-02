@@ -1,6 +1,7 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { Plus, Trash2, Check, Pencil, Save, EyeOff, CalendarDays, Layers } from 'lucide-react';
 import type { Habit, HabitType, HabitOverride, TempHabit } from '../types';
+import { evalMinuteExpr } from '../lib/expr';
 
 type EffectiveHabit = (Habit | TempHabit) & { isExtra: boolean };
 
@@ -230,6 +231,19 @@ function HabitRow({ habit, value, onToggle, onDelete, onRename, onHideForDay, is
   const isDone = habit.habit_type === 'checkbox' ? !!value : false;
   const numVal = habit.habit_type === 'value' ? (typeof value === 'number' ? value : 0) : 0;
 
+  // Time-input local state: lets the user type expressions like "15+10"
+  // before committing the calculated result on blur / Enter.
+  const [timeDraft, setTimeDraft] = useState<string>(numVal ? String(numVal) : '');
+  const [timeError, setTimeError] = useState<string>('');
+  const timeRef = useRef<HTMLInputElement>(null);
+
+  // Keep the draft in sync when the saved value changes externally
+  // (e.g. navigating to another day, or a sync from another device).
+  useEffect(() => {
+    setTimeDraft(numVal ? String(numVal) : '');
+    setTimeError('');
+  }, [numVal]);
+
   function startEdit() {
     setEditName(habit.name);
     setEditing(true);
@@ -245,6 +259,37 @@ function HabitRow({ habit, value, onToggle, onDelete, onRename, onHideForDay, is
   function handleEditKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter') commitEdit();
     if (e.key === 'Escape') { setEditing(false); setEditName(habit.name); }
+  }
+
+  function commitTime() {
+    const draft = timeDraft.trim();
+    if (draft === '') {
+      setTimeError('');
+      onToggle(0);
+      return;
+    }
+    const result = evalMinuteExpr(draft);
+    if (result === null || result < 0) {
+      setTimeError('Please enter a valid time, for example 15 or 15+10.');
+      return;
+    }
+    setTimeError('');
+    const clamped = Math.min(result, 9999);
+    setTimeDraft(String(clamped));
+    onToggle(clamped);
+  }
+
+  function handleTimeKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitTime();
+      timeRef.current?.blur();
+    }
+    if (e.key === 'Escape') {
+      setTimeError('');
+      setTimeDraft(numVal ? String(numVal) : '');
+      timeRef.current?.blur();
+    }
   }
 
   return (
@@ -263,16 +308,28 @@ function HabitRow({ habit, value, onToggle, onDelete, onRename, onHideForDay, is
           {isDone && <Check size={13} color="#fff" strokeWidth={3} />}
         </button>
       ) : (
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <input
-            type="number" min={0} max={9999} value={numVal || ''} placeholder="0"
-            onChange={e => onToggle(Number(e.target.value) || 0)}
-            className="rounded-md text-center text-xs outline-none"
-            style={{ width: 52, height: 28, border: '1.5px solid #C8C8C8', color: '#1B2A4A' }}
-            onFocus={e => (e.target.style.borderColor = '#1B2A4A')}
-            onBlur={e => (e.target.style.borderColor = '#C8C8C8')}
-          />
-          <span className="text-xs" style={{ color: '#6B6B6B' }}>{habit.unit || 'min'}</span>
+        <div className="flex flex-col flex-shrink-0" style={{ gap: 2 }}>
+          <div className="flex items-center gap-1.5">
+            <input
+              ref={timeRef}
+              type="text"
+              inputMode="numeric"
+              value={timeDraft}
+              placeholder="0"
+              onChange={e => { setTimeDraft(e.target.value); setTimeError(''); }}
+              onFocus={e => { e.target.style.borderColor = '#1B2A4A'; e.target.select(); }}
+              onBlur={e => { e.target.style.borderColor = timeError ? '#B45309' : '#C8C8C8'; commitTime(); }}
+              onKeyDown={handleTimeKeyDown}
+              className="rounded-md text-center text-xs outline-none"
+              style={{ width: 64, height: 28, border: '1.5px solid #C8C8C8', color: '#1B2A4A', fontFamily: 'inherit' }}
+            />
+            <span className="text-xs" style={{ color: '#6B6B6B' }}>{habit.unit || 'min'}</span>
+          </div>
+          {timeError && (
+            <span className="text-[9px] leading-tight" style={{ color: '#B45309', maxWidth: 120 }}>
+              {timeError}
+            </span>
+          )}
         </div>
       )}
 
