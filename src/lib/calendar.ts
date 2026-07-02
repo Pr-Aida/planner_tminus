@@ -34,7 +34,7 @@ export const GREG_MONTH_SHORT = [
 ];
 
 // SH week starts Saturday (Shanbe = 0)
-export const SH_WEEKDAYS_SHORT = ['Sh','Su','Mo','Tu','We','Th','Fr'];
+export const SH_WEEKDAYS_SHORT = ['Sh','Ye','Do','Se','Ch','Pa','Jo'];
 export const SH_WEEKDAYS_FULL  = ['Shanbeh','Yekshanbeh','Doshanbeh','Seshanbeh','Chaharshanbeh','Panjshanbeh','Jomeh'];
 
 // Gregorian week starts Monday (Mon = 0)
