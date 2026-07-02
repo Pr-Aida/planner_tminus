@@ -25,6 +25,9 @@ import ResetPassword from './views/ResetPassword';
 import ProfileView from './components/ProfileView';
 import GuidedTour, { APP_VERSION, WHATS_NEW_UPDATES } from './components/GuidedTour';
 import type { CountdownConfig } from './components/CountdownBar';
+import StudyRoomsView from './views/StudyRoomsView';
+import JoinRoomView from './views/JoinRoomView';
+import RoomNotifications from './components/RoomNotifications';
 
 type AuthScreen = 'sign-in' | 'sign-up' | 'forgot-password' | 'reset-password';
 type TourMode = 'onboarding' | 'whats-new';
@@ -67,6 +70,10 @@ export default function App() {
   const [calMode, setCalMode] = useState<CalendarMode>('shamsi');
   const [viewMode, setViewMode] = useState<ViewMode>('daily');
 
+  // Study Rooms panel + invite-link routing
+  const [showStudyRooms, setShowStudyRooms] = useState(false);
+  const [inviteCodeFromUrl, setInviteCodeFromUrl] = useState<string | null>(null);
+
   const [shDate, setShDate] = useState<ShDate>(todaySh);
   const [gregDate, setGregDate] = useState<GregDate>(todayGreg);
 
@@ -96,6 +103,8 @@ export default function App() {
   const pendingMonthly = useRef<Map<string, string>>(new Map());
   const pendingDayNotes = useRef<Map<string, string>>(new Map());
   const clockSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // When arriving via an invite link that's already approved, open this room in the panel.
+  const pendingOpenRoomId = useRef<string | null>(null);
 
   // ─── Auth Setup ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -129,6 +138,14 @@ export default function App() {
     if (type === 'recovery') {
       setAuthScreen('reset-password');
       window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  // Detect /room/:inviteCode invite-link URLs (Study Rooms)
+  useEffect(() => {
+    const m = window.location.pathname.match(/^\/room\/([A-Za-z0-9]+)/);
+    if (m) {
+      setInviteCodeFromUrl(m[1]);
     }
   }, []);
 
@@ -638,6 +655,35 @@ export default function App() {
     );
   }
 
+  // ─── Study Room invite-link landing (/room/:inviteCode) ────────────────────
+  if (inviteCodeFromUrl) {
+    return (
+      <JoinRoomView
+        inviteCode={inviteCodeFromUrl}
+        userId={user?.id || ''}
+        isAuthenticated={!!user}
+        onRequireAuth={() => {
+          // Clear the invite route so the auth screen shows, but remember the code
+          // by leaving inviteCodeFromUrl set; after login the user returns here.
+          setAuthScreen('sign-in');
+        }}
+        onOpenRoom={(roomId) => {
+          // Clear the URL and open the room inside the Study Rooms panel.
+          window.history.replaceState({}, '', window.location.pathname.replace(/\/room\/.*$/, '/'));
+          setInviteCodeFromUrl(null);
+          setShowStudyRooms(true);
+          // The StudyRoomsView manages its own open-room state via onOpenRoom below.
+          // We stash the target room id so the panel opens it directly.
+          pendingOpenRoomId.current = roomId;
+        }}
+        onBack={() => {
+          window.history.replaceState({}, '', window.location.pathname.replace(/\/room\/.*$/, '/'));
+          setInviteCodeFromUrl(null);
+        }}
+      />
+    );
+  }
+
   // ─── Auth Screens ────────────────────────────────────────────────────────
   if (!user) {
     if (authScreen === 'sign-in') {
@@ -708,6 +754,14 @@ export default function App() {
         onOpenProfile={() => setShowProfile(true)}
         onRestartTour={handleRestartTour}
         onOpenWhatsNew={handleOpenWhatsNew}
+        onOpenStudyRooms={() => setShowStudyRooms(true)}
+        studyRoomsActive={showStudyRooms}
+        notificationsNode={user ? (
+          <RoomNotifications
+            userId={user.id}
+            onOpenRoom={(roomId) => { setShowStudyRooms(true); pendingOpenRoomId.current = roomId; }}
+          />
+        ) : null}
         timezone={profile?.timezone_pref || 'UTC'}
         clockSettings={clockSettings}
         onClockSettingsChange={handleClockSettingsChange}
@@ -715,6 +769,13 @@ export default function App() {
 
       <HeroBanner imageDataUrl={coverImage} onImageChange={handleCoverChange} />
 
+      {showStudyRooms && user ? (
+        <StudyRoomsView
+          userId={user.id}
+          initialOpenRoomId={pendingOpenRoomId.current}
+          onOpenRoom={() => {}}
+        />
+      ) : (
       <div className="max-w-5xl mx-auto px-4 md:px-6 pt-6 pb-16">
         <DateBar
           calMode={calMode}
@@ -806,6 +867,7 @@ export default function App() {
           />
         )}
       </div>
+      )}
 
       {profileLoading && !profile && (
         <div className="fixed bottom-4 right-4 text-xs" style={{ color: '#9CA3AF' }}>Loading profile…</div>

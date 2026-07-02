@@ -2,6 +2,77 @@ export type CalendarMode = 'shamsi' | 'gregorian';
 export type ViewMode = 'daily' | 'weekly' | 'monthly' | 'yearly';
 export type HabitType = 'checkbox' | 'value';
 
+// ─── Study Rooms ─────────────────────────────────────────────────────────────
+export type RoomMemberStatus =
+  | 'pending' | 'approved' | 'rejected' | 'invited' | 'declined' | 'left' | 'removed';
+export type RoomInviteStatus = 'sent' | 'accepted' | 'declined' | 'revoked';
+export type RoomNotificationType =
+  | 'join_request' | 'request_approved' | 'request_rejected'
+  | 'room_invited' | 'invite_accepted' | 'member_left' | 'member_removed';
+
+export interface StudyRoom {
+  id: string;
+  owner_id: string;
+  name: string;
+  description: string;
+  avatar_url: string | null;
+  theme_color: string;
+  invite_code: string;
+  room_code: string;
+  invite_enabled: boolean;
+  leaderboard_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RoomMember {
+  id: string;
+  room_id: string;
+  user_id: string;
+  status: RoomMemberStatus;
+  share_today: boolean;
+  share_weekly: boolean;
+  show_active_now: boolean;
+  hide_activity: boolean;
+  joined_at: string | null;
+  created_at: string;
+  updated_at: string;
+  // Joined profile fields (from RPC / manual join)
+  display_name?: string;
+  username?: string;
+  avatar_url?: string | null;
+}
+
+export interface RoomInvite {
+  id: string;
+  room_id: string;
+  invitee_user_id: string;
+  inviter_user_id: string;
+  status: RoomInviteStatus;
+  created_at: string;
+}
+
+export interface RoomNotification {
+  id: string;
+  user_id: string;
+  room_id: string;
+  type: RoomNotificationType;
+  actor_user_id: string | null;
+  payload: Record<string, unknown>;
+  read: boolean;
+  created_at: string;
+}
+
+export interface RoomMemberActivity {
+  user_id: string;
+  display_name: string;
+  username: string;
+  avatar_url: string | null;
+  minutes: number;
+  active_now: boolean;
+  hidden: boolean;
+}
+
 export type ReminderStatus = 'pending' | 'completed' | 'not_completed' | 'postponed' | 'cancelled';
 export type ReminderOffset = 0 | 1 | 3 | 7;
 

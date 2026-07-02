@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { CalendarDropdown } from './CalendarDropdown';
 import CountdownBar from './CountdownBar';
-import { Sparkles, Edit2, X, Plus, Clock, Check } from 'lucide-react';
+import { Sparkles, Edit2, X, Plus, Clock, Check, Users } from 'lucide-react';
 import type { CalendarMode, ViewMode } from '../types';
 import { TIMEZONES } from '../types';
 import type { CountdownConfig } from './CountdownBar';
@@ -32,6 +32,9 @@ interface Props {
   onOpenProfile: () => void;
   onRestartTour: () => void;
   onOpenWhatsNew: () => void;
+  onOpenStudyRooms: () => void;
+  studyRoomsActive: boolean;
+  notificationsNode?: React.ReactNode;
   timezone?: string;          // profile timezone (used for clock1 'auto')
   clockSettings: ClockSettings;
   onClockSettingsChange: (s: ClockSettings) => void;
@@ -221,6 +224,7 @@ export default function TopNav({
   calMode, onCalModeChange, viewMode, onViewChange,
   currentGregYear, currentShYear, currentShMonth, countdown, onCountdownSave,
   userAvatar, userInitial, onSignOut, onOpenProfile, onRestartTour, onOpenWhatsNew,
+  onOpenStudyRooms, studyRoomsActive, notificationsNode,
   timezone = 'UTC',
   clockSettings, onClockSettingsChange,
 }: Props) {
@@ -387,6 +391,22 @@ export default function TopNav({
 
         {/* Right: View tabs + avatar */}
         <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+          {notificationsNode}
+
+          <button
+            onClick={onOpenStudyRooms}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all duration-150"
+            style={{
+              background: studyRoomsActive ? 'rgba(255,255,255,0.15)' : 'transparent',
+              color: studyRoomsActive ? '#fff' : 'rgba(255,255,255,0.65)',
+              border: 'none', cursor: 'pointer',
+            }}
+            title="Study Rooms"
+          >
+            <Users size={14} />
+            <span className="hidden sm:inline">Rooms</span>
+          </button>
+
           <div className="flex gap-1" data-tour="tour-view-tabs">
             {tabs.map(tab => (
               <button
