@@ -5,6 +5,7 @@ import {
   fetchNotifications, markNotificationRead, markAllNotificationsRead,
   deleteNotification, unreadNotificationCount, approveMember, rejectMember,
 } from '../lib/studyRooms';
+import { supabase } from '../lib/supabase';
 
 interface Props {
   userId: string;
@@ -34,11 +35,21 @@ export default function RoomNotifications({ userId, onOpenRoom }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Poll for new notifications every 30s while mounted.
+  // Realtime subscription for notifications
   useEffect(() => {
-    const id = setInterval(load, 30000);
-    return () => clearInterval(id);
-  }, [load]);
+    const channel = supabase.channel(`notifications:${userId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'room_notifications',
+        filter: `user_id=eq.${userId}`,
+      }, () => { load(); })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, load]);
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -153,13 +164,21 @@ function NotificationRow({
   onDismiss: () => void;
 }) {
   const icon = iconFor(n.type);
+  const payload = n.payload as Record<string, unknown>;
+  const actorAvatar = payload?.actor_avatar_url as string | null;
+  const actorName = payload?.actor_display_name as string || payload?.actor_username as string || 'Someone';
+
   return (
     <div
       className="px-4 py-3 transition-colors"
       style={{ background: n.read ? 'transparent' : '#F8F9FC', borderBottom: '1px solid #F2F2F2' }}
     >
       <div className="flex items-start gap-2">
-        <span style={{ color: icon.color, marginTop: 2 }}>{icon.icon}</span>
+        {n.type === 'join_request' && actorAvatar ? (
+          <img src={actorAvatar} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0 mt-0.5" />
+        ) : (
+          <span style={{ color: icon.color, marginTop: 2, width: 20, display: 'inline-flex', justifyContent: 'center' }}>{icon.icon}</span>
+        )}
         <div className="flex-1 min-w-0">
           <p className="text-xs leading-relaxed" style={{ color: '#1B2A4A' }}>
             {textFor(n)}
@@ -224,9 +243,12 @@ function iconFor(type: RoomNotificationType): { icon: React.ReactNode; color: st
 }
 
 function textFor(n: RoomNotification): string {
-  const roomName = (n.payload as Record<string, unknown>)?.room_name as string || 'a room';
+  const payload = n.payload as Record<string, unknown>;
+  const roomName = payload?.room_name as string || 'a room';
+  const actorName = payload?.actor_display_name as string || payload?.actor_username as string || 'Someone';
+
   switch (n.type) {
-    case 'join_request': return `Someone requested to join "${roomName}".`;
+    case 'join_request': return `${actorName} requested to join "${roomName}".`;
     case 'request_approved': return `Your request to join "${roomName}" was approved.`;
     case 'request_rejected': return `Your request to join "${roomName}" was declined.`;
     case 'room_invited': return `You've been invited to join "${roomName}".`;

@@ -172,7 +172,7 @@ export async function deleteRoom(roomId: string): Promise<void> {
   if (error) throw error;
 }
 
-/** Transfer room ownership to another approved member, then demote self to admin. */
+/** Transfer room ownership to another approved member. Previous owner stays as member. */
 export async function transferOwnership(roomId: string, newOwnerId: string): Promise<void> {
   // 1. Set the new owner on the room (only current owner can do this — RLS).
   const { error: rErr } = await supabase
@@ -188,40 +188,82 @@ export async function transferOwnership(roomId: string, newOwnerId: string): Pro
     .eq('room_id', roomId).eq('user_id', newOwnerId);
   if (mErr) throw mErr;
 
-  // 3. Demote the current user (the old owner) to 'admin' member.
+  // 3. Demote the current user (the old owner) to 'member' role (NOT admin, just regular member).
   const { data: { user } } = await supabase.auth.getUser();
   if (user) {
     const { error: oldErr } = await supabase
       .from('study_room_members')
-      .update({ role: 'admin' })
+      .update({ role: 'member' })
       .eq('room_id', roomId).eq('user_id', user.id);
     if (oldErr) throw oldErr;
   }
 }
 
-/** Rooms the current user actively belongs to (approved status only in list; pending shown separately). */
+/** Make a member an admin (only owner can do this). */
+export async function makeAdmin(roomId: string, targetUserId: string): Promise<void> {
+  const { error } = await supabase
+    .from('study_room_members')
+    .update({ role: 'admin' })
+    .eq('room_id', roomId).eq('user_id', targetUserId);
+  if (error) throw error;
+}
+
+/** Remove admin role from a member (only owner can do this). */
+export async function removeAdmin(roomId: string, targetUserId: string): Promise<void> {
+  const { error } = await supabase
+    .from('study_room_members')
+    .update({ role: 'member' })
+    .eq('room_id', roomId).eq('user_id', targetUserId);
+  if (error) throw error;
+}
+
+/** Rooms the current user actively belongs to (approved status only). */
 export async function fetchMyRooms(): Promise<(StudyRoom & { my_status: RoomMemberStatus })[]> {
-  const [{ data: rooms, error: e1 }, { data: memberRows, error: e2 }] = await Promise.all([
-    supabase.from('study_rooms').select('*').order('updated_at', { ascending: false }),
-    supabase.from('study_room_members').select('room_id, status'),
-  ]);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  // Fetch only rooms where the user is an approved member OR is the owner
+  const { data: memberRows, error: e1 } = await supabase
+    .from('study_room_members')
+    .select('room_id, status')
+    .eq('user_id', user.id);
   if (e1) throw e1;
-  if (e2) throw e2;
 
   const statusByRoom = new Map<string, RoomMemberStatus>();
-  for (const m of (memberRows || []) as RoomMember[]) {
+  for (const m of (memberRows || []) as { room_id: string; status: RoomMemberStatus }[]) {
     statusByRoom.set(m.room_id, m.status);
   }
 
-  // Only show rooms where status is approved (or owner — owner_id check as fallback)
-  // Filter out left / rejected / removed / declined
-  const ACTIVE_STATUSES = new Set<RoomMemberStatus>(['approved', 'pending', 'invited']);
-  return ((rooms || []) as StudyRoom[])
-    .map(r => ({
-      ...r,
-      my_status: (statusByRoom.get(r.id) || 'approved') as RoomMemberStatus,
-    }))
-    .filter(r => ACTIVE_STATUSES.has(r.my_status));
+  // Get room IDs where user is approved OR owner_id matches
+  const approvedRoomIds = [...statusByRoom.entries()]
+    .filter(([, status]) => status === 'approved')
+    .map(([roomId]) => roomId);
+
+  // Also fetch rooms where user is the owner
+  const { data: ownedRooms, error: e2 } = await supabase
+    .from('study_rooms')
+    .select('id')
+    .eq('owner_id', user.id);
+  if (e2) throw e2;
+
+  const ownedRoomIds = (ownedRooms || []).map(r => r.id);
+
+  // Combine approved rooms + owned rooms (unique)
+  const allRoomIds = [...new Set([...approvedRoomIds, ...ownedRoomIds])];
+  if (allRoomIds.length === 0) return [];
+
+  // Fetch details for these rooms
+  const { data: rooms, error: e3 } = await supabase
+    .from('study_rooms')
+    .select('*')
+    .in('id', allRoomIds)
+    .order('updated_at', { ascending: false });
+  if (e3) throw e3;
+
+  return ((rooms || []) as StudyRoom[]).map(r => ({
+    ...r,
+    my_status: r.owner_id === user.id ? 'approved' : (statusByRoom.get(r.id) || 'approved'),
+  }));
 }
 
 /** Fetch a single room by id (visible if owner, or pending/invited/approved member). */
@@ -266,17 +308,25 @@ export async function requestToJoin(roomId: string, userId: string): Promise<voi
     );
   if (error) throw error;
 
-  // Notify the room owner.
-  const { data: room } = await supabase
-    .from('study_rooms').select('owner_id, name').eq('id', roomId).single();
-  if (room) {
-    const r = room as unknown as RoomRow;
+  // Notify the room owner with actor info.
+  const [roomResult, profileResult] = await Promise.all([
+    supabase.from('study_rooms').select('owner_id, name').eq('id', roomId).single(),
+    supabase.from('profiles').select('username, display_name, avatar_url').eq('id', userId).single(),
+  ]);
+  if (roomResult.data) {
+    const r = roomResult.data as unknown as RoomRow;
+    const p = profileResult.data as unknown as ProfileRow | null;
     await supabase.from('room_notifications').insert({
       user_id: r.owner_id,
       room_id: roomId,
       type: 'join_request',
       actor_user_id: userId,
-      payload: { room_name: r.name },
+      payload: {
+        room_name: r.name,
+        actor_username: p?.username,
+        actor_display_name: p?.display_name,
+        actor_avatar_url: p?.avatar_url,
+      },
     });
   }
 }
@@ -366,16 +416,25 @@ export async function fetchMyMembership(roomId: string, userId: string): Promise
   return (data as RoomMember) || null;
 }
 
-/** Fetch all members of a room (visible to approved members + owner). */
+/** Fetch all members of a room (visible to approved members + owner). Always scoped by roomId. */
 export async function fetchMembers(roomId: string): Promise<RoomMember[]> {
-  // Query members, then use the SECURITY DEFINER RPC to get safe profile fields.
-  // This avoids the profiles RLS issue (profiles SELECT only allows auth.uid() = id).
+  if (!roomId) return [];
+  // Query members scoped to this specific room_id, then fetch profile data via SECURITY DEFINER RPC.
   const [{ data: members, error: e1 }, { data: profiles, error: e2 }] = await Promise.all([
-    supabase.from('study_room_members').select('*').eq('room_id', roomId).order('joined_at', { ascending: false, nullsFirst: false }),
+    supabase.from('study_room_members')
+      .select('*')
+      .eq('room_id', roomId)
+      .order('joined_at', { ascending: false, nullsFirst: false }),
     supabase.rpc('get_room_member_profiles', { p_room_id: roomId }),
   ]);
-  if (e1) throw e1;
-  if (e2) throw e2;
+  if (e1) {
+    logSupabaseError('fetchMembers members', e1);
+    throw e1;
+  }
+  if (e2) {
+    logSupabaseError('fetchMembers profiles RPC', e2);
+    // Don't fail entirely on profile error — return members with empty profiles
+  }
 
   const profById = new Map<string, { id: string; display_name: string; username: string; avatar_url: string | null }>(
     (profiles || []).map(p => [(p as { id: string }).id, p as { id: string; display_name: string; username: string; avatar_url: string | null }])
@@ -493,32 +552,35 @@ export async function declineInvite(roomId: string, userId: string): Promise<voi
     .eq('room_id', roomId).eq('invitee_user_id', userId);
 }
 
-/** Fetch invitations sent to the current user (pending). */
+/** Fetch invitations sent to the current user (pending). Always scoped by userId. */
 export async function fetchMyInvites(userId: string): Promise<(RoomInvite & { room_name?: string; inviter_name?: string })[]> {
+  if (!userId) return [];
+
   const { data, error } = await supabase
     .from('study_room_invites')
     .select('*')
     .eq('invitee_user_id', userId)
     .eq('status', 'sent')
     .order('created_at', { ascending: false });
-  if (error) throw error;
+  if (error) {
+    logSupabaseError('fetchMyInvites', error);
+    throw error;
+  }
 
   const invites = (data || []) as RoomInvite[];
   if (invites.length === 0) return [];
 
   const roomIds = [...new Set(invites.map(i => i.room_id))];
-  const inviterIds = [...new Set(invites.map(i => i.inviter_user_id))];
-  const [{ data: rooms }, { data: profs }] = await Promise.all([
-    supabase.from('study_rooms').select('id, name').in('id', roomIds),
-    supabase.from('profiles').select('id, display_name').in('id', inviterIds),
-  ]);
+  const { data: rooms } = await supabase.from('study_rooms').select('id, name').in('id', roomIds);
   const roomById = new Map<string, string>((rooms || []).map((r) => [(r as unknown as RoomRow).id, (r as unknown as RoomRow).name]));
-  const profById = new Map<string, string>((profs || []).map((p) => [(p as unknown as ProfileRow).id, (p as unknown as ProfileRow).display_name]));
+
+  // Inviter names: we'll use a simple approach - just show 'Someone' for now
+  // since profiles RLS prevents cross-user lookups
 
   return invites.map(i => ({
     ...i,
     room_name: roomById.get(i.room_id) || '',
-    inviter_name: profById.get(i.inviter_user_id) || '',
+    inviter_name: 'Someone',
   }));
 }
 
@@ -707,95 +769,126 @@ export async function endStudySession(roomId: string, _userId: string): Promise<
   if (updateErr) throw updateErr;
 }
 
-/** Get the current user's active session in a room (if any). */
+/** Get the current user's active session in a room (if any). Handles errors gracefully. */
 export async function getMyActiveSession(roomId: string, _userId: string): Promise<StudySession | null> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!roomId) return null;
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
 
-  const { data, error } = await supabase
-    .from('room_study_sessions')
-    .select('*')
-    .eq('room_id', roomId)
-    .eq('user_id', user.id)
-    .in('status', ['running', 'paused'])
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw error;
-  return (data as StudySession) || null;
+    const { data, error } = await supabase
+      .from('room_study_sessions')
+      .select('*')
+      .eq('room_id', roomId)
+      .eq('user_id', user.id)
+      .in('status', ['running', 'paused'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      logSupabaseError('getMyActiveSession', error);
+      return null;
+    }
+    return (data as StudySession) || null;
+  } catch (e) {
+    logSupabaseError('getMyActiveSession', e);
+    return null;
+  }
 }
 
-/** Get timer summaries for all approved members in a room. */
+/** Get timer summaries for all approved members in a room. Handles errors gracefully. */
 export async function getRoomTimerSummaries(roomId: string): Promise<MemberTimerSummary[]> {
-  // 1. Fetch approved members
-  const members = await fetchMembers(roomId);
-  const approved = members.filter(m => m.status === 'approved');
-  if (approved.length === 0) return [];
+  if (!roomId) return [];
 
-  // 2. Fetch all sessions for this room (RLS allows approved members to see all)
-  const { data: sessions, error } = await supabase
-    .from('room_study_sessions')
-    .select('user_id, started_at, ended_at, duration_seconds, status, accumulated_seconds, paused_at')
-    .eq('room_id', roomId);
-  if (error) throw error;
+  try {
+    // 1. Fetch approved members
+    const members = await fetchMembers(roomId);
+    const approved = members.filter(m => m.status === 'approved');
+    if (approved.length === 0) return [];
 
-  // 3. Compute today and week totals per user
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfWeek = new Date(now);
-  startOfWeek.setDate(now.getDate() - now.getDay());
-  startOfWeek.setHours(0, 0, 0, 0);
-
-  const summaries: MemberTimerSummary[] = approved.map(m => {
-    const userSessions = (sessions || []).filter(s => s.user_id === m.user_id);
-    const activeSession = userSessions.find(s => (s.status === 'running' || s.status === 'paused'));
-
-    let todaySeconds = 0;
-    let weekSeconds = 0;
-
-    for (const s of userSessions) {
-      const sessStatus = s.status as SessionStatus;
-      let sessionSeconds = s.duration_seconds || 0;
-
-      // If running/paused, calculate current time
-      if (sessStatus === 'running' && s.started_at) {
-        const start = new Date(s.started_at);
-        sessionSeconds = (s.accumulated_seconds || 0) + Math.floor((now.getTime() - start.getTime()) / 1000);
-      } else if (sessStatus === 'paused') {
-        sessionSeconds = s.accumulated_seconds || 0;
-      }
-
-      // Check if session belongs to today/week
-      const sessionEnd = s.ended_at ? new Date(s.ended_at) : now;
-      const sessionStart = new Date(s.started_at);
-
-      // For today: if session ended or was active today
-      if (sessionEnd >= startOfToday || sessionStart >= startOfToday) {
-        todaySeconds += sessionSeconds;
-      }
-      if (sessionEnd >= startOfWeek || sessionStart >= startOfWeek) {
-        weekSeconds += sessionSeconds;
-      }
+    // 2. Fetch all sessions for this room (RLS allows approved members to see all)
+    const { data: sessions, error } = await supabase
+      .from('room_study_sessions')
+      .select('user_id, started_at, ended_at, duration_seconds, status, accumulated_seconds, paused_at')
+      .eq('room_id', roomId);
+    if (error) {
+      logSupabaseError('getRoomTimerSummaries sessions', error);
+      // Return empty summaries on error instead of crashing
+      return approved.map(m => ({
+        user_id: m.user_id,
+        username: m.username || '',
+        display_name: m.display_name || '',
+        avatar_url: m.avatar_url,
+        status: 'ended' as SessionStatus,
+        is_studying: false,
+        today_seconds: 0,
+        week_seconds: 0,
+        active_started_at: null,
+        finished_for_day: false,
+      }));
     }
 
-    const status: SessionStatus = activeSession?.status || 'ended';
-    const finishedForDay = userSessions.some(s => s.status === 'ended' && new Date(s.ended_at || '') >= startOfToday);
+    // 3. Compute today and week totals per user
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
 
-    return {
-      user_id: m.user_id,
-      username: m.username,
-      display_name: m.display_name,
-      avatar_url: m.avatar_url,
-      status,
-      is_studying: status === 'running',
-      today_seconds: todaySeconds,
-      week_seconds: weekSeconds,
-      active_started_at: activeSession?.started_at || null,
-      finished_for_day: finishedForDay && !activeSession,
-    };
-  });
+    const summaries: MemberTimerSummary[] = approved.map(m => {
+      const userSessions = (sessions || []).filter(s => s.user_id === m.user_id);
+      const activeSession = userSessions.find(s => (s.status === 'running' || s.status === 'paused'));
 
-  return summaries;
+      let todaySeconds = 0;
+      let weekSeconds = 0;
+
+      for (const s of userSessions) {
+        const sessStatus = s.status as SessionStatus;
+        let sessionSeconds = s.duration_seconds || 0;
+
+        // If running/paused, calculate current time
+        if (sessStatus === 'running' && s.started_at) {
+          const start = new Date(s.started_at);
+          sessionSeconds = (s.accumulated_seconds || 0) + Math.floor((now.getTime() - start.getTime()) / 1000);
+        } else if (sessStatus === 'paused') {
+          sessionSeconds = s.accumulated_seconds || 0;
+        }
+
+        // Check if session belongs to today/week
+        const sessionEnd = s.ended_at ? new Date(s.ended_at) : now;
+        const sessionStart = new Date(s.started_at);
+
+        // For today: if session ended or was active today
+        if (sessionEnd >= startOfToday || sessionStart >= startOfToday) {
+          todaySeconds += sessionSeconds;
+        }
+        if (sessionEnd >= startOfWeek || sessionStart >= startOfWeek) {
+          weekSeconds += sessionSeconds;
+        }
+      }
+
+      const status: SessionStatus = activeSession?.status || 'ended';
+      const finishedForDay = userSessions.some(s => s.status === 'ended' && new Date(s.ended_at || '') >= startOfToday);
+
+      return {
+        user_id: m.user_id,
+        username: m.username || '',
+        display_name: m.display_name || '',
+        avatar_url: m.avatar_url,
+        status,
+        is_studying: status === 'running',
+        today_seconds: todaySeconds,
+        week_seconds: weekSeconds,
+        active_started_at: activeSession?.started_at || null,
+        finished_for_day: finishedForDay && !activeSession,
+      };
+    });
+
+    return summaries;
+  } catch (e) {
+    logSupabaseError('getRoomTimerSummaries', e);
+    return [];
+  }
 }
 
 // ─── Room Profile Image ────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Component, type ReactNode } from 'react';
 import { Plus, Users, KeyRound, ArrowLeft, Check, Loader2, MoreVertical, Trash2, LogOut, DoorOpen, UserCog, X, AlertTriangle, Mail } from 'lucide-react';
 import type { StudyRoom, RoomMemberStatus, RoomMember, RoomInvite } from '../types';
 import {
@@ -6,7 +6,58 @@ import {
   fetchMyInvites, acceptInvite, declineInvite,
 } from '../lib/studyRooms';
 import RoomProfileView from '../components/RoomProfileView';
+import { supabase } from '../lib/supabase';
 
+// ─── Error Boundary for Room pages ──────────────────────────────────────────
+interface ErrorBoundaryProps {
+  children: ReactNode;
+  onBack: () => void;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class RoomErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('RoomErrorBoundary caught:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="max-w-2xl mx-auto px-4 py-6">
+          <button onClick={this.props.onBack} className="flex items-center gap-1.5 text-xs font-semibold mb-6" style={{ color: '#1B2A4A', background: 'none', border: 'none', cursor: 'pointer' }}>
+            <ArrowLeft size={15} /> Back
+          </button>
+          <div className="rounded-xl p-6 text-center" style={{ background: '#FEE2E2' }}>
+            <AlertTriangle size={28} color="#B91C1C" className="mx-auto mb-3" />
+            <p className="text-sm font-bold" style={{ color: '#B91C1C' }}>Something went wrong while loading this room.</p>
+            <p className="text-xs mt-2 mb-4" style={{ color: '#6B6B6B' }}>
+              {this.state.error?.message || 'An unexpected error occurred.'}
+            </p>
+            <button onClick={this.props.onBack} className="px-4 py-2 rounded-lg text-xs font-bold text-white" style={{ background: '#1B2A4A', border: 'none', cursor: 'pointer' }}>
+              Back to Rooms
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ─── Main Study Rooms View ──────────────────────────────────────────────────
 interface Props {
   userId: string;
   onOpenRoom: (roomId: string) => void;
@@ -41,13 +92,41 @@ export default function StudyRoomsView({ userId, initialOpenRoomId }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Realtime subscription for invites and membership changes
+  useEffect(() => {
+    const invitesChannel = supabase.channel(`my_invites:${userId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'study_room_invites',
+        filter: `invitee_user_id=eq.${userId}`,
+      }, () => { load(); })
+      .subscribe();
+
+    const membersChannel = supabase.channel(`my_memberships:${userId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'study_room_members',
+        filter: `user_id=eq.${userId}`,
+      }, () => { load(); })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(invitesChannel);
+      supabase.removeChannel(membersChannel);
+    };
+  }, [userId, load]);
+
   if (openRoomId) {
     return (
-      <RoomProfileView
-        roomId={openRoomId}
-        userId={userId}
-        onBack={() => { setOpenRoomId(null); load(); }}
-      />
+      <RoomErrorBoundary onBack={() => setOpenRoomId(null)}>
+        <RoomProfileView
+          roomId={openRoomId}
+          userId={userId}
+          onBack={() => { setOpenRoomId(null); load(); }}
+        />
+      </RoomErrorBoundary>
     );
   }
 
@@ -283,12 +362,12 @@ function RoomCard({
     finally { setBusy(false); setConfirm(null); }
   };
 
-  const handleTransferAndLeave = async () => {
+  const handleTransfer = async () => {
     if (!transferTarget) return;
     setBusy(true);
     try {
       await transferOwnership(room.id, transferTarget);
-      await leaveRoom(room.id, userId);
+      // DON'T leave the room - previous owner stays as member
       onLeftOrDeleted();
     } catch (e) { console.error(e); }
     finally { setBusy(false); setConfirm(null); }
@@ -448,7 +527,7 @@ function RoomCard({
             ) : (
               <>
                 <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>
-                  Select an approved member to become the new owner. You will leave the room after transfer.
+                  Select an approved member to become the new owner. You will remain as a member after the transfer.
                 </p>
                 <select
                   value={transferTarget}
@@ -465,21 +544,21 @@ function RoomCard({
                 </select>
                 {transferTarget && (
                   <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>
-                    Are you sure you want to transfer ownership to{' '}
+                    Transfer ownership to{' '}
                     <strong style={{ color: '#1B2A4A' }}>
                       {approvedOthers.find(m => m.user_id === transferTarget)?.username || 'this member'}
                     </strong>
-                    ? They will become the new room owner.
+                    ? They will become the new room owner. You will stay as a member.
                   </p>
                 )}
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={handleTransferAndLeave}
+                    onClick={handleTransfer}
                     disabled={!transferTarget || busy}
                     className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
                     style={{ background: !transferTarget || busy ? '#9CA3AF' : '#92400E', border: 'none', cursor: !transferTarget || busy ? 'not-allowed' : 'pointer' }}
                   >
-                    {busy ? 'Transferring…' : 'Transfer & leave'}
+                    {busy ? 'Transferring…' : 'Transfer Ownership'}
                   </button>
                   <button onClick={() => setConfirm(null)} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: 'pointer' }}>Cancel</button>
                 </div>

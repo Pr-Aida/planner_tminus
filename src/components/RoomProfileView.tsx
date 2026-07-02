@@ -14,7 +14,9 @@ import {
   startStudySession, pauseStudySession, resumeStudySession, endStudySession,
   getMyActiveSession, getRoomTimerSummaries,
   uploadRoomProfileImage, removeRoomProfileImage,
+  makeAdmin, removeAdmin,
 } from '../lib/studyRooms';
+import { supabase } from '../lib/supabase';
 
 // ─── Shared styles ──────────────────────────────────────────────────────────────
 const inputStyle = {
@@ -64,11 +66,15 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
   const [members, setMembers] = useState<RoomMember[]>([]);
   const [myMembership, setMyMembership] = useState<RoomMember | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('overview');
   const [copied, setCopied] = useState<'link' | 'code' | null>(null);
   const [showLeave, setShowLeave] = useState(false);
+  const [requesting, setRequesting] = useState(false);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
       const [r, m, me] = await Promise.all([
         fetchRoomById(roomId),
@@ -76,10 +82,11 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
         fetchMyMembership(roomId, userId),
       ]);
       setRoom(r);
-      setMembers(m);
+      setMembers(m || []);
       setMyMembership(me);
     } catch (e) {
       console.error('RoomProfileView load error:', e);
+      setError(e instanceof Error ? e.message : 'Failed to load room');
     } finally {
       setLoading(false);
     }
@@ -87,6 +94,46 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Realtime subscriptions
+  useEffect(() => {
+    // Members channel - updates for join requests, approvals, role changes
+    const membersChannel = supabase.channel(`room_members:${roomId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'study_room_members',
+        filter: `room_id=eq.${roomId}`,
+      }, () => { load(); })
+      .subscribe();
+
+    // Study sessions channel - updates for timer status
+    const sessionsChannel = supabase.channel(`room_sessions:${roomId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'room_study_sessions',
+        filter: `room_id=eq.${roomId}`,
+      }, () => { load(); })
+      .subscribe();
+
+    // Join requests channel
+    const requestsChannel = supabase.channel(`room_requests:${roomId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'study_room_join_requests',
+        filter: `room_id=eq.${roomId}`,
+      }, () => { load(); })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(membersChannel);
+      supabase.removeChannel(sessionsChannel);
+      supabase.removeChannel(requestsChannel);
+    };
+  }, [roomId, load]);
+
+  // Loading state
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -95,18 +142,45 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
     );
   }
 
+  // Error state
+  if (error) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-6">
+        <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-semibold mb-6" style={{ color: '#1B2A4A', background: 'none', border: 'none', cursor: 'pointer' }}>
+          <ArrowLeft size={15} /> Back
+        </button>
+        <div className="rounded-xl p-6 text-center" style={{ background: '#FEE2E2' }}>
+          <AlertTriangle size={28} color="#B91C1C" className="mx-auto mb-3" />
+          <p className="text-sm font-bold" style={{ color: '#B91C1C' }}>Failed to load room</p>
+          <p className="text-xs mt-2 mb-4" style={{ color: '#6B6B6B' }}>{error}</p>
+          <button onClick={load} className="px-4 py-2 rounded-lg text-xs font-bold text-white" style={{ background: '#1B2A4A', border: 'none', cursor: 'pointer' }}>
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Room not found
   if (!room) {
     return (
-      <div className="text-center py-20">
-        <p className="text-sm" style={{ color: '#6B6B6B' }}>Room not found.</p>
-        <button onClick={onBack} className="mt-4 px-4 py-2 rounded-lg text-sm font-bold text-white" style={{ background: '#1B2A4A', border: 'none', cursor: 'pointer' }}>Back</button>
+      <div className="max-w-2xl mx-auto px-4 py-6">
+        <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-semibold mb-6" style={{ color: '#1B2A4A', background: 'none', border: 'none', cursor: 'pointer' }}>
+          <ArrowLeft size={15} /> Back
+        </button>
+        <div className="rounded-xl p-6 text-center" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
+          <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>Room not found</p>
+          <p className="text-xs mt-2 mb-4" style={{ color: '#6B6B6B' }}>This room may have been deleted or you do not have access.</p>
+          <button onClick={onBack} className="px-4 py-2 rounded-lg text-xs font-bold text-white" style={{ background: '#1B2A4A', border: 'none', cursor: 'pointer' }}>
+            Back to Rooms
+          </button>
+        </div>
       </div>
     );
   }
 
   const isOwner = room.owner_id === userId;
   const myStatus = myMembership?.status;
-  const [requesting, setRequesting] = useState(false);
 
   // Non-approved users: show limited view with request/join option
   if (!isOwner && myStatus !== 'approved') {
@@ -189,11 +263,14 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
   }
 
   const inviteLink = `${window.location.origin}/room/${room.invite_code}`;
+  const myMember = members.find(m => m.user_id === userId);
+  const isAdmin = myMember?.role === 'admin' || isOwner;
+
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: 'overview', label: 'Overview', icon: <Users size={14} /> },
     { key: 'members', label: 'Members', icon: <UserPlus size={14} /> },
     { key: 'activity', label: 'Activity', icon: <Clock size={14} /> },
-    ...(isOwner ? [{ key: 'settings' as Tab, label: 'Settings', icon: <Settings size={14} /> }] : []),
+    ...(isAdmin ? [{ key: 'settings' as Tab, label: 'Settings', icon: <Settings size={14} /> }] : []),
   ];
 
   return (
@@ -258,6 +335,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
           onRemove={async (uid) => { await removeMember(room.id, uid); load(); }}
           onApprove={async (uid) => { await approveMember(room.id, uid); load(); }}
           onReject={async (uid) => { await rejectMember(room.id, uid); load(); }}
+          onReload={load}
         />
       )}
 
@@ -265,17 +343,18 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
         <ActivityTab roomId={room.id} />
       )}
 
-      {tab === 'settings' && isOwner && (
+      {tab === 'settings' && isAdmin && (
         <SettingsTab
           room={room}
           members={members}
+          currentUserId={userId}
+          isOwner={isOwner}
           onUpdated={() => load()}
           onRegenerate={() => regenerateInviteCode(room.id).then(load)}
           onDelete={async () => { await deleteRoom(room.id); onBack(); }}
-          onTransferAndLeave={async (newOwnerId) => {
+          onTransfer={async (newOwnerId) => {
             await transferOwnership(room.id, newOwnerId);
-            await leaveRoom(room.id, userId);
-            onBack();
+            load();
           }}
         />
       )}
@@ -706,7 +785,7 @@ function MemberTimerRow({ s, userId }: { s: MemberTimerSummary; userId: string }
 }
 
 // ─── Members tab ───────────────────────────────────────────────────────────────
-function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove, onReject }: {
+function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove, onReject, onReload }: {
   room: StudyRoom;
   members: RoomMember[];
   currentUserId: string;
@@ -714,7 +793,10 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
   onRemove: (uid: string) => void;
   onApprove: (uid: string) => void;
   onReject: (uid: string) => void;
+  onReload: () => void;
 }) {
+  const myMember = members.find(m => m.user_id === currentUserId);
+  const isAdmin = myMember?.role === 'admin' || isOwner;
   const approved = members.filter(m => m.status === 'approved');
   const pending = members.filter(m => m.status === 'pending');
   const [inviteQuery, setInviteQuery] = useState('');
@@ -723,6 +805,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const [inviting, setInviting] = useState(false);
+  const [memberMenuOpen, setMemberMenuOpen] = useState<string | null>(null);
 
   async function handleSearch() {
     if (!inviteQuery.trim()) return;
@@ -749,8 +832,23 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
       await inviteByUsername(room.id, inviteResult.id);
       setInviteSuccess('Invitation sent successfully.');
       setInviteResult(null); setInviteQuery('');
+      onReload();
     } catch (e) { setInviteError(e instanceof Error ? e.message : 'Invite failed'); }
     finally { setInviting(false); }
+  }
+
+  async function handleMakeAdmin(targetUserId: string) {
+    try {
+      await makeAdmin(room.id, targetUserId);
+      onReload();
+    } catch (e) { console.error(e); }
+  }
+
+  async function handleRemoveAdmin(targetUserId: string) {
+    try {
+      await removeAdmin(room.id, targetUserId);
+      onReload();
+    } catch (e) { console.error(e); }
   }
 
   return (
@@ -758,8 +856,8 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
       {/* Study Timer */}
       <StudyTimerSection roomId={room.id} userId={currentUserId} />
 
-      {/* Invite by username (owner only) */}
-      {isOwner && (
+      {/* Invite by username (owner/admin only) */}
+      {isAdmin && (
         <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
           <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7B1C3E' }}>Invite by username</p>
           <div className="flex gap-2 mb-2">
@@ -803,7 +901,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
       )}
 
       {/* Pending requests */}
-      {isOwner && pending.length > 0 && (
+      {isAdmin && pending.length > 0 && (
         <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
           <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7B1C3E' }}>Pending requests ({pending.length})</p>
           <div className="space-y-2">
@@ -844,14 +942,52 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                 </p>
                 <p className="text-xs" style={{ color: '#9CA3AF' }}>@{m.username || m.user_id.slice(0, 8)}</p>
               </div>
+              {/* Member actions (owner only) */}
               {isOwner && m.user_id !== room.owner_id && (
-                <button onClick={() => onRemove(m.user_id)} className="p-1 rounded transition-colors"
-                  style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: '#C8C8C8' }}
-                  onMouseEnter={e => (e.currentTarget.style.color = '#B91C1C')}
-                  onMouseLeave={e => (e.currentTarget.style.color = '#C8C8C8')}
-                  title="Remove member">
-                  <Trash2 size={13} />
-                </button>
+                <div className="relative">
+                  <button
+                    onClick={() => setMemberMenuOpen(memberMenuOpen === m.user_id ? null : m.user_id)}
+                    className="p-1 rounded transition-colors"
+                    style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: '#C8C8C8' }}
+                    onMouseEnter={e => (e.currentTarget.style.color = '#1B2A4A')}
+                    onMouseLeave={e => (e.currentTarget.style.color = '#C8C8C8')}
+                  >
+                    <MoreVertical size={14} />
+                  </button>
+                  {memberMenuOpen === m.user_id && (
+                    <div
+                      className="absolute right-0 top-full mt-1 z-50 rounded-lg py-1 min-w-[140px]"
+                      style={{ background: '#fff', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', border: '1px solid #E8E8E8' }}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      {m.role !== 'admin' && (
+                        <button
+                          onClick={() => { handleMakeAdmin(m.user_id); setMemberMenuOpen(null); }}
+                          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-left hover:bg-gray-50"
+                          style={{ border: 'none', background: 'transparent', color: '#1B2A4A', cursor: 'pointer' }}
+                        >
+                          <UserCog size={12} /> Make Admin
+                        </button>
+                      )}
+                      {m.role === 'admin' && (
+                        <button
+                          onClick={() => { handleRemoveAdmin(m.user_id); setMemberMenuOpen(null); }}
+                          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-left hover:bg-gray-50"
+                          style={{ border: 'none', background: 'transparent', color: '#B45309', cursor: 'pointer' }}
+                        >
+                          <UserCog size={12} /> Remove Admin
+                        </button>
+                      )}
+                      <button
+                        onClick={() => { onRemove(m.user_id); setMemberMenuOpen(null); }}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-left hover:bg-red-50"
+                        style={{ border: 'none', background: 'transparent', color: '#B91C1C', cursor: 'pointer' }}
+                      >
+                        <Trash2 size={12} /> Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           ))}
@@ -862,13 +998,15 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
 }
 
 // ─── Settings tab ─────────────────────────────────────────────────────────────
-function SettingsTab({ room, members, onUpdated, onRegenerate, onDelete, onTransferAndLeave }: {
+function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegenerate, onDelete, onTransfer }: {
   room: StudyRoom;
   members: RoomMember[];
+  currentUserId: string;
+  isOwner: boolean;
   onUpdated: () => void;
   onRegenerate: () => Promise<void>;
   onDelete: () => Promise<void>;
-  onTransferAndLeave: (newOwnerId: string) => Promise<void>;
+  onTransfer: (newOwnerId: string) => Promise<void>;
 }) {
   const [name, setName] = useState(room.name);
   const [description, setDescription] = useState(room.description);
@@ -1015,80 +1153,82 @@ function SettingsTab({ room, members, onUpdated, onRegenerate, onDelete, onTrans
         </div>
       </div>
 
-      {/* Danger zone */}
-      <div className="rounded-xl p-5" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)', border: '1.5px solid #FECACA' }}>
-        <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: '#B91C1C' }}>Danger zone</p>
+      {/* Danger zone - Owner only */}
+      {isOwner && (
+        <div className="rounded-xl p-5" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)', border: '1.5px solid #FECACA' }}>
+          <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: '#B91C1C' }}>Owner only</p>
 
-        {/* Transfer ownership + leave */}
-        <div className="mb-4 pb-4" style={{ borderBottom: '1px solid #F2F2F2' }}>
-          <p className="text-xs font-bold mb-1" style={{ color: '#1B2A4A' }}>Transfer ownership & leave</p>
-          <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>Transfer ownership to another approved member, then leave. The room stays active for everyone else.</p>
-          {approvedOthers.length === 0 ? (
-            <p className="text-xs italic" style={{ color: '#9CA3AF' }}>No other approved members to transfer ownership to.</p>
-          ) : !showTransfer ? (
-            <button onClick={() => setShowTransfer(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold"
-              style={{ background: '#FEF3C7', color: '#92400E', border: 'none', cursor: 'pointer' }}>
-              <UserCog size={13} /> Transfer & leave
-            </button>
-          ) : (
-            <div className="space-y-3">
-              <select value={transferTarget} onChange={e => setTransferTarget(e.target.value)}
-                className="w-full rounded-lg px-3 py-2 text-xs outline-none"
-                style={{ border: '1.5px solid #C8C8C8', background: '#F8F8F8', color: '#111' }}>
-                <option value="">Select an approved member…</option>
-                {approvedOthers.map(m => (
-                  <option key={m.user_id} value={m.user_id}>
-                    {m.username || m.user_id.slice(0, 8)}{m.role === 'admin' ? ' (admin)' : ''}
-                  </option>
-                ))}
-              </select>
-              {transferTarget && (
-                <p className="text-xs" style={{ color: '#6B6B6B' }}>
-                  Transfer ownership to <strong style={{ color: '#1B2A4A' }}>
-                    {approvedOthers.find(m => m.user_id === transferTarget)?.username || 'this member'}
-                  </strong>? They will become the new room owner and you will leave.
-                </p>
-              )}
-              <div className="flex items-center gap-2">
-                <button onClick={async () => { setTransferring(true); try { await onTransferAndLeave(transferTarget); } finally { setTransferring(false); } }}
-                  disabled={!transferTarget || transferring}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
-                  style={{ background: !transferTarget || transferring ? '#9CA3AF' : '#92400E', border: 'none', cursor: !transferTarget || transferring ? 'not-allowed' : 'pointer' }}>
-                  {transferring ? 'Transferring…' : 'Transfer & leave'}
-                </button>
-                <button onClick={() => { setShowTransfer(false); setTransferTarget(''); }}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold"
-                  style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: 'pointer' }}>Cancel</button>
+          {/* Transfer ownership */}
+          <div className="mb-4 pb-4" style={{ borderBottom: '1px solid #F2F2F2' }}>
+            <p className="text-xs font-bold mb-1" style={{ color: '#1B2A4A' }}>Transfer ownership</p>
+            <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>Transfer ownership to another approved member. You will remain as a regular member.</p>
+            {approvedOthers.length === 0 ? (
+              <p className="text-xs italic" style={{ color: '#9CA3AF' }}>No other approved members to transfer ownership to.</p>
+            ) : !showTransfer ? (
+              <button onClick={() => setShowTransfer(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold"
+                style={{ background: '#FEF3C7', color: '#92400E', border: 'none', cursor: 'pointer' }}>
+                <UserCog size={13} /> Transfer Ownership
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <select value={transferTarget} onChange={e => setTransferTarget(e.target.value)}
+                  className="w-full rounded-lg px-3 py-2 text-xs outline-none"
+                  style={{ border: '1.5px solid #C8C8C8', background: '#F8F8F8', color: '#111' }}>
+                  <option value="">Select an approved member…</option>
+                  {approvedOthers.map(m => (
+                    <option key={m.user_id} value={m.user_id}>
+                      {m.username || m.user_id.slice(0, 8)}{m.role === 'admin' ? ' (admin)' : ''}
+                    </option>
+                  ))}
+                </select>
+                {transferTarget && (
+                  <p className="text-xs" style={{ color: '#6B6B6B' }}>
+                    Transfer ownership to <strong style={{ color: '#1B2A4A' }}>
+                      {approvedOthers.find(m => m.user_id === transferTarget)?.username || 'this member'}
+                    </strong>? They will become the new room owner. You will stay as a member.
+                  </p>
+                )}
+                <div className="flex items-center gap-2">
+                  <button onClick={async () => { setTransferring(true); try { await onTransfer(transferTarget); } finally { setTransferring(false); } }}
+                    disabled={!transferTarget || transferring}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+                    style={{ background: !transferTarget || transferring ? '#9CA3AF' : '#92400E', border: 'none', cursor: !transferTarget || transferring ? 'not-allowed' : 'pointer' }}>
+                    {transferring ? 'Transferring…' : 'Transfer Ownership'}
+                  </button>
+                  <button onClick={() => { setShowTransfer(false); setTransferTarget(''); }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                    style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: 'pointer' }}>Cancel</button>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
 
-        {/* Delete room */}
-        <div>
-          <p className="text-xs font-bold mb-1" style={{ color: '#B91C1C' }}>Delete room</p>
-          <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>Deletes the room for all members. Cannot be undone.</p>
-          {!showDelete ? (
-            <button onClick={() => setShowDelete(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold"
-              style={{ background: '#FEE2E2', color: '#B91C1C', border: 'none', cursor: 'pointer' }}>
-              <Trash2 size={13} /> Delete room
-            </button>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-start gap-2 rounded-lg p-3" style={{ background: '#FEF2F2' }}>
-                <AlertTriangle size={16} color="#B91C1C" style={{ flexShrink: 0, marginTop: 1 }} />
-                <p className="text-xs font-semibold" style={{ color: '#B91C1C' }}>
-                  Are you sure you want to delete this room? This will remove the room for all members. This action cannot be undone.
-                </p>
+          {/* Delete room */}
+          <div>
+            <p className="text-xs font-bold mb-1" style={{ color: '#B91C1C' }}>Delete room</p>
+            <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>Deletes the room for all members. Cannot be undone.</p>
+            {!showDelete ? (
+              <button onClick={() => setShowDelete(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold"
+                style={{ background: '#FEE2E2', color: '#B91C1C', border: 'none', cursor: 'pointer' }}>
+                <Trash2 size={13} /> Delete room
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-start gap-2 rounded-lg p-3" style={{ background: '#FEF2F2' }}>
+                  <AlertTriangle size={16} color="#B91C1C" style={{ flexShrink: 0, marginTop: 1 }} />
+                  <p className="text-xs font-semibold" style={{ color: '#B91C1C' }}>
+                    Are you sure you want to delete this room? This will remove the room for all members. This action cannot be undone.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={onDelete} className="px-3 py-1.5 rounded-lg text-xs font-bold text-white" style={{ background: '#B91C1C', border: 'none', cursor: 'pointer' }}>Yes, delete room</button>
+                  <button onClick={() => setShowDelete(false)} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: 'pointer' }}>Cancel</button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button onClick={onDelete} className="px-3 py-1.5 rounded-lg text-xs font-bold text-white" style={{ background: '#B91C1C', border: 'none', cursor: 'pointer' }}>Yes, delete room</button>
-                <button onClick={() => setShowDelete(false)} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: 'pointer' }}>Cancel</button>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
