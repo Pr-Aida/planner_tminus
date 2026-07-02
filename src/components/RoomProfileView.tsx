@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, Copy, Check, RefreshCw, Users, Clock, Trophy, Settings,
   UserPlus, Trash2, X, Loader2, Link as LinkIcon, Search, LogOut, AlertTriangle,
+  UserCog,
 } from 'lucide-react';
 import type { StudyRoom, RoomMember, RoomMemberActivity } from '../types';
 import {
@@ -29,6 +30,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('overview');
   const [copied, setCopied] = useState<'link' | 'code' | null>(null);
+  const [showLeave, setShowLeave] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -202,9 +204,15 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
       {tab === 'settings' && isOwner && (
         <SettingsTab
           room={room}
+          members={members}
           onUpdated={() => load()}
           onRegenerate={() => regenerateInviteCode(room.id).then(load)}
           onDelete={async () => { await deleteRoom(room.id); onBack(); }}
+          onTransferAndLeave={async (newOwnerId) => {
+            await transferOwnership(room.id, newOwnerId);
+            await leaveRoom(room.id, userId);
+            onBack();
+          }}
         />
       )}
 
@@ -222,13 +230,40 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
       {/* Leave room (non-owner) */}
       {!isOwner && myMembership && (
         <div className="mt-4">
-          <button
-            onClick={async () => { await leaveRoom(room.id, userId); onBack(); }}
-            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg"
-            style={{ background: '#fff', color: '#B91C1C', border: '1.5px solid #FECACA', cursor: 'pointer' }}
-          >
-            <LogOut size={13} /> Leave room
-          </button>
+          {!showLeave ? (
+            <button
+              onClick={() => setShowLeave(true)}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg"
+              style={{ background: '#fff', color: '#B91C1C', border: '1.5px solid #FECACA', cursor: 'pointer' }}
+            >
+              <LogOut size={13} /> Leave room
+            </button>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-start gap-2 rounded-lg p-3" style={{ background: '#FEF2F2' }}>
+                <AlertTriangle size={16} color="#B91C1C" style={{ flexShrink: 0, marginTop: 1 }} />
+                <p className="text-xs font-semibold" style={{ color: '#B91C1C' }}>
+                  Are you sure you want to leave this room? You will lose access to this room, but the room will remain available for other members.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => { await leaveRoom(room.id, userId); onBack(); }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+                  style={{ background: '#B91C1C', border: 'none', cursor: 'pointer' }}
+                >
+                  Yes, leave room
+                </button>
+                <button
+                  onClick={() => setShowLeave(false)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                  style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -666,12 +701,14 @@ function MemberAvatar({ m }: { m: { avatar_url?: string | null; display_name?: s
 
 // ─── Settings tab (owner only) ─────────────────────────────────────────────────
 function SettingsTab({
-  room, onUpdated, onRegenerate, onDelete,
+  room, members, onUpdated, onRegenerate, onDelete, onTransferAndLeave,
 }: {
   room: StudyRoom;
+  members: RoomMember[];
   onUpdated: () => void;
   onRegenerate: () => Promise<void>;
   onDelete: () => Promise<void>;
+  onTransferAndLeave: (newOwnerId: string) => Promise<void>;
 }) {
   const [name, setName] = useState(room.name);
   const [description, setDescription] = useState(room.description);
@@ -683,6 +720,13 @@ function SettingsTab({
   const [saved, setSaved] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [transferTarget, setTransferTarget] = useState('');
+  const [transferring, setTransferring] = useState(false);
+
+  const approvedOthers = members.filter(
+    (m) => m.status === 'approved' && m.user_id !== room.owner_id
+  );
 
   async function handleSave() {
     setSaving(true);
@@ -776,26 +820,102 @@ function SettingsTab({
 
       {/* Danger zone */}
       <div className="rounded-xl p-5" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)', border: '1.5px solid #FECACA' }}>
-        <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: '#B91C1C' }}>Delete room</p>
-        <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>
-          Deleting a room removes all members and shared activity. This cannot be undone.
-        </p>
-        {!showDelete ? (
-          <button
-            onClick={() => setShowDelete(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold"
-            style={{ background: '#FEE2E2', color: '#B91C1C', border: 'none', cursor: 'pointer' }}
-          >
-            <Trash2 size={13} /> Delete room
-          </button>
-        ) : (
-          <div className="flex items-center gap-2">
-            <AlertTriangle size={16} color="#B91C1C" />
-            <span className="text-xs font-semibold" style={{ color: '#B91C1C' }}>Are you sure?</span>
-            <button onClick={onDelete} className="px-3 py-1.5 rounded-lg text-xs font-bold text-white" style={{ background: '#B91C1C', border: 'none', cursor: 'pointer' }}>Yes, delete</button>
-            <button onClick={() => setShowDelete(false)} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: 'pointer' }}>Cancel</button>
-          </div>
-        )}
+        <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: '#B91C1C' }}>Danger zone</p>
+
+        {/* Transfer ownership + leave */}
+        <div className="mb-4 pb-4" style={{ borderBottom: '1px solid #F2F2F2' }}>
+          <p className="text-xs font-bold mb-1" style={{ color: '#1B2A4A' }}>Transfer ownership & leave</p>
+          <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>
+            Transfer ownership to another approved member, then leave the room. The room stays active for everyone else.
+          </p>
+          {approvedOthers.length === 0 ? (
+            <p className="text-xs italic" style={{ color: '#9CA3AF' }}>
+              There are no other approved members to transfer ownership to. You can either keep the room or delete it.
+            </p>
+          ) : !showTransfer ? (
+            <button
+              onClick={() => setShowTransfer(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold"
+              style={{ background: '#FEF3C7', color: '#92400E', border: 'none', cursor: 'pointer' }}
+            >
+              <UserCog size={13} /> Transfer & leave
+            </button>
+          ) : (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: '#1B2A4A' }}>New owner</label>
+                <select
+                  value={transferTarget}
+                  onChange={e => setTransferTarget(e.target.value)}
+                  className="w-full rounded-lg px-3 py-2 text-xs outline-none"
+                  style={{ border: '1.5px solid #C8C8C8', background: '#F8F8F8', color: '#111' }}
+                >
+                  <option value="">Select an approved member…</option>
+                  {approvedOthers.map(m => (
+                    <option key={m.user_id} value={m.user_id}>
+                      {m.username || m.user_id.slice(0, 8)}{m.role === 'admin' ? ' (admin)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {transferTarget && (
+                <p className="text-xs" style={{ color: '#6B6B6B' }}>
+                  Are you sure you want to transfer ownership to{' '}
+                  <strong style={{ color: '#1B2A4A' }}>
+                    {approvedOthers.find(m => m.user_id === transferTarget)?.username || 'this member'}
+                  </strong>
+                  ? They will become the new room owner, and you will leave the room.
+                </p>
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    if (!transferTarget) return;
+                    setTransferring(true);
+                    try { await onTransferAndLeave(transferTarget); }
+                    finally { setTransferring(false); }
+                  }}
+                  disabled={!transferTarget || transferring}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+                  style={{ background: !transferTarget || transferring ? '#9CA3AF' : '#92400E', border: 'none', cursor: !transferTarget || transferring ? 'not-allowed' : 'pointer' }}
+                >
+                  {transferring ? 'Transferring…' : 'Transfer & leave'}
+                </button>
+                <button onClick={() => { setShowTransfer(false); setTransferTarget(''); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: 'pointer' }}>Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Delete room */}
+        <div>
+          <p className="text-xs font-bold mb-1" style={{ color: '#B91C1C' }}>Delete room</p>
+          <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>
+            Deleting a room removes the room for all members, along with invite links, join requests, and shared activity summaries. This cannot be undone.
+          </p>
+          {!showDelete ? (
+            <button
+              onClick={() => setShowDelete(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold"
+              style={{ background: '#FEE2E2', color: '#B91C1C', border: 'none', cursor: 'pointer' }}
+            >
+              <Trash2 size={13} /> Delete room
+            </button>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-start gap-2 rounded-lg p-3" style={{ background: '#FEF2F2' }}>
+                <AlertTriangle size={16} color="#B91C1C" style={{ flexShrink: 0, marginTop: 1 }} />
+                <p className="text-xs font-semibold" style={{ color: '#B91C1C' }}>
+                  Are you sure you want to delete this room? This will remove the room for all members. This action cannot be undone.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={onDelete} className="px-3 py-1.5 rounded-lg text-xs font-bold text-white" style={{ background: '#B91C1C', border: 'none', cursor: 'pointer' }}>Yes, delete room</button>
+                <button onClick={() => setShowDelete(false)} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: 'pointer' }}>Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
