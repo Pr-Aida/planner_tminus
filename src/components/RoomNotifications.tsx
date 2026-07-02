@@ -1,23 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Bell, Check, X, UserPlus, UserCheck, LogIn, LogOut, Ban, MessageSquare } from 'lucide-react';
+import { Bell, Check, X, UserPlus, UserCheck, LogIn, LogOut, Ban } from 'lucide-react';
 import type { RoomNotification, RoomNotificationType } from '../types';
 import {
   fetchNotifications, markNotificationRead, markAllNotificationsRead,
   deleteNotification, unreadNotificationCount, approveMember, rejectMember,
 } from '../lib/studyRooms';
 import { supabase } from '../lib/supabase';
-import { fetchFeedbackNotifications, markFeedbackNotificationRead, type FeedbackNotification } from '../lib/feedback';
 
 interface Props {
   userId: string;
   onOpenRoom: (roomId: string) => void;
-  onOpenFeedback?: () => void;
 }
 
-export default function RoomNotifications({ userId, onOpenRoom, onOpenFeedback }: Props) {
+export default function RoomNotifications({ userId, onOpenRoom }: Props) {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<RoomNotification[]>([]);
-  const [feedbackNotifs, setFeedbackNotifs] = useState<FeedbackNotification[]>([]);
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -25,14 +22,12 @@ export default function RoomNotifications({ userId, onOpenRoom, onOpenFeedback }
 
   const load = useCallback(async () => {
     try {
-      const [n, u, fb] = await Promise.all([
+      const [n, u] = await Promise.all([
         fetchNotifications(userId),
         unreadNotificationCount(userId),
-        fetchFeedbackNotifications(),
       ]);
       setNotifications(n);
-      setUnread(u + fb.filter(f => !f.read).length);
-      setFeedbackNotifs(fb);
+      setUnread(u);
     } catch (e) {
       console.error(e);
     }
@@ -47,12 +42,6 @@ export default function RoomNotifications({ userId, onOpenRoom, onOpenFeedback }
         event: '*',
         schema: 'public',
         table: 'room_notifications',
-        filter: `user_id=eq.${userId}`,
-      }, () => { load(); })
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'feedback_notifications',
         filter: `user_id=eq.${userId}`,
       }, () => { load(); })
       .subscribe();
@@ -85,12 +74,8 @@ export default function RoomNotifications({ userId, onOpenRoom, onOpenFeedback }
 
   async function handleMarkAllRead() {
     await markAllNotificationsRead(userId);
-    for (const f of feedbackNotifs.filter(f => !f.read)) {
-      await markFeedbackNotificationRead(f.id);
-    }
     setUnread(0);
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    setFeedbackNotifs(prev => prev.map(f => ({ ...f, read: true })));
   }
 
   async function handleAction(n: RoomNotification, action: 'approve' | 'reject') {
@@ -147,34 +132,10 @@ export default function RoomNotifications({ userId, onOpenRoom, onOpenFeedback }
 
           {loading ? (
             <div className="px-4 py-6 text-center text-xs" style={{ color: '#9CA3AF' }}>Loading…</div>
-          ) : (notifications.length === 0 && feedbackNotifs.length === 0) ? (
+          ) : notifications.length === 0 ? (
             <div className="px-4 py-6 text-center text-xs" style={{ color: '#9CA3AF' }}>No notifications yet.</div>
           ) : (
             <div className="max-h-80 overflow-y-auto">
-              {/* Feedback reply notifications */}
-              {feedbackNotifs.filter(f => !f.read).map(f => (
-                <div
-                  key={f.id}
-                  className="px-4 py-2.5 flex items-start gap-2.5 cursor-pointer hover:bg-gray-50"
-                  onClick={() => {
-                    markFeedbackNotificationRead(f.id);
-                    setFeedbackNotifs(prev => prev.map(x => x.id === f.id ? { ...x, read: true } : x));
-                    setUnread(prev => Math.max(0, prev - 1));
-                    if (onOpenFeedback) { onOpenFeedback(); setOpen(false); }
-                  }}
-                >
-                  <div className="flex-shrink-0 mt-0.5" style={{ color: '#7B1C3E' }}>
-                    <MessageSquare size={14} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold" style={{ color: '#1B2A4A' }}>Reply to your feedback</p>
-                    <p className="text-[10px]" style={{ color: '#6B6B6B' }}>You have a reply to your feedback. Tap to view.</p>
-                    <p className="text-[9px] mt-0.5" style={{ color: '#9CA3AF' }}>{new Date(f.created_at).toLocaleString()}</p>
-                  </div>
-                  {!f.read && <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full mt-1.5" style={{ background: '#7B1C3E' }} />}
-                </div>
-              ))}
-
               {/* Room notifications */}
               {notifications.map(n => (
                 <NotificationRow

@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ArrowLeft, Copy, Check, RefreshCw, Users, Clock, Trophy, Settings,
   UserPlus, Trash2, X, Loader2, Link as LinkIcon, Search, LogOut, AlertTriangle,
-  UserCog, Play, Square, Timer, ImageIcon, MoreVertical,
+  UserCog, Play, Square, Timer, ImageIcon, MoreVertical, MessageCircle,
 } from 'lucide-react';
 import type { StudyRoom, RoomMember, RoomMemberActivity, MemberTimerSummary } from '../types';
+import RoomChat from './RoomChat';
 import {
   fetchRoomById, fetchMembers, fetchMyMembership, fetchRoomActivity,
   updateRoom, regenerateInviteCode, deleteRoom,
@@ -52,7 +53,7 @@ function MemberAvatar({ m }: { m: RoomMember }) {
 }
 
 // ─── Tab types ─────────────────────────────────────────────────────────────────
-type Tab = 'overview' | 'members' | 'activity' | 'settings';
+type Tab = 'overview' | 'members' | 'activity' | 'chat' | 'settings';
 
 // ─── Main component ────────────────────────────────────────────────────────────
 interface Props {
@@ -270,6 +271,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
     { key: 'overview', label: 'Overview', icon: <Users size={14} /> },
     { key: 'members', label: 'Members', icon: <UserPlus size={14} /> },
     { key: 'activity', label: 'Activity', icon: <Clock size={14} /> },
+    { key: 'chat', label: 'Chat', icon: <MessageCircle size={14} /> },
     ...(isAdmin ? [{ key: 'settings' as Tab, label: 'Settings', icon: <Settings size={14} /> }] : []),
   ];
 
@@ -341,6 +343,10 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
 
       {tab === 'activity' && (
         <ActivityTab roomId={room.id} userId={userId} />
+      )}
+
+      {tab === 'chat' && (
+        <RoomChat roomId={room.id} userId={userId} isOwnerOrAdmin={isOwner || myMember?.role === 'admin'} />
       )}
 
       {tab === 'settings' && isAdmin && (
@@ -837,14 +843,20 @@ function MemberTimerRow({ s, userId }: { s: MemberTimerSummary; userId: string }
         </div>
       )}
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-semibold truncate" style={{ color: '#1B2A4A' }}>
-          {s.display_name || s.username}
-          {s.user_id === userId && <span className="ml-1.5 text-[9px] font-bold uppercase" style={{ color: '#9CA3AF' }}>(you)</span>}
-        </p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-xs font-semibold truncate" style={{ color: '#1B2A4A' }}>
+            {s.display_name || s.username}
+            {s.user_id === userId && <span className="ml-1.5 text-[9px] font-bold uppercase" style={{ color: '#9CA3AF' }}>(you)</span>}
+          </p>
+          {/* Live timer next to name when studying — large, bold */}
+          {s.status === 'running' && (
+            <span className="text-lg font-bold tabular-nums" style={{ color: '#059669' }}>
+              {formatTimer(liveElapsed)}
+            </span>
+          )}
+        </div>
         <p className="text-[10px]" style={{ color: '#9CA3AF' }}>
-          Today: {formatDuration(liveElapsed)}
-          {s.status === 'running' && <span className="font-mono ml-1" style={{ color: '#059669' }}>({formatTimer(liveElapsed)})</span>}
-          {' · '}This week: {formatDuration(s.week_seconds)}
+          This week: {formatDuration(s.week_seconds)}
         </p>
       </div>
       {getStatusBadge()}
@@ -1026,14 +1038,10 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                     )}
                   </div>
                   <p className="text-xs" style={{ color: '#9CA3AF' }}>@{m.username || m.user_id.slice(0, 8)}</p>
-                  {/* Summary under name: weekly only when studying, full summary when not */}
-                  {isStudying ? (
-                    <p className="text-xs mt-0.5" style={{ color: '#6B6B6B' }}>This week: {formatDuration(ts!.week_seconds)}</p>
-                  ) : ts ? (
-                    <p className="text-xs mt-0.5" style={{ color: '#6B6B6B' }}>
-                      Today: {formatDuration(ts.today_seconds)} · This week: {formatDuration(ts.week_seconds)}
-                    </p>
-                  ) : null}
+                  {/* Under name: only weekly study time */}
+                  {ts && (
+                    <p className="text-xs mt-0.5" style={{ color: '#6B6B6B' }}>This week: {formatDuration(ts.week_seconds)}</p>
+                  )}
                 </div>
 
                 {/* Studying now badge on the right */}

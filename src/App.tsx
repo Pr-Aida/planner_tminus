@@ -28,8 +28,6 @@ import type { CountdownConfig } from './components/CountdownBar';
 import StudyRoomsView from './views/StudyRoomsView';
 import JoinRoomView from './views/JoinRoomView';
 import RoomNotifications from './components/RoomNotifications';
-import FeedbackInbox from './components/FeedbackInbox';
-import { checkIsAdmin, unreadFeedbackCount } from './lib/feedback';
 
 type AuthScreen = 'sign-in' | 'sign-up' | 'forgot-password' | 'reset-password';
 type TourMode = 'onboarding' | 'whats-new';
@@ -56,8 +54,6 @@ export default function App() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
-  const [showFeedbackInbox, setShowFeedbackInbox] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [tourMode, setTourMode] = useState<TourMode>('onboarding');
 
@@ -116,22 +112,12 @@ export default function App() {
       setSession(session);
       setUser(session?.user ?? null);
       setAuthLoading(false);
-      if (session?.user) {
-        checkIsAdmin().then(setIsAdmin).catch(() => setIsAdmin(false));
-      } else {
-        setIsAdmin(false);
-      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
       setAuthLoading(false);
-      if (session?.user) {
-        checkIsAdmin().then(setIsAdmin).catch(() => setIsAdmin(false));
-      } else {
-        setIsAdmin(false);
-      }
       if (!session?.user) {
         setProfile(null);
         setShowTour(false);
@@ -753,10 +739,6 @@ export default function App() {
         />
       )}
 
-      {showFeedbackInbox && isAdmin && (
-        <FeedbackInbox onClose={() => setShowFeedbackInbox(false)} />
-      )}
-
       <TopNav
         calMode={calMode}
         onCalModeChange={handleCalModeChange}
@@ -777,25 +759,9 @@ export default function App() {
         studyRoomsActive={showStudyRooms}
         notificationsNode={user ? (
           <div className="flex items-center gap-1.5">
-            {isAdmin && (
-              <button
-                onClick={() => setShowFeedbackInbox(true)}
-                className="relative flex items-center justify-center rounded-md transition-all px-2 py-1"
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
-                title="Feedback Inbox (Admin)"
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M22 12h-6l-2 3h-4l-2-3H2" />
-                  <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
-                </svg>
-              </button>
-            )}
             <RoomNotifications
               userId={user.id}
               onOpenRoom={(roomId) => { setShowStudyRooms(true); pendingOpenRoomId.current = roomId; }}
-              onOpenFeedback={() => setShowProfile(true)}
             />
           </div>
         ) : null}

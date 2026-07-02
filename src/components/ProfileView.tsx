@@ -1,10 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { Camera, X, Check, User as UserIcon, Trash2, AlertTriangle, MessageSquare } from 'lucide-react';
+import { Camera, X, Check, User as UserIcon, Trash2, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { updateOwnUsername, validateUsername } from '../lib/auth';
 import type { UserProfile, CalendarMode } from '../types';
 import { TIMEZONES } from '../types';
-import FeedbackSection from './FeedbackSection';
 
 interface Props {
   profile: UserProfile;
@@ -14,7 +13,7 @@ interface Props {
   userId?: string | null;
 }
 
-type Tab = 'profile' | 'preferences' | 'feedback';
+type Tab = 'profile' | 'preferences';
 
 export default function ProfileView({ profile, onClose, onSaved, onAccountDeleted, userId }: Props) {
   const [tab, setTab] = useState<Tab>('profile');
@@ -192,7 +191,6 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
         <div className="flex px-6 pt-4 gap-1">
           <TabBtn active={tab === 'profile'} onClick={() => setTab('profile')}>Profile</TabBtn>
           <TabBtn active={tab === 'preferences'} onClick={() => setTab('preferences')}>Preferences</TabBtn>
-          <TabBtn active={tab === 'feedback'} onClick={() => setTab('feedback')}>Feedback</TabBtn>
         </div>
 
         {/* Body */}
@@ -423,20 +421,6 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                   </div>
                 )}
               </div>
-            </div>
-          )}
-
-          {tab === 'feedback' && (
-            <div className="space-y-5">
-              <div className="flex items-center gap-2 mb-1">
-                <MessageSquare size={18} color="#7B1C3E" />
-                <h3 className="text-base font-bold" style={{ color: '#1B2A4A' }}>Feedback & Suggestions</h3>
-              </div>
-              <p className="text-xs" style={{ color: '#6B6B6B' }}>
-                Have a suggestion, found a bug, or want to request a feature? Send it directly through here.
-                {userId ? " If I reply, you'll receive a notification." : " Log in if you want to receive a reply inside the app."}
-              </p>
-              <FeedbackSection userId={userId ?? null} username={profile.username} />
             </div>
           )}
 
