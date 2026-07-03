@@ -167,6 +167,7 @@ export default function RoomNotifications({ userId, onOpenRoom }: Props) {
                 <NotificationRow
                   key={n.id}
                   n={n}
+                  colors={colors}
                   onOpenRoom={() => { onOpenRoom(n.room_id); setOpen(false); }}
                   onApprove={() => handleAction(n, 'approve')}
                   onReject={() => handleAction(n, 'reject')}
@@ -182,9 +183,10 @@ export default function RoomNotifications({ userId, onOpenRoom }: Props) {
 }
 
 function NotificationRow({
-  n, onOpenRoom, onApprove, onReject, onDismiss,
+  n, colors, onOpenRoom, onApprove, onReject, onDismiss,
 }: {
   n: RoomNotification;
+  colors: ReturnType<typeof useTheme>['colors'];
   onOpenRoom: () => void;
   onApprove: () => void;
   onReject: () => void;
