@@ -79,6 +79,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
   const [copied, setCopied] = useState<'link' | 'code' | null>(null);
   const [showLeave, setShowLeave] = useState(false);
   const [requesting, setRequesting] = useState(false);
+  const [unreadChat, setUnreadChat] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -134,12 +135,33 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
       }, () => { load(); })
       .subscribe();
 
+    // Chat messages channel — track unread when not viewing Chat tab
+    const chatChannel = supabase.channel(`room_chat_unread:${roomId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'room_chat_messages',
+        filter: `room_id=eq.${roomId}`,
+      }, (payload) => {
+        const newRow = payload.new as { user_id: string };
+        if (newRow.user_id !== userId && tab !== 'chat') {
+          setUnreadChat(c => c + 1);
+        }
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(membersChannel);
       supabase.removeChannel(sessionsChannel);
       supabase.removeChannel(requestsChannel);
+      supabase.removeChannel(chatChannel);
     };
-  }, [roomId, load]);
+  }, [roomId, load, userId]);
+
+  // Clear unread when opening Chat tab
+  useEffect(() => {
+    if (tab === 'chat') setUnreadChat(0);
+  }, [tab]);
 
   // Loading state
   if (loading) {
@@ -320,7 +342,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold flex-1 justify-center transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold flex-1 justify-center transition-colors relative"
             style={{
               background: tab === t.key ? themeColor : 'transparent',
               color: tab === t.key ? '#fff' : colors.textSecondary,
@@ -328,6 +350,20 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
             }}
           >
             {t.icon} {t.label}
+            {t.key === 'chat' && unreadChat > 0 && (
+              <span
+                className="absolute top-0.5 right-1 flex items-center justify-center text-[9px] font-bold text-white rounded-full"
+                style={{
+                  background: colors.accent,
+                  minWidth: 15,
+                  height: 15,
+                  padding: '0 4px',
+                  border: `1.5px solid ${tab === 'chat' ? themeColor : colors.bgInput}`,
+                }}
+              >
+                {unreadChat > 9 ? '9+' : unreadChat}
+              </span>
+            )}
           </button>
         ))}
       </div>

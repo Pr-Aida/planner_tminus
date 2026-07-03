@@ -41,17 +41,41 @@ export default function RoomNotifications({ userId, onOpenRoom }: Props) {
   useEffect(() => {
     const channel = supabase.channel(`notifications:${userId}`)
       .on('postgres_changes', {
-        event: '*',
+        event: 'INSERT',
         schema: 'public',
         table: 'room_notifications',
         filter: `user_id=eq.${userId}`,
-      }, () => { load(); })
+      }, (payload) => {
+        const newRow = payload.new as RoomNotification;
+        setNotifications(prev => prev.some(n => n.id === newRow.id) ? prev : [newRow, ...prev]);
+        setUnread(u => u + 1);
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'room_notifications',
+        filter: `user_id=eq.${userId}`,
+      }, (payload) => {
+        const updated = payload.new as RoomNotification;
+        setNotifications(prev => prev.map(n => n.id === updated.id ? { ...n, ...updated } : n));
+        setUnread(u => updated.read ? Math.max(0, u - 1) : u);
+      })
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'room_notifications',
+        filter: `user_id=eq.${userId}`,
+      }, (payload) => {
+        const oldRow = payload.old as { id: string };
+        setNotifications(prev => prev.filter(n => n.id !== oldRow.id));
+        setUnread(u => Math.max(0, u - 1));
+      })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [userId, load]);
+  }, [userId]);
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
