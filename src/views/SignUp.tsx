@@ -76,6 +76,7 @@ export default function SignUp({ onSwitchToSignIn }: Props) {
             </label>
             <input
               type="text"
+              name="username"
               value={username}
               onChange={e => {
                 setUsername(e.target.value);
@@ -136,6 +137,7 @@ export default function SignUp({ onSwitchToSignIn }: Props) {
             </label>
             <input
               type="password"
+              name="new-password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
@@ -155,6 +157,7 @@ export default function SignUp({ onSwitchToSignIn }: Props) {
             </label>
             <input
               type="password"
+              name="confirm-password"
               value={confirmPassword}
               onChange={e => setConfirmPassword(e.target.value)}
               required

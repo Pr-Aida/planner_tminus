@@ -24,6 +24,7 @@ import ForgotPassword from './views/ForgotPassword';
 import ResetPassword from './views/ResetPassword';
 import ProfileView from './components/ProfileView';
 import GuidedTour, { APP_VERSION, WHATS_NEW_UPDATES } from './components/GuidedTour';
+import OnboardingScreen from './components/OnboardingScreen';
 import type { CountdownConfig } from './components/CountdownBar';
 import StudyRoomsView from './views/StudyRoomsView';
 import JoinRoomView from './views/JoinRoomView';
@@ -57,6 +58,7 @@ export default function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [tourMode, setTourMode] = useState<TourMode>('onboarding');
+  const [showWelcomeOnboarding, setShowWelcomeOnboarding] = useState(false);
 
   const [clockSettings, setClockSettings] = useState<ClockSettings>({
     clock1_tz: 'auto',
@@ -183,9 +185,8 @@ export default function App() {
           setThemePref((p.theme_pref as ThemeMode) || 'light');
 
           if (!p.onboarding_completed) {
-            // Brand new user — show full onboarding
-            setTourMode('onboarding');
-            setShowTour(true);
+            // Brand new user — show full welcome onboarding screen first
+            setShowWelcomeOnboarding(true);
           } else if ((p.last_seen_version || '0') < APP_VERSION) {
             // Returning user who hasn't seen the latest What's New
             setTourMode('whats-new');
@@ -625,9 +626,24 @@ export default function App() {
     handleTourFinish();
   }, [handleTourFinish]);
 
+  // ─── Welcome onboarding (full-screen, pre-planner) ───────────────────────
+  const handleWelcomeFinish = useCallback(async () => {
+    setShowWelcomeOnboarding(false);
+    if (!user || !profile) return;
+    const updates: Partial<UserProfile> = {
+      onboarding_completed: true,
+      last_seen_version: APP_VERSION,
+    };
+    await supabase.from('profiles').update(updates).eq('id', user.id);
+    setProfile(prev => prev ? { ...prev, ...updates } : prev);
+  }, [user, profile]);
+
+  const handleWelcomeSkip = useCallback(() => {
+    handleWelcomeFinish();
+  }, [handleWelcomeFinish]);
+
   const handleRestartTour = useCallback(() => {
-    setTourMode('onboarding');
-    setShowTour(true);
+    setShowWelcomeOnboarding(true);
   }, []);
 
   const handleOpenWhatsNew = useCallback(() => {
@@ -728,6 +744,9 @@ export default function App() {
 
   return (
     <ThemeProvider initialTheme={themePref}>
+    {showWelcomeOnboarding && (
+      <OnboardingScreen onFinish={handleWelcomeFinish} onSkip={handleWelcomeSkip} />
+    )}
     <MainAppContent
       showTour={showTour}
       tourMode={tourMode}

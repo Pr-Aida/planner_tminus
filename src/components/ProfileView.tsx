@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Camera, X, Check, User as UserIcon, Trash2, AlertTriangle, Sun, Moon } from 'lucide-react';
+import { Camera, X, Check, User as UserIcon, Trash2, AlertTriangle, Sun, Moon, Sparkles, Gift } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { updateOwnUsername, validateUsername } from '../lib/auth';
 import { useTheme, type ThemeMode } from '../lib/theme';
@@ -11,12 +11,14 @@ interface Props {
   onClose: () => void;
   onSaved: (profile: UserProfile) => void;
   onAccountDeleted: () => void;
+  onRestartTour: () => void;
+  onOpenWhatsNew: () => void;
   userId?: string | null;
 }
 
 type Tab = 'profile' | 'preferences';
 
-export default function ProfileView({ profile, onClose, onSaved, onAccountDeleted, userId }: Props) {
+export default function ProfileView({ profile, onClose, onSaved, onAccountDeleted, onRestartTour, onOpenWhatsNew, userId }: Props) {
   const [tab, setTab] = useState<Tab>('profile');
   const { theme, setTheme, colors } = useTheme();
 
@@ -403,6 +405,30 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                     send you a reset link if you forget your password.
                   </p>
                 </div>
+              </div>
+
+              {/* Tours & Updates */}
+              <div className="space-y-2 pt-2">
+                <button
+                  onClick={onRestartTour}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors"
+                  style={{ background: colors.bgInput, border: 'none', cursor: 'pointer' }}
+                  onMouseEnter={e => e.currentTarget.style.background = colors.bgHover}
+                  onMouseLeave={e => e.currentTarget.style.background = colors.bgInput}
+                >
+                  <Sparkles size={18} color={colors.accent} />
+                  <span className="text-sm font-semibold" style={{ color: colors.textPrimary }}>View Welcome Tour Again</span>
+                </button>
+                <button
+                  onClick={onOpenWhatsNew}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors"
+                  style={{ background: colors.bgInput, border: 'none', cursor: 'pointer' }}
+                  onMouseEnter={e => e.currentTarget.style.background = colors.bgHover}
+                  onMouseLeave={e => e.currentTarget.style.background = colors.bgInput}
+                >
+                  <Gift size={18} color={colors.success} />
+                  <span className="text-sm font-semibold" style={{ color: colors.textPrimary }}>View What's New</span>
+                </button>
               </div>
 
               {/* Delete Account */}

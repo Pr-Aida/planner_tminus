@@ -55,6 +55,7 @@ export default function SignIn({ onSwitchToSignUp, onSwitchToForgot }: Props) {
             </label>
             <input
               type="text"
+              name="username"
               value={username}
               onChange={e => setUsername(e.target.value)}
               required
@@ -79,6 +80,7 @@ export default function SignIn({ onSwitchToSignUp, onSwitchToForgot }: Props) {
             </label>
             <input
               type="password"
+              name="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
