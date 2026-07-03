@@ -282,6 +282,102 @@ export default function TopNav({
 
   const hasClocksArea = showClock1 || showClock2 || showAddClock2;
 
+  const clocksGroup = hasClocksArea && (
+    <div className="flex items-center gap-2 md:gap-4 relative">
+      {/* Clock 1 */}
+      {showClock1 && (
+        <div className="relative">
+          <ClockWidget
+            tz={eff1Tz}
+            label={clockSettings.clock1_label}
+            onEdit={() => setEditingClock(1)}
+            onRemove={() => onClockSettingsChange({ ...clockSettings, clock1_visible: false })}
+          />
+          {editingClock === 1 && (
+            <ClockEditor
+              initial={{ tz: clockSettings.clock1_tz, label: clockSettings.clock1_label }}
+              profileTz={timezone}
+              isFirst={true}
+              onSave={handleSaveClock1}
+              onClose={() => setEditingClock(null)}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Divider between clocks */}
+      {showClock1 && (showClock2) && (
+        <div className="h-5 md:h-6" style={{ width: 1, background: 'rgba(255,255,255,0.15)' }} />
+      )}
+
+      {/* Clock 2 */}
+      {showClock2 && (
+        <div className="relative">
+          <ClockWidget
+            tz={eff2Tz}
+            label={clockSettings.clock2_label}
+            onEdit={() => setEditingClock(2)}
+            onRemove={() => onClockSettingsChange({ ...clockSettings, clock2_visible: false, clock2_tz: '' })}
+          />
+          {editingClock === 2 && (
+            <ClockEditor
+              initial={{ tz: clockSettings.clock2_tz, label: clockSettings.clock2_label }}
+              profileTz={timezone}
+              isFirst={false}
+              onSave={handleSaveClock2}
+              onClose={() => setEditingClock(null)}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Add second clock button */}
+      {showClock1 && showAddClock2 && (
+        <div className="relative">
+          <button
+            onClick={() => setEditingClock(2)}
+            className="flex items-center gap-1 rounded-md px-1.5 md:px-2 py-1 transition-all"
+            style={{
+              background: 'transparent', border: '1px dashed rgba(255,255,255,0.2)',
+              color: 'rgba(255,255,255,0.35)', cursor: 'pointer', fontSize: '10px',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.5)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = 'rgba(255,255,255,0.35)'; }}
+            title="Add second clock"
+          >
+            <Plus size={10} /> <span className="hidden sm:inline">Clock</span>
+          </button>
+          {editingClock === 2 && (
+            <ClockEditor
+              initial={{ tz: timezone, label: '' }}
+              profileTz={timezone}
+              isFirst={false}
+              onSave={handleSaveClock2}
+              onClose={() => setEditingClock(null)}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Show clock 1 restore button if hidden */}
+      {!showClock1 && (
+        <button
+          onClick={() => onClockSettingsChange({ ...clockSettings, clock1_visible: true })}
+          className="flex items-center gap-1 rounded-md px-1.5 md:px-2 py-1 transition-all"
+          style={{
+            background: 'transparent', border: '1px dashed rgba(255,255,255,0.2)',
+            color: 'rgba(255,255,255,0.35)', cursor: 'pointer', fontSize: '10px',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.5)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = 'rgba(255,255,255,0.35)'; }}
+          title="Show clock"
+        >
+          <Clock size={10} /> <span className="hidden sm:inline">Add Clock</span>
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <div className="sticky top-0 z-50" style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.22)' }}>
       <nav
@@ -289,7 +385,7 @@ export default function TopNav({
         style={{ background: colors.navBg, height: '56px' }}
       >
         {/* Left: Calendar toggle */}
-        <div className="flex-shrink-0">
+        <div className="flex-1 flex items-center justify-start">
           <CalendarDropdown
             mode={calMode}
             currentYear={currentGregYear}
@@ -298,110 +394,16 @@ export default function TopNav({
           />
         </div>
 
-        {/* Center: Clock(s) */}
+        {/* Center: Clock(s) — desktop only, centered between left and right columns */}
         <div
-          className="flex-1 flex items-center justify-center"
+          className="hidden md:flex flex-1 items-center justify-center"
           data-tour="tour-local-time"
         >
-          {hasClocksArea && (
-            <div className="flex items-center gap-2 md:gap-4 relative">
-              {/* Clock 1 */}
-              {showClock1 && (
-                <div className="relative">
-                  <ClockWidget
-                    tz={eff1Tz}
-                    label={clockSettings.clock1_label}
-                    onEdit={() => setEditingClock(1)}
-                    onRemove={() => onClockSettingsChange({ ...clockSettings, clock1_visible: false })}
-                  />
-                  {editingClock === 1 && (
-                    <ClockEditor
-                      initial={{ tz: clockSettings.clock1_tz, label: clockSettings.clock1_label }}
-                      profileTz={timezone}
-                      isFirst={true}
-                      onSave={handleSaveClock1}
-                      onClose={() => setEditingClock(null)}
-                    />
-                  )}
-                </div>
-              )}
-
-              {/* Divider between clocks */}
-              {showClock1 && (showClock2) && (
-                <div className="h-5 md:h-6" style={{ width: 1, background: 'rgba(255,255,255,0.15)' }} />
-              )}
-
-              {/* Clock 2 */}
-              {showClock2 && (
-                <div className="relative">
-                  <ClockWidget
-                    tz={eff2Tz}
-                    label={clockSettings.clock2_label}
-                    onEdit={() => setEditingClock(2)}
-                    onRemove={() => onClockSettingsChange({ ...clockSettings, clock2_visible: false, clock2_tz: '' })}
-                  />
-                  {editingClock === 2 && (
-                    <ClockEditor
-                      initial={{ tz: clockSettings.clock2_tz, label: clockSettings.clock2_label }}
-                      profileTz={timezone}
-                      isFirst={false}
-                      onSave={handleSaveClock2}
-                      onClose={() => setEditingClock(null)}
-                    />
-                  )}
-                </div>
-              )}
-
-              {/* Add second clock button */}
-              {showClock1 && showAddClock2 && (
-                <div className="relative">
-                  <button
-                    onClick={() => setEditingClock(2)}
-                    className="flex items-center gap-1 rounded-md px-1.5 md:px-2 py-1 transition-all"
-                    style={{
-                      background: 'transparent', border: '1px dashed rgba(255,255,255,0.2)',
-                      color: 'rgba(255,255,255,0.35)', cursor: 'pointer', fontSize: '10px',
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.5)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = 'rgba(255,255,255,0.35)'; }}
-                    title="Add second clock"
-                  >
-                    <Plus size={10} /> <span className="hidden sm:inline">Clock</span>
-                  </button>
-                  {editingClock === 2 && (
-                    <ClockEditor
-                      initial={{ tz: timezone, label: '' }}
-                      profileTz={timezone}
-                      isFirst={false}
-                      onSave={handleSaveClock2}
-                      onClose={() => setEditingClock(null)}
-                    />
-                  )}
-                </div>
-              )}
-
-              {/* Show clock 1 restore button if hidden */}
-              {!showClock1 && (
-                <button
-                  onClick={() => onClockSettingsChange({ ...clockSettings, clock1_visible: true })}
-                  className="flex items-center gap-1 rounded-md px-1.5 md:px-2 py-1 transition-all"
-                  style={{
-                    background: 'transparent', border: '1px dashed rgba(255,255,255,0.2)',
-                    color: 'rgba(255,255,255,0.35)', cursor: 'pointer', fontSize: '10px',
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.5)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = 'rgba(255,255,255,0.35)'; }}
-                  title="Show clock"
-                >
-                  <Clock size={10} /> <span className="hidden sm:inline">Add Clock</span>
-                </button>
-              )}
-            </div>
-          )}
+          {clocksGroup}
         </div>
 
         {/* Right: View tabs + Rooms + avatar (desktop) */}
-        <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+        <div className="flex-1 flex items-center justify-end gap-2 md:gap-3">
           {notificationsNode}
 
           <div className="hidden sm:flex gap-1" data-tour="tour-view-tabs">
@@ -507,6 +509,17 @@ export default function TopNav({
           )}
         </div>
       </nav>
+
+      {/* Mobile clock row — centered second row under the main header */}
+      {hasClocksArea && (
+        <div
+          className="md:hidden flex items-center justify-center px-4 py-1.5"
+          style={{ background: colors.navBg, borderTop: '1px solid rgba(255,255,255,0.06)' }}
+          data-tour="tour-local-time"
+        >
+          {clocksGroup}
+        </div>
+      )}
 
       {/* Mobile dropdown menu */}
       {showMobileMenu && (
