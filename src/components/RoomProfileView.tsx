@@ -1264,6 +1264,11 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
   const [oldOwnerRole, setOldOwnerRole] = useState<'member' | 'admin'>('member');
   const [imageUploading, setImageUploading] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [showMakeAdmin, setShowMakeAdmin] = useState(false);
+  const [makeAdminTarget, setMakeAdminTarget] = useState('');
+  const [makingAdmin, setMakingAdmin] = useState(false);
+  const [showMakeAdminConfirm, setShowMakeAdminConfirm] = useState(false);
+  const [makeAdminError, setMakeAdminError] = useState<string | null>(null);
 
   async function handleImageUpload(file: File) {
     if (file.size > 5 * 1024 * 1024) { setImageError('Image file is too large. Maximum 5 MB.'); return; }
@@ -1456,8 +1461,57 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
             )}
           </div>
 
+          {/* Make Admin */}
+          <div className="mb-4 pb-4" style={{ borderBottom: '1px solid #F2F2F2' }}>
+            <p className="text-xs font-bold mb-1" style={{ color: '#1B2A4A' }}>Make admin</p>
+            <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>Promote an approved member to admin. You stay the owner — ownership does not change.</p>
+            {makeAdminError && (
+              <p className="text-xs mb-2" style={{ color: '#B91C1C' }}>{makeAdminError}</p>
+            )}
+            {approvedOthers.filter(m => m.role !== 'admin').length === 0 ? (
+              <p className="text-xs italic" style={{ color: '#9CA3AF' }}>No approved members available to promote.</p>
+            ) : !showMakeAdmin ? (
+              <button onClick={() => { setShowMakeAdmin(true); setMakeAdminError(null); }} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold"
+                style={{ background: '#EBF0FF', color: '#1B2A4A', border: 'none', cursor: 'pointer' }}>
+                <UserCog size={13} /> Make Admin
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <select value={makeAdminTarget} onChange={e => { setMakeAdminTarget(e.target.value); setMakeAdminError(null); }}
+                  className="w-full rounded-lg px-3 py-2 text-xs outline-none"
+                  style={{ border: '1.5px solid #C8C8C8', background: '#F8F8F8', color: '#111' }}>
+                  <option value="">Select an approved member…</option>
+                  {approvedOthers.filter(m => m.role !== 'admin').map(m => (
+                    <option key={m.user_id} value={m.user_id}>
+                      {m.username || m.user_id.slice(0, 8)}
+                    </option>
+                  ))}
+                </select>
+                {makeAdminTarget && (
+                  <p className="text-xs" style={{ color: '#6B6B6B' }}>
+                    Promote <strong style={{ color: '#1B2A4A' }}>
+                      {approvedOthers.find(m => m.user_id === makeAdminTarget)?.username || 'this member'}
+                    </strong> to admin? You will remain the owner.
+                  </p>
+                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowMakeAdminConfirm(true)}
+                    disabled={!makeAdminTarget || makingAdmin}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+                    style={{ background: !makeAdminTarget || makingAdmin ? '#9CA3AF' : themeColor, border: 'none', cursor: !makeAdminTarget || makingAdmin ? 'not-allowed' : 'pointer' }}>
+                    {makingAdmin ? 'Promoting…' : 'Make Admin'}
+                  </button>
+                  <button onClick={() => { setShowMakeAdmin(false); setMakeAdminTarget(''); setMakeAdminError(null); }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                    style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: 'pointer' }}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Delete room */}
-          <div>
+          <div className="mt-4 pt-4" style={{ borderTop: '1px solid #F2F2F2' }}>
             <p className="text-xs font-bold mb-1" style={{ color: '#B91C1C' }}>Delete room</p>
             <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>Deletes the room for all members. Cannot be undone.</p>
             {!showDelete ? (
@@ -1518,6 +1572,53 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
                 disabled={transferring}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold"
                 style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: transferring ? 'not-allowed' : 'pointer' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Make Admin confirmation modal */}
+      {showMakeAdminConfirm && makeAdminTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => !makingAdmin && setShowMakeAdminConfirm(false)}>
+          <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: '#fff' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-3 mb-4">
+              <UserCog size={20} color={themeColor} style={{ flexShrink: 0, marginTop: 1 }} />
+              <div>
+                <h3 className="text-sm font-bold mb-2" style={{ color: '#1B2A4A' }}>Make Admin</h3>
+                <p className="text-xs" style={{ color: '#6B6B6B' }}>
+                  Make{' '}
+                  <strong style={{ color: '#1B2A4A' }}>
+                    {approvedOthers.find(m => m.user_id === makeAdminTarget)?.username || 'this member'}
+                  </strong>
+                  {' '}an admin of this room? You will remain the owner.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={async () => {
+                  setMakingAdmin(true); setMakeAdminError(null);
+                  try {
+                    await makeAdmin(room.id, makeAdminTarget);
+                    setShowMakeAdminConfirm(false); setShowMakeAdmin(false); setMakeAdminTarget('');
+                    onUpdated();
+                  } catch (e) {
+                    setMakeAdminError(e instanceof Error ? e.message : 'Failed to make admin.');
+                  }
+                  finally { setMakingAdmin(false); }
+                }}
+                disabled={makingAdmin}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+                style={{ background: makingAdmin ? '#9CA3AF' : themeColor, border: 'none', cursor: makingAdmin ? 'not-allowed' : 'pointer' }}>
+                {makingAdmin ? 'Promoting…' : 'Yes, make admin'}
+              </button>
+              <button
+                onClick={() => setShowMakeAdminConfirm(false)}
+                disabled={makingAdmin}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: makingAdmin ? 'not-allowed' : 'pointer' }}>
                 Cancel
               </button>
             </div>
