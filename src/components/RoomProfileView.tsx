@@ -1283,7 +1283,7 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
     finally { setImageUploading(false); }
   }
 
-  const approvedOthers = members.filter(m => m.status === 'approved' && m.user_id !== room.owner_id);
+  const approvedOthers = members.filter(m => m.status === 'approved' && m.user_id !== room.owner_id && m.user_id !== currentUserId);
 
   async function handleSave() {
     setSaving(true);
