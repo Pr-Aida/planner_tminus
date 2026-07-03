@@ -386,32 +386,49 @@ export async function deleteRoomFiles(roomId: string): Promise<void> {
 // ─── Download helper (triggers browser download, no duplication) ──────────────
 /**
  * Triggers a browser download of a file via a temporary signed URL.
- * Creates a hidden <a> element with the download attribute and clicks it.
- * Does NOT create a duplicate file in Storage or the database — it only
- * generates a temporary signed URL and lets the browser save the file locally.
+ * Fetches the file as a blob first (required for cross-origin URLs where
+ * the `download` attribute is ignored), then creates an object URL for download.
+ * Does NOT create a duplicate file in Storage or the database.
  */
 export async function downloadFile(
   bucket: string,
   path: string,
   fileName: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const url = await getSignedUrl(bucket, path, true);
+  const url = await getSignedUrl(bucket, path, false);
   if (!url) {
     return { ok: false, error: 'Could not generate download link. Please try again.' };
   }
 
-  // Use a hidden anchor element with download attribute for reliable cross-browser download
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  a.rel = 'noopener';
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  // Clean up after a short delay
-  setTimeout(() => { document.body.removeChild(a); }, 1000);
+  try {
+    // Fetch the file as blob (required for cross-origin downloads)
+    const response = await fetch(url);
+    if (!response.ok) {
+      return { ok: false, error: 'Could not download file. Please try again.' };
+    }
+    const blob = await response.blob();
 
-  return { ok: true };
+    // Create object URL and trigger download
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = fileName;
+    a.rel = 'noopener';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+
+    // Clean up after a short delay
+    setTimeout(() => {
+      URL.revokeObjectURL(blobUrl);
+      document.body.removeChild(a);
+    }, 1000);
+
+    return { ok: true };
+  } catch (err) {
+    console.error('[files] download failed:', err);
+    return { ok: false, error: 'Download failed. Please try again.' };
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

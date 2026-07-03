@@ -273,20 +273,14 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     mediaRecorderRef.current = recorder;
 
     recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) audioChunksRef.current.push(e.data);
-    };
-
-    recorder.onstop = () => {
-      // Create the blob immediately when recording stops
-      const chunks = audioChunksRef.current;
-      if (chunks.length > 0) {
-        const type = recorder.mimeType || 'audio/webm';
-        recordedBlobRef.current = new Blob(chunks, { type });
+      if (e.data && e.data.size > 0) {
+        audioChunksRef.current.push(e.data);
       }
     };
 
     // Use timeslice to get data during recording for reliability
-    recorder.start(1000);
+    // This ensures chunks are collected even if stop() is called quickly
+    recorder.start(500);
     setIsRecording(true);
     setRecordingSeconds(0);
 
@@ -303,7 +297,62 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     }, 1000);
   }
 
-  function stopRecording() {
+  function stopRecording(): Promise<Blob | null> {
+    return new Promise((resolve) => {
+      stopRecordingTimer();
+
+      const recorder = mediaRecorderRef.current;
+      const stream = streamRef.current;
+
+      if (!recorder || recorder.state === 'inactive') {
+        if (stream) {
+          stream.getTracks().forEach(t => t.stop());
+          streamRef.current = null;
+        }
+        setIsRecording(false);
+        // Return any already-collected chunks
+        if (audioChunksRef.current.length > 0) {
+          const mimeType = recorder?.mimeType || 'audio/webm';
+          const blob = new Blob(audioChunksRef.current, { type: mimeType });
+          recordedBlobRef.current = blob;
+          resolve(blob);
+        } else {
+          resolve(null);
+        }
+        return;
+      }
+
+      // Set up one-time handler for the final data
+      const handleStop = () => {
+        if (stream) {
+          stream.getTracks().forEach(t => t.stop());
+          streamRef.current = null;
+        }
+        setIsRecording(false);
+
+        // Build blob from all collected chunks
+        if (audioChunksRef.current.length > 0) {
+          const mimeType = recorder.mimeType || 'audio/webm';
+          const blob = new Blob(audioChunksRef.current, { type: mimeType });
+          recordedBlobRef.current = blob;
+          resolve(blob);
+        } else {
+          resolve(null);
+        }
+      };
+
+      recorder.onstop = handleStop;
+
+      try {
+        recorder.stop();
+      } catch (err) {
+        console.error('[Voice] stop error:', err);
+        handleStop();
+      }
+    });
+  }
+
+  function cancelRecording() {
     stopRecordingTimer();
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       try { mediaRecorderRef.current.stop(); } catch { /* ignore */ }
@@ -313,38 +362,14 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
       streamRef.current = null;
     }
     setIsRecording(false);
-  }
-
-  function cancelRecording() {
-    stopRecording();
     audioChunksRef.current = [];
     recordedBlobRef.current = null;
     setRecordingSeconds(0);
   }
 
   async function sendVoiceMessage() {
-    // Stop recording first (but keep chunks)
-    stopRecordingTimer();
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try { mediaRecorderRef.current.stop(); } catch { /* ignore */ }
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
-    }
-    setIsRecording(false);
-
-    // Wait for onstop to complete and populate recordedBlobRef
-    await new Promise(r => setTimeout(r, 100));
-
-    // Use the blob from onstop if available
-    let blob = recordedBlobRef.current;
-
-    // Fallback: build from chunks if onstop didn't set the ref
-    if (!blob && audioChunksRef.current.length > 0) {
-      const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
-      blob = new Blob(audioChunksRef.current, { type: mimeType });
-    }
+    // Stop recording and get the blob
+    const blob = await stopRecording();
 
     if (!blob || blob.size === 0) {
       setVoiceError('Recording was empty. Please try again.');
@@ -354,7 +379,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
       return;
     }
 
-    const mimeType = blob.type || mediaRecorderRef.current?.mimeType || 'audio/webm';
+    const mimeType = blob.type || 'audio/webm';
     const ext = mimeType.includes('webm') ? 'webm' : mimeType.includes('mp4') ? 'm4a' : 'ogg';
     const fileName = `voice-${Date.now()}.${ext}`;
     const file = new File([blob], fileName, { type: mimeType });
@@ -372,16 +397,27 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     setSending(true);
     setUploadProgress(true);
     setVoiceError(null);
-    const result = await sendChatMessageWithAttachment(roomId, '', file, userId, 'audio');
-    setSending(false);
-    setUploadProgress(false);
 
-    if (result.ok) {
-      audioChunksRef.current = [];
-      recordedBlobRef.current = null;
-      setRecordingSeconds(0);
-    } else {
-      setVoiceError(result.error || 'Failed to send voice message.');
+    try {
+      const result = await sendChatMessageWithAttachment(roomId, '', file, userId, 'audio');
+
+      setSending(false);
+      setUploadProgress(false);
+
+      if (result.ok) {
+        audioChunksRef.current = [];
+        recordedBlobRef.current = null;
+        setRecordingSeconds(0);
+        // Reload messages to show the new voice message
+        await load();
+      } else {
+        setVoiceError(result.error || 'Failed to send voice message.');
+      }
+    } catch (err) {
+      setSending(false);
+      setUploadProgress(false);
+      setVoiceError('Failed to send voice message. Please try again.');
+      console.error('[Voice] send error:', err);
     }
   }
 
@@ -625,16 +661,28 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
               <p className="text-sm font-bold truncate" style={{ color: colors.textPrimary }}>{previewUrl.name}</p>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => {
-                    // Trigger download via hidden anchor
-                    const a = document.createElement('a');
-                    a.href = previewUrl.url;
-                    a.download = previewUrl.name;
-                    a.rel = 'noopener';
-                    a.style.display = 'none';
-                    document.body.appendChild(a);
-                    a.click();
-                    setTimeout(() => document.body.removeChild(a), 1000);
+                  onClick={async () => {
+                    // Fetch as blob and download (required for cross-origin URLs)
+                    try {
+                      const response = await fetch(previewUrl.url);
+                      if (response.ok) {
+                        const blob = await response.blob();
+                        const blobUrl = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = blobUrl;
+                        a.download = previewUrl.name;
+                        a.rel = 'noopener';
+                        a.style.display = 'none';
+                        document.body.appendChild(a);
+                        a.click();
+                        setTimeout(() => {
+                          URL.revokeObjectURL(blobUrl);
+                          document.body.removeChild(a);
+                        }, 1000);
+                      }
+                    } catch (err) {
+                      console.error('[Preview] download failed:', err);
+                    }
                   }}
                   className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold"
                   style={{ background: colors.bgInput, color: colors.textPrimary, border: 'none', cursor: 'pointer' }}
@@ -658,15 +706,27 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
                   <File size={36} color={colors.textTertiary} className="mx-auto mb-3" />
                   <p className="text-sm mb-3" style={{ color: colors.textSecondary }}>Preview not available. You can download this file.</p>
                   <button
-                    onClick={() => {
-                      const a = document.createElement('a');
-                      a.href = previewUrl.url;
-                      a.download = previewUrl.name;
-                      a.rel = 'noopener';
-                      a.style.display = 'none';
-                      document.body.appendChild(a);
-                      a.click();
-                      setTimeout(() => document.body.removeChild(a), 1000);
+                    onClick={async () => {
+                      try {
+                        const response = await fetch(previewUrl.url);
+                        if (response.ok) {
+                          const blob = await response.blob();
+                          const blobUrl = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = blobUrl;
+                          a.download = previewUrl.name;
+                          a.rel = 'noopener';
+                          a.style.display = 'none';
+                          document.body.appendChild(a);
+                          a.click();
+                          setTimeout(() => {
+                            URL.revokeObjectURL(blobUrl);
+                            document.body.removeChild(a);
+                          }, 1000);
+                        }
+                      } catch (err) {
+                        console.error('[Preview] download failed:', err);
+                      }
                     }}
                     className="inline-flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-bold text-white"
                     style={{ background: colors.accent, border: 'none', cursor: 'pointer' }}

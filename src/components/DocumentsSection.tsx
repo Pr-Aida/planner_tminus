@@ -67,12 +67,12 @@ export default function DocumentsSection({ userId }: Props) {
   }
 
   async function handleDownload(file: UploadedFile) {
-    const url = await getSignedUrl(file.storage_bucket, file.storage_path, true);
-    if (!url) {
-      setError('Could not download file. Please try again.');
-      return;
+    // Use the downloadFile helper which fetches as blob first
+    const { downloadFile: doDownload } = await import('../lib/files');
+    const result = await doDownload(file.storage_bucket, file.storage_path, file.original_file_name);
+    if (!result.ok) {
+      setError(result.error || 'Could not download file. Please try again.');
     }
-    window.open(url, '_blank');
   }
 
   async function handleDelete(fileId: string) {
@@ -217,14 +217,35 @@ export default function DocumentsSection({ userId }: Props) {
             <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: colors.borderLight }}>
               <p className="text-sm font-bold truncate" style={{ color: colors.textPrimary }}>{previewUrl.name}</p>
               <div className="flex items-center gap-2">
-                <a
-                  href={previewUrl.url}
-                  download={previewUrl.name}
+                <button
+                  onClick={async () => {
+                    // Fetch as blob and download (required for cross-origin URLs)
+                    try {
+                      const response = await fetch(previewUrl.url);
+                      if (response.ok) {
+                        const blob = await response.blob();
+                        const blobUrl = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = blobUrl;
+                        a.download = previewUrl.name;
+                        a.rel = 'noopener';
+                        a.style.display = 'none';
+                        document.body.appendChild(a);
+                        a.click();
+                        setTimeout(() => {
+                          URL.revokeObjectURL(blobUrl);
+                          document.body.removeChild(a);
+                        }, 1000);
+                      }
+                    } catch (err) {
+                      console.error('[Documents] download failed:', err);
+                    }
+                  }}
                   className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold"
-                  style={{ background: colors.bgInput, color: colors.textPrimary, border: `1px solid ${colors.borderLight}` }}
+                  style={{ background: colors.bgInput, color: colors.textPrimary, border: `1px solid ${colors.borderLight}`, cursor: 'pointer' }}
                 >
                   <Download size={13} /> Download
-                </a>
+                </button>
                 <button onClick={() => setPreviewUrl(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
                   <X size={18} color={colors.textSecondary} />
                 </button>
@@ -243,14 +264,34 @@ export default function DocumentsSection({ userId }: Props) {
                   <p className="text-sm mb-3" style={{ color: colors.textSecondary }}>
                     Preview not available for this file type.
                   </p>
-                  <a
-                    href={previewUrl.url}
-                    download={previewUrl.name}
+                  <button
+                    onClick={async () => {
+                      try {
+                        const response = await fetch(previewUrl.url);
+                        if (response.ok) {
+                          const blob = await response.blob();
+                          const blobUrl = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = blobUrl;
+                          a.download = previewUrl.name;
+                          a.rel = 'noopener';
+                          a.style.display = 'none';
+                          document.body.appendChild(a);
+                          a.click();
+                          setTimeout(() => {
+                            URL.revokeObjectURL(blobUrl);
+                            document.body.removeChild(a);
+                          }, 1000);
+                        }
+                      } catch (err) {
+                        console.error('[Documents] download failed:', err);
+                      }
+                    }}
                     className="inline-flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-bold text-white"
-                    style={{ background: colors.accent }}
+                    style={{ background: colors.accent, border: 'none', cursor: 'pointer' }}
                   >
                     <Download size={14} /> Download
-                  </a>
+                  </button>
                 </div>
               )}
             </div>
