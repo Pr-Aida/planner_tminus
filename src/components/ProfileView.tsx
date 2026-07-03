@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
-import { Camera, X, Check, User as UserIcon, Trash2, AlertTriangle, Sun, Moon, Sparkles, Gift } from 'lucide-react';
+import { Camera, X, Check, User as UserIcon, Trash2, AlertTriangle, Sun, Moon, Sparkles, Gift, FileText } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { updateOwnUsername, validateUsername } from '../lib/auth';
 import { useTheme, type ThemeMode } from '../lib/theme';
 import type { UserProfile, CalendarMode } from '../types';
 import { TIMEZONES } from '../types';
+import DocumentsSection from './DocumentsSection';
 
 interface Props {
   profile: UserProfile;
@@ -16,7 +17,7 @@ interface Props {
   userId?: string | null;
 }
 
-type Tab = 'profile' | 'preferences';
+type Tab = 'profile' | 'documents' | 'preferences';
 
 export default function ProfileView({ profile, onClose, onSaved, onAccountDeleted, onRestartTour, onOpenWhatsNew, userId }: Props) {
   const [tab, setTab] = useState<Tab>('profile');
@@ -197,6 +198,7 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
         {/* Tabs */}
         <div className="flex px-6 pt-4 gap-1">
           <TabBtn active={tab === 'profile'} onClick={() => setTab('profile')}>Profile</TabBtn>
+          <TabBtn active={tab === 'documents'} onClick={() => setTab('documents')}>Documents</TabBtn>
           <TabBtn active={tab === 'preferences'} onClick={() => setTab('preferences')}>Preferences</TabBtn>
         </div>
 
@@ -319,6 +321,13 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                 </p>
               </Field>
             </div>
+          )}
+
+          {tab === 'documents' && userId && (
+            <DocumentsSection userId={userId} />
+          )}
+          {tab === 'documents' && !userId && (
+            <p className="text-sm text-center py-8" style={{ color: colors.textSecondary }}>Sign in to manage your documents.</p>
           )}
 
           {tab === 'preferences' && (

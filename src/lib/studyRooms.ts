@@ -168,7 +168,16 @@ export async function regenerateInviteCode(roomId: string): Promise<string> {
 }
 
 export async function deleteRoom(roomId: string): Promise<void> {
-  // 1. Remove the room's profile image from storage (only that room's folder).
+  // 1. Clean up the room's chat attachment files from storage (room-chat-files bucket).
+  try {
+    const { deleteRoomFiles } = await import('./files');
+    await deleteRoomFiles(roomId);
+  } catch (e) {
+    logSupabaseError('deleteRoom chat storage cleanup', e);
+    // Don't block room deletion if storage cleanup fails — FK CASCADE handles DB rows.
+  }
+
+  // 2. Remove the room's profile image from storage (only that room's folder).
   try {
     const { data: files } = await supabase.storage.from('room-profiles').list(roomId);
     if (files && files.length > 0) {

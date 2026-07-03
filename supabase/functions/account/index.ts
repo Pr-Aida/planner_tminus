@@ -250,6 +250,16 @@ async function deleteAccount(req: Request): Promise<Response> {
     await admin.storage.from("avatars").remove(paths);
   }
 
+  // Delete personal document files from storage (user-documents bucket).
+  // DB metadata rows are removed by CASCADE when the auth user is deleted.
+  const { data: docFiles } = await admin.storage
+    .from("user-documents")
+    .list(userId);
+  if (docFiles && docFiles.length > 0) {
+    const docPaths = docFiles.map((f) => `${userId}/${f.name}`);
+    await admin.storage.from("user-documents").remove(docPaths);
+  }
+
   // Delete the auth user — CASCADE in DB will remove all owned rows.
   const { error: delErr } = await admin.auth.admin.deleteUser(userId);
   if (delErr) {
