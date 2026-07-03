@@ -164,6 +164,7 @@ export async function uploadPersonalDocument(
 ): Promise<{ ok: boolean; file?: UploadedFile; error?: string }> {
   const validation = validateFile(file);
   if (!validation.ok || !validation.type) {
+    console.error('[files] room upload validation failed:', validation.error, { fileName: file.name, fileType: file.type, fileSize: file.size });
     return { ok: false, error: validation.error };
   }
 
@@ -239,7 +240,10 @@ export async function uploadRoomChatFile(
     .eq('upload_context', 'room_chat')
     .eq('room_id', roomId)
     .is('deleted_at', null);
-  if (countErr) return { ok: false, error: 'Could not check file limit. Try again.' };
+  if (countErr) {
+    console.error('[files] room file count check failed:', countErr);
+    return { ok: false, error: 'Could not check file limit. Try again.' };
+  }
   if ((count || 0) >= MAX_ROOM_FILES) {
     return { ok: false, error: `This room has reached the ${MAX_ROOM_FILES} file limit.` };
   }
@@ -259,8 +263,8 @@ export async function uploadRoomChatFile(
     .upload(storagePath, file, { contentType: baseMime });
 
   if (upErr) {
-    console.error('[files] storage upload failed:', upErr);
-    return { ok: false, error: `Upload failed: ${upErr.message}` };
+    console.error('[files] storage upload failed:', upErr, { bucket, storagePath, contentType: baseMime, fileSize: file.size });
+    return { ok: false, error: `Storage upload failed: ${upErr.message}` };
   }
 
   // Insert metadata
@@ -284,9 +288,9 @@ export async function uploadRoomChatFile(
 
   if (dbErr || !data) {
     // DB failed — clean up orphaned storage file
-    console.error('[files] metadata insert failed:', dbErr);
+    console.error('[files] metadata insert failed:', dbErr, { fileId, storagePath, bucket, uploadContext: 'room_chat' });
     await supabase.storage.from(bucket).remove([storagePath]);
-    return { ok: false, error: `Could not save file metadata: ${dbErr?.message || 'Unknown error'}` };
+    return { ok: false, error: `Attachment metadata insert failed: ${dbErr?.message || 'Unknown error'}` };
   }
 
   return { ok: true, file: data as unknown as UploadedFile };

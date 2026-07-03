@@ -170,8 +170,8 @@ export async function sendChatMessageWithAttachment(
     .maybeSingle();
 
   if (msgErr || !msgData) {
-    console.error('[chat] message insert failed:', { msgErr, msgData });
-    return { ok: false, error: msgErr?.message || 'Failed to send message.' };
+    console.error('[chat] message insert failed:', { msgErr, msgData, messageType, fileName: file.name });
+    return { ok: false, error: `Chat message insert failed: ${msgErr?.message || 'No data returned'}` };
   }
 
   const messageId = msgData.id;
@@ -182,9 +182,9 @@ export async function sendChatMessageWithAttachment(
   if (!result.ok || !result.file) {
     // Upload failed — delete the orphaned message row so we don't leave
     // a broken message with no attachment in the chat.
-    console.error('[chat] upload failed:', result.error);
+    console.error('[chat] upload failed:', result.error, { fileName: file.name, fileType: file.type, fileSize: file.size });
     await supabase.from('room_chat_messages').delete().eq('id', messageId);
-    return { ok: false, error: result.error || 'File upload failed.' };
+    return { ok: false, error: result.error || 'Storage upload failed.' };
   }
 
   // 3. Update the message with the attachment_id

@@ -394,7 +394,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     const blob = recordedBlobRef.current;
 
     if (!blob || blob.size === 0) {
-      setVoiceError('Recording was empty. Please try again.');
+      setVoiceError('Audio file is empty. Please try recording again.');
       setRecordingSeconds(0);
       setReadyToSend(false);
       audioChunksRef.current = [];
@@ -416,8 +416,10 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
       : 'webm';
     const fileName = `voice-${Date.now()}.${ext}`;
 
-    // Create a clean File with the stripped MIME type
-    const file = new File([blob], fileName, { type: mimeType });
+    // Convert blob to ArrayBuffer first, then create File — this avoids
+    // potential issues with File constructor wrapping a Blob in some browsers
+    const arrayBuffer = await blob.arrayBuffer();
+    const file = new File([arrayBuffer], fileName, { type: mimeType });
 
     // Validate size (5 MB max)
     if (file.size > 5 * 1024 * 1024) {
@@ -453,7 +455,8 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     } catch (err) {
       setSending(false);
       setUploadProgress(false);
-      setVoiceError('Failed to send voice message. Please try again.');
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setVoiceError(`Failed to send voice message: ${errMsg}`);
       console.error('[Voice] send error:', err);
     }
   }
