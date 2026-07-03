@@ -393,8 +393,6 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     // Use the already-stopped blob
     const blob = recordedBlobRef.current;
 
-    console.log('[Voice] Got blob:', blob ? `size=${blob.size}, type=${blob.type}` : 'null');
-
     if (!blob || blob.size === 0) {
       setVoiceError('Recording was empty. Please try again.');
       setRecordingSeconds(0);
@@ -404,19 +402,22 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
       return;
     }
 
-    // Get the MIME type from the blob or recorder
-    let mimeType = blob.type;
-    if (!mimeType || mimeType === '') {
-      mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
-    }
-    console.log('[Voice] Using MIME type:', mimeType);
+    // Get the MIME type from the blob or recorder, then strip codec parameters
+    // (e.g. "audio/webm;codecs=opus" -> "audio/webm") for a clean File.type
+    let rawMime = blob.type || mediaRecorderRef.current?.mimeType || 'audio/webm';
+    const mimeType = rawMime.split(';')[0].trim() || 'audio/webm';
 
-    // Determine file extension
-    const ext = mimeType.includes('webm') ? 'webm' : mimeType.includes('mp4') || mimeType.includes('m4a') ? 'm4a' : 'ogg';
+    // Determine file extension from the clean MIME type
+    const ext = mimeType.includes('webm') ? 'webm'
+      : mimeType.includes('mp4') || mimeType.includes('m4a') ? 'm4a'
+      : mimeType.includes('ogg') ? 'ogg'
+      : mimeType.includes('mpeg') || mimeType.includes('mp3') ? 'mp3'
+      : mimeType.includes('wav') ? 'wav'
+      : 'webm';
     const fileName = `voice-${Date.now()}.${ext}`;
-    const file = new File([blob], fileName, { type: mimeType });
 
-    console.log('[Voice] Created file:', file.name, file.size, file.type);
+    // Create a clean File with the stripped MIME type
+    const file = new File([blob], fileName, { type: mimeType });
 
     // Validate size (5 MB max)
     if (file.size > 5 * 1024 * 1024) {
@@ -428,15 +429,13 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
       return;
     }
 
-    // Send as audio attachment
+    // Send as audio attachment — reuses the same pipeline as file/image uploads
     setSending(true);
     setUploadProgress(true);
     setVoiceError(null);
 
     try {
       const result = await sendChatMessageWithAttachment(roomId, '', file, userId, 'audio');
-
-      console.log('[Voice] Send result:', result);
 
       setSending(false);
       setUploadProgress(false);

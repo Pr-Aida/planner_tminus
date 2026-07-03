@@ -167,10 +167,14 @@ export async function uploadPersonalDocument(
     return { ok: false, error: validation.error };
   }
 
-  // Check file count limit
-  const { data: count, error: countErr } = await supabase.rpc('count_user_files');
+  // Check file count limit (client-side count via RLS-scoped query)
+  const { count, error: countErr } = await supabase
+    .from('uploaded_files')
+    .select('id', { count: 'exact', head: true })
+    .eq('upload_context', 'personal_document')
+    .is('deleted_at', null);
   if (countErr) return { ok: false, error: 'Could not check file limit. Try again.' };
-  if ((count as number) >= MAX_PERSONAL_FILES) {
+  if ((count || 0) >= MAX_PERSONAL_FILES) {
     return { ok: false, error: `You can upload up to ${MAX_PERSONAL_FILES} personal documents. Delete some to add more.` };
   }
 
@@ -228,10 +232,15 @@ export async function uploadRoomChatFile(
     return { ok: false, error: validation.error };
   }
 
-  // Check room file count limit
-  const { data: count, error: countErr } = await supabase.rpc('count_room_files', { p_room_id: roomId });
+  // Check room file count limit (client-side count via RLS-scoped query)
+  const { count, error: countErr } = await supabase
+    .from('uploaded_files')
+    .select('id', { count: 'exact', head: true })
+    .eq('upload_context', 'room_chat')
+    .eq('room_id', roomId)
+    .is('deleted_at', null);
   if (countErr) return { ok: false, error: 'Could not check file limit. Try again.' };
-  if ((count as number) >= MAX_ROOM_FILES) {
+  if ((count || 0) >= MAX_ROOM_FILES) {
     return { ok: false, error: `This room has reached the ${MAX_ROOM_FILES} file limit.` };
   }
 
@@ -351,10 +360,10 @@ export async function deleteFile(
     // Continue to delete metadata even if storage delete fails — avoids orphans in DB
   }
 
-  // Soft-delete metadata
+  // Hard-delete metadata (storage file already deleted above)
   const { error: dbErr } = await supabase
     .from('uploaded_files')
-    .update({ deleted_at: new Date().toISOString() })
+    .delete()
     .eq('id', fileId);
 
   if (dbErr) {

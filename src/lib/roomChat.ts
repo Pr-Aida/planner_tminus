@@ -194,10 +194,11 @@ export async function sendChatMessageWithAttachment(
     .eq('id', messageId);
 
   if (updateErr) {
-    // The message exists but attachment link failed. Clean up the file.
+    // The message exists but attachment link failed. Clean up the file and message.
     console.error('[chat] attachment link failed:', updateErr);
     const { deleteFile } = await import('./files');
     await deleteFile(result.file.id);
+    await supabase.from('room_chat_messages').delete().eq('id', messageId);
     return { ok: false, error: `Could not link attachment: ${updateErr.message}` };
   }
 
@@ -214,10 +215,10 @@ export async function deleteChatMessage(messageId: string): Promise<{ ok: boolea
 
   const attachmentId = (msg as unknown as { attachment_id: string | null } | null)?.attachment_id;
 
-  // Soft-delete the message (so other members see "Message deleted")
+  // Hard-delete the message so it disappears completely from the chat
   const { error } = await supabase
     .from('room_chat_messages')
-    .update({ is_deleted: true, message: '', attachment_id: null })
+    .delete()
     .eq('id', messageId);
 
   if (error) {
@@ -225,7 +226,7 @@ export async function deleteChatMessage(messageId: string): Promise<{ ok: boolea
     return { ok: false, error: error.message };
   }
 
-  // Clean up the attachment file from storage + soft-delete metadata
+  // Clean up the attachment file from storage + delete metadata
   if (attachmentId) {
     const { deleteFile } = await import('./files');
     await deleteFile(attachmentId);
