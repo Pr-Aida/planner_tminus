@@ -76,14 +76,14 @@ function ClockWidget({ tz, label, onEdit, onRemove }: ClockWidgetProps) {
   return (
     <div
       className="relative flex flex-col items-center cursor-default select-none"
-      style={{ minWidth: 80 }}
+      style={{ minWidth: 60 }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      <span className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.92)', letterSpacing: '0.04em', lineHeight: 1.2 }}>
+      <span className="text-[10px] md:text-xs font-bold" style={{ color: 'rgba(255,255,255,0.92)', letterSpacing: '0.04em', lineHeight: 1.2 }}>
         {time}
       </span>
-      <span className="text-xs" style={{ color: 'rgba(255,255,255,0.45)', fontSize: '10px', lineHeight: 1.2 }}>
+      <span className="hidden sm:block text-xs" style={{ color: 'rgba(255,255,255,0.45)', fontSize: '10px', lineHeight: 1.2 }}>
         {label || tz.split('/').pop()?.replace(/_/g, ' ') || tz}
       </span>
       {hover && (
@@ -304,7 +304,7 @@ export default function TopNav({
           data-tour="tour-local-time"
         >
           {hasClocksArea && (
-            <div className="hidden md:flex items-center gap-4 relative">
+            <div className="flex items-center gap-2 md:gap-4 relative">
               {/* Clock 1 */}
               {showClock1 && (
                 <div className="relative">
@@ -328,7 +328,7 @@ export default function TopNav({
 
               {/* Divider between clocks */}
               {showClock1 && (showClock2) && (
-                <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.15)' }} />
+                <div className="h-5 md:h-6" style={{ width: 1, background: 'rgba(255,255,255,0.15)' }} />
               )}
 
               {/* Clock 2 */}
@@ -357,7 +357,7 @@ export default function TopNav({
                 <div className="relative">
                   <button
                     onClick={() => setEditingClock(2)}
-                    className="flex items-center gap-1 rounded-md px-2 py-1 transition-all"
+                    className="flex items-center gap-1 rounded-md px-1.5 md:px-2 py-1 transition-all"
                     style={{
                       background: 'transparent', border: '1px dashed rgba(255,255,255,0.2)',
                       color: 'rgba(255,255,255,0.35)', cursor: 'pointer', fontSize: '10px',
@@ -366,7 +366,7 @@ export default function TopNav({
                     onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = 'rgba(255,255,255,0.35)'; }}
                     title="Add second clock"
                   >
-                    <Plus size={10} /> Clock
+                    <Plus size={10} /> <span className="hidden sm:inline">Clock</span>
                   </button>
                   {editingClock === 2 && (
                     <ClockEditor
@@ -384,7 +384,7 @@ export default function TopNav({
               {!showClock1 && (
                 <button
                   onClick={() => onClockSettingsChange({ ...clockSettings, clock1_visible: true })}
-                  className="flex items-center gap-1 rounded-md px-2 py-1 transition-all"
+                  className="flex items-center gap-1 rounded-md px-1.5 md:px-2 py-1 transition-all"
                   style={{
                     background: 'transparent', border: '1px dashed rgba(255,255,255,0.2)',
                     color: 'rgba(255,255,255,0.35)', cursor: 'pointer', fontSize: '10px',
@@ -393,7 +393,7 @@ export default function TopNav({
                   onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = 'rgba(255,255,255,0.35)'; }}
                   title="Show clock"
                 >
-                  <Clock size={10} /> Add Clock
+                  <Clock size={10} /> <span className="hidden sm:inline">Add Clock</span>
                 </button>
               )}
             </div>
@@ -423,16 +423,16 @@ export default function TopNav({
             <button
               data-tour="tour-study-rooms"
               onClick={onOpenStudyRooms}
+              aria-label="Rooms"
               className="flex items-center gap-1.5 px-3 md:px-4 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all duration-150"
               style={{
                 background: studyRoomsActive ? colors.navAccent : 'transparent',
                 color: studyRoomsActive ? '#fff' : colors.navText,
                 border: 'none', cursor: 'pointer',
               }}
-              title="Study Rooms"
+              title="Rooms"
             >
               <Users size={14} />
-              <span className="hidden lg:inline">Rooms</span>
             </button>
           </div>
 
