@@ -284,6 +284,19 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
   background: #475569;
 }
 
+/* ─── Mobile overflow prevention ───────────────────────────────────────────── */
+/* Prevent horizontal scroll on small screens from wide flex children */
+@media (max-width: 640px) {
+  body {
+    overflow-x: hidden;
+  }
+  /* Ensure long unbroken strings wrap instead of overflowing */
+  p, span, h1, h2, h3, h4, h5, h6 {
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+}
+
 /* ─── Selection color ───────────────────────────────────────────────────────── */
 html[data-theme="dark"] ::selection {
   background: rgba(236, 72, 153, 0.3);

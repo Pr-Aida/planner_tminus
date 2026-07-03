@@ -344,12 +344,13 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-5 rounded-xl p-1" style={{ background: colors.bgInput }}>
+      <div className="flex gap-1 mb-5 rounded-xl p-1 overflow-x-auto" style={{ background: colors.bgInput, scrollbarWidth: 'none' }}>
+        <style>{`div::-webkit-scrollbar{display:none}`}</style>
         {tabs.map(t => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold flex-1 justify-center transition-colors relative"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold justify-center transition-colors relative flex-shrink-0"
             style={{
               background: tab === t.key ? themeColor : 'transparent',
               color: tab === t.key ? '#fff' : colors.textSecondary,
@@ -465,7 +466,7 @@ function RoomHeader({ room }: { room: StudyRoom }) {
   const { colors } = useTheme();
   const img = room.profile_image_url || room.avatar_url;
   return (
-    <div className="flex items-center gap-4 mb-2">
+    <div className="flex items-center gap-3 mb-2">
       {img ? (
         <img src={img} alt="" className="rounded-xl object-cover flex-shrink-0" style={{ width: 64, height: 64 }} />
       ) : (
@@ -474,9 +475,9 @@ function RoomHeader({ room }: { room: StudyRoom }) {
           {room.name.charAt(0).toUpperCase()}
         </div>
       )}
-      <div>
-        <h1 className="text-xl font-extrabold" style={{ color: colors.textPrimary }}>{room.name}</h1>
-        {room.description && <p className="text-sm mt-0.5" style={{ color: colors.textSecondary }}>{room.description}</p>}
+      <div className="min-w-0 flex-1">
+        <h1 className="text-xl font-extrabold truncate" style={{ color: colors.textPrimary }}>{room.name}</h1>
+        {room.description && <p className="text-sm mt-0.5 truncate" style={{ color: colors.textSecondary }}>{room.description}</p>}
       </div>
     </div>
   );
@@ -1058,11 +1059,11 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
               onChange={e => setInviteQuery(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSearch()}
               placeholder="Search username…"
-              className="flex-1 rounded-lg px-3 py-2 text-xs outline-none"
+              className="flex-1 min-w-0 rounded-lg px-3 py-2 text-xs outline-none"
               style={getInputStyle(colors)}
             />
             <button onClick={handleSearch} disabled={searching || !inviteQuery.trim()}
-              className="px-3 py-2 rounded-lg text-xs font-bold text-white flex items-center gap-1"
+              className="px-3 py-2 rounded-lg text-xs font-bold text-white flex items-center gap-1 flex-shrink-0"
               style={{ background: themeColor, border: 'none', cursor: searching || !inviteQuery.trim() ? 'not-allowed' : 'pointer', opacity: !inviteQuery.trim() ? 0.5 : 1 }}>
               {searching ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />} Search
             </button>
@@ -1098,14 +1099,14 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
           <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: themeColor }}>Pending requests ({pending.length})</p>
           <div className="space-y-2">
             {pending.map(m => (
-              <div key={m.id} className="flex items-center gap-2">
+              <div key={m.id} className="flex items-center gap-2 flex-wrap">
                 <MemberAvatar m={m} themeColor={themeColor} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate" style={{ color: colors.textPrimary }}>{m.display_name || m.username || 'User'}</p>
-                  <p className="text-xs" style={{ color: colors.textTertiary }}>@{m.username || m.user_id.slice(0, 8)}</p>
+                  <p className="text-xs truncate" style={{ color: colors.textTertiary }}>@{m.username || m.user_id.slice(0, 8)}</p>
                 </div>
-                <button onClick={() => onApprove(m.user_id)} className="px-2 py-1 rounded-lg text-xs font-bold text-white" style={{ background: colors.success, border: 'none', cursor: 'pointer' }}>Approve</button>
-                <button onClick={() => onReject(m.user_id)} className="px-2 py-1 rounded-lg text-xs font-semibold" style={{ background: colors.errorBg, color: colors.error, border: 'none', cursor: 'pointer' }}>Reject</button>
+                <button onClick={() => onApprove(m.user_id)} className="px-2 py-1 rounded-lg text-xs font-bold text-white flex-shrink-0" style={{ background: colors.success, border: 'none', cursor: 'pointer' }}>Approve</button>
+                <button onClick={() => onReject(m.user_id)} className="px-2 py-1 rounded-lg text-xs font-semibold flex-shrink-0" style={{ background: colors.errorBg, color: colors.error, border: 'none', cursor: 'pointer' }}>Reject</button>
               </div>
             ))}
           </div>

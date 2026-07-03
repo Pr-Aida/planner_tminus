@@ -77,12 +77,12 @@ export const WHATS_NEW_UPDATES: WhatsNewUpdate[] = [
   {
     version: '1.5',
     title: 'Study Room Chat Attachments',
-    summary: 'You can now share images, PDFs, files, voice messages, and emojis inside Study Room chat. Files can be previewed or downloaded securely by approved room members only.',
+    summary: 'You can now share images, PDFs, files, and emojis inside Study Room chat. Files can be downloaded securely by approved room members only.',
     steps: [
       {
         target: 'tour-study-rooms',
         title: "New: Study Room Chat Attachments",
-        body: "You can now share images, PDFs, files, voice messages, and emojis inside Study Room chat. Files can be previewed or downloaded securely by approved room members only.",
+        body: "You can now share images, PDFs, files, and emojis inside Study Room chat. Files can be downloaded securely by approved room members only.",
         badge: 'New',
       },
     ],

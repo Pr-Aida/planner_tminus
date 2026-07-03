@@ -204,9 +204,9 @@ function ReminderCheckin({ reminder, onUpdateStatus }: { reminder: Reminder; onU
   const meta = statusLabel[reminder.status];
   return (
     <div className="rounded-lg p-3" style={{ border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)' }}>
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-sm font-semibold text-white truncate">{reminder.title}</p>
-        <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ color: '#fff', background: meta.color === '#E8EBF4' ? '#1B2A4A' : 'transparent' }}>
+      <div className="flex items-center justify-between mb-2 gap-2">
+        <p className="text-sm font-semibold text-white truncate min-w-0 flex-1">{reminder.title}</p>
+        <span className="text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0" style={{ color: '#fff', background: meta.color === '#E8EBF4' ? '#1B2A4A' : 'transparent' }}>
           {meta.label}
         </span>
       </div>

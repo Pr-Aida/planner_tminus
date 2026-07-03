@@ -245,11 +245,11 @@ export default function WeeklyView({
 function CardTitle({ children }: { children: React.ReactNode }) {
   const { colors } = useTheme();
   return (
-    <div className="flex items-center mb-4">
-      <span className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.accent }}>
+    <div className="flex items-center mb-4 gap-2">
+      <span className="text-xs font-bold uppercase tracking-widest min-w-0 truncate" style={{ color: colors.accent }}>
         {children}
       </span>
-      <div className="flex-1 h-px ml-3" style={{ background: colors.accentLight }} />
+      <div className="flex-1 h-px flex-shrink-0" style={{ background: colors.accentLight }} />
     </div>
   );
 }

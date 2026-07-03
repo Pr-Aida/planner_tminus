@@ -141,27 +141,27 @@ export default function StudyRoomsView({ userId, initialOpenRoomId }: Props) {
 
   return (
     <div className="max-w-5xl mx-auto px-4 md:px-6 py-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
+        <div className="min-w-0">
           <h1 className="text-2xl font-extrabold" style={{ color: colors.textPrimary }}>Study Rooms</h1>
           <p className="text-sm mt-1" style={{ color: colors.textSecondary }}>
             Focus together. Only your Activity time is shared — your planner stays private.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-shrink-0">
           <button
             onClick={() => setShowJoin(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80"
             style={{ background: colors.bgCard, color: colors.textPrimary, border: `1.5px solid ${colors.borderLight}`, cursor: 'pointer' }}
           >
-            <KeyRound size={14} /> Join by code
+            <KeyRound size={14} /> <span className="hidden sm:inline">Join by code</span><span className="sm:hidden">Join</span>
           </button>
           <button
             onClick={() => setShowCreate(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-white transition-opacity hover:opacity-90"
             style={{ background: '#1B2A4A', border: 'none', cursor: 'pointer' }}
           >
-            <Plus size={14} /> Create Room
+            <Plus size={14} /> <span className="hidden sm:inline">Create Room</span><span className="sm:hidden">Create</span>
           </button>
         </div>
       </div>
