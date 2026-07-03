@@ -123,7 +123,7 @@ function ShYearly({ viewYear, onPrev, onNext, today, reminders, onPickMonth, sel
                   const dk = shDateKey(viewYear, monthIdx, day);
                   const hasReminder = reminderKeys.has(dk);
                   const isToday = isCurrentMonth && today.day === day;
-                  const isSelected = selectedDate && selectedDate.year === viewYear && selectedDate.month === monthIdx + 1 && selectedDate.day === day;
+                  const isSelected = selectedDate && selectedDate.year === viewYear && selectedDate.month === monthIdx && selectedDate.day === day;
                   return (
                     <div key={ci} className="text-center relative" style={{ minHeight: 14, borderRadius: 3, background: isSelected ? colors.selectedBg : 'transparent' }}>
                       <span style={{ fontSize: 9, color: isToday ? colors.accent : isSelected ? colors.burgundy : colors.textSecondary, fontWeight: isToday || isSelected ? 700 : 400 }}>{day}</span>
@@ -208,7 +208,7 @@ function GregYearly({ viewYear, onPrev, onNext, today, reminders, onPickMonth, s
                   const dk = dateKey({ year: viewYear, month: monthIdx, day });
                   const hasReminder = reminderKeys.has(dk);
                   const isToday = isCurrentMonth && today.day === day;
-                  const isSelected = selectedDate && selectedDate.year === viewYear && selectedDate.month === monthIdx + 1 && selectedDate.day === day;
+                  const isSelected = selectedDate && selectedDate.year === viewYear && selectedDate.month === monthIdx && selectedDate.day === day;
                   return (
                     <div key={ci} className="text-center relative" style={{ minHeight: 14, borderRadius: 3, background: isSelected ? colors.selectedBg : 'transparent' }}>
                       <span style={{ fontSize: 9, color: isToday ? colors.accent : isSelected ? colors.burgundy : colors.textSecondary, fontWeight: isToday || isSelected ? 700 : 400 }}>{day}</span>
