@@ -170,6 +170,7 @@ export async function sendChatMessageWithAttachment(
     .maybeSingle();
 
   if (msgErr || !msgData) {
+    console.error('[chat] message insert failed:', { msgErr, msgData });
     return { ok: false, error: msgErr?.message || 'Failed to send message.' };
   }
 
@@ -181,6 +182,7 @@ export async function sendChatMessageWithAttachment(
   if (!result.ok || !result.file) {
     // Upload failed — delete the orphaned message row so we don't leave
     // a broken message with no attachment in the chat.
+    console.error('[chat] upload failed:', result.error);
     await supabase.from('room_chat_messages').delete().eq('id', messageId);
     return { ok: false, error: result.error || 'File upload failed.' };
   }
@@ -193,9 +195,10 @@ export async function sendChatMessageWithAttachment(
 
   if (updateErr) {
     // The message exists but attachment link failed. Clean up the file.
+    console.error('[chat] attachment link failed:', updateErr);
     const { deleteFile } = await import('./files');
     await deleteFile(result.file.id);
-    return { ok: false, error: 'Could not link attachment to message.' };
+    return { ok: false, error: `Could not link attachment: ${updateErr.message}` };
   }
 
   return { ok: true };

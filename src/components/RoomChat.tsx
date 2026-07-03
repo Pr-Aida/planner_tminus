@@ -49,6 +49,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recordedBlobRef = useRef<Blob | null>(null);
+  const cancelRef = useRef(false);
 
   // Delete confirmation state
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -244,6 +245,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     streamRef.current = stream;
     audioChunksRef.current = [];
     recordedBlobRef.current = null;
+    cancelRef.current = false;
 
     // Pick the best supported MIME type
     const mimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
@@ -299,9 +301,8 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         stream.getTracks().forEach(t => t.stop());
         streamRef.current = null;
       }
-      // Try to build from existing chunks
       if (audioChunksRef.current.length > 0) {
-        const mimeType = 'audio/webm';
+        const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
         const blob = new Blob(audioChunksRef.current, { type: mimeType });
         recordedBlobRef.current = blob;
         setReadyToSend(true);
@@ -310,8 +311,6 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
       return;
     }
 
-    // Capture the current chunks immediately
-    const currentChunks = [...audioChunksRef.current];
     const mimeType = recorder.mimeType || 'audio/webm';
 
     // If recorder is already inactive, use existing chunks
@@ -321,21 +320,17 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         streamRef.current = null;
       }
       setIsRecording(false);
-      if (currentChunks.length > 0) {
-        const blob = new Blob(currentChunks, { type: mimeType });
+      if (audioChunksRef.current.length > 0) {
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
         recordedBlobRef.current = blob;
         setReadyToSend(true);
       }
       return;
     }
 
-    // Set up one-time handler for the final data
-    recorder.ondataavailable = (e) => {
-      if (e.data && e.data.size > 0) {
-        currentChunks.push(e.data);
-      }
-    };
-
+    // Set up one-time onstop handler — the original ondataavailable handler
+    // (set in startRecording) continues pushing to audioChunksRef.current,
+    // so we just build the blob from that ref when stop completes.
     recorder.onstop = () => {
       if (stream) {
         stream.getTracks().forEach(t => t.stop());
@@ -343,15 +338,23 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
       }
       setIsRecording(false);
 
-      if (currentChunks.length > 0) {
-        const blob = new Blob(currentChunks, { type: mimeType });
+      if (cancelRef.current) {
+        // Recording was cancelled — don't set the blob
+        audioChunksRef.current = [];
+        return;
+      }
+
+      if (audioChunksRef.current.length > 0) {
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
         recordedBlobRef.current = blob;
         setReadyToSend(true);
+      } else {
+        setVoiceError('Recording was empty. Please try again.');
+        setReadyToSend(false);
       }
     };
 
     try {
-      // Request final data then stop
       recorder.stop();
     } catch (err) {
       console.error('[Voice] stop error:', err);
@@ -360,8 +363,8 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         streamRef.current = null;
       }
       setIsRecording(false);
-      if (currentChunks.length > 0) {
-        const blob = new Blob(currentChunks, { type: mimeType });
+      if (audioChunksRef.current.length > 0) {
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
         recordedBlobRef.current = blob;
         setReadyToSend(true);
       }
@@ -370,6 +373,8 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
 
   function cancelRecording() {
     stopRecordingTimer();
+    // Set a flag to prevent onstop from setting the blob (race condition guard)
+    cancelRef.current = true;
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       try { mediaRecorderRef.current.stop(); } catch { /* ignore */ }
     }
