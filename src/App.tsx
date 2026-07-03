@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from './lib/supabase';
 import {
   todaySh, todayGreg, shToGregorian, gregorianToSh,
-  dateKey, monthKey, shDateKey, SH_MONTHS, gregMonthDays,
+  dateKey, monthKey, shDateKey, SH_MONTHS, gregMonthDays, shDaysInMonth,
   addDaysGreg, addDaysSh,
 } from './lib/calendar';
 import type {
@@ -413,13 +413,61 @@ export default function App() {
   }
 
   function goPrevDay() {
-    if (calMode === 'shamsi') setShDate(addDaysSh(shDate, -1));
-    else setGregDate(addDaysGreg(gregDate, -1));
+    if (viewMode === 'weekly') {
+      if (calMode === 'shamsi') handleShDateChange(addDaysSh(shDate, -7));
+      else handleGregDateChange(addDaysGreg(gregDate, -7));
+      return;
+    }
+    if (viewMode === 'monthly') {
+      if (calMode === 'shamsi') {
+        let m = viewShMonth - 1, y = viewShYear;
+        if (m < 1) { m = 12; y -= 1; }
+        setViewShMonth(m); setViewShYear(y);
+        setShDate({ year: y, month: m, day: Math.min(shDate.day, shDaysInMonth(y, m)) });
+      } else {
+        let m = viewGregMonth - 1, y = viewGregYear;
+        if (m < 1) { m = 12; y -= 1; }
+        setViewGregMonth(m); setViewGregYear(y);
+        setGregDate({ year: y, month: m, day: Math.min(gregDate.day, gregMonthDays(y, m)) });
+      }
+      return;
+    }
+    if (viewMode === 'yearly') {
+      if (calMode === 'shamsi') { const y = viewShYearForYear - 1; setViewShYearForYear(y); setShDate({ year: y, month: shDate.month, day: Math.min(shDate.day, shDaysInMonth(y, shDate.month)) }); }
+      else { const y = viewGregYearForYear - 1; setViewGregYearForYear(y); setGregDate({ year: y, month: gregDate.month, day: Math.min(gregDate.day, gregMonthDays(y, gregDate.month)) }); }
+      return;
+    }
+    if (calMode === 'shamsi') handleShDateChange(addDaysSh(shDate, -1));
+    else handleGregDateChange(addDaysGreg(gregDate, -1));
   }
 
   function goNextDay() {
-    if (calMode === 'shamsi') setShDate(addDaysSh(shDate, 1));
-    else setGregDate(addDaysGreg(gregDate, 1));
+    if (viewMode === 'weekly') {
+      if (calMode === 'shamsi') handleShDateChange(addDaysSh(shDate, 7));
+      else handleGregDateChange(addDaysGreg(gregDate, 7));
+      return;
+    }
+    if (viewMode === 'monthly') {
+      if (calMode === 'shamsi') {
+        let m = viewShMonth + 1, y = viewShYear;
+        if (m > 12) { m = 1; y += 1; }
+        setViewShMonth(m); setViewShYear(y);
+        setShDate({ year: y, month: m, day: Math.min(shDate.day, shDaysInMonth(y, m)) });
+      } else {
+        let m = viewGregMonth + 1, y = viewGregYear;
+        if (m > 12) { m = 1; y += 1; }
+        setViewGregMonth(m); setViewGregYear(y);
+        setGregDate({ year: y, month: m, day: Math.min(gregDate.day, gregMonthDays(y, m)) });
+      }
+      return;
+    }
+    if (viewMode === 'yearly') {
+      if (calMode === 'shamsi') { const y = viewShYearForYear + 1; setViewShYearForYear(y); setShDate({ year: y, month: shDate.month, day: Math.min(shDate.day, shDaysInMonth(y, shDate.month)) }); }
+      else { const y = viewGregYearForYear + 1; setViewGregYearForYear(y); setGregDate({ year: y, month: gregDate.month, day: Math.min(gregDate.day, gregMonthDays(y, gregDate.month)) }); }
+      return;
+    }
+    if (calMode === 'shamsi') handleShDateChange(addDaysSh(shDate, 1));
+    else handleGregDateChange(addDaysGreg(gregDate, 1));
   }
 
   function handleShDateChange(d: ShDate) {

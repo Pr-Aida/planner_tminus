@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Check } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 import type { CalendarMode, ShDate, GregDate } from '../types';
 import {
   SH_MONTHS, GREG_MONTH_NAMES,
@@ -22,7 +22,7 @@ interface Props {
 
 export default function DateBar({
   calMode, shDate, gregDate,
-  onShDateChange, onGregDateChange, onToday,
+  onShDateChange, onGregDateChange, onToday, onPrevDay, onNextDay,
 }: Props) {
   const { colors } = useTheme();
   const isShamsi = calMode === 'shamsi';
@@ -100,6 +100,18 @@ export default function DateBar({
         Today
       </button>
 
+      {/* Previous arrow */}
+      <button
+        onClick={onPrevDay}
+        aria-label="Previous"
+        className="flex items-center justify-center w-9 h-9 rounded-lg flex-shrink-0 transition-colors"
+        style={btnBase}
+        onMouseEnter={e => e.currentTarget.style.background = colors.bgHover}
+        onMouseLeave={e => e.currentTarget.style.background = colors.bgInput}
+      >
+        <ChevronLeft size={18} color={colors.textPrimary} />
+      </button>
+
       {/* Month dropdown */}
       <div className="relative flex-shrink-0">
         <button
@@ -167,6 +179,18 @@ export default function DateBar({
           </DropdownMenu>
         )}
       </div>
+
+      {/* Next arrow */}
+      <button
+        onClick={onNextDay}
+        aria-label="Next"
+        className="flex items-center justify-center w-9 h-9 rounded-lg flex-shrink-0 transition-colors"
+        style={btnBase}
+        onMouseEnter={e => e.currentTarget.style.background = colors.bgHover}
+        onMouseLeave={e => e.currentTarget.style.background = colors.bgInput}
+      >
+        <ChevronRight size={18} color={colors.textPrimary} />
+      </button>
 
       {/* Full selected date text — pushed to the right */}
       <div
