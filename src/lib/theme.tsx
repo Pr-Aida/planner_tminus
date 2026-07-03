@@ -16,6 +16,8 @@ export interface ThemeColors {
   borderLight: string;
   accent: string;
   accentLight: string;
+  burgundy: string;
+  selectedBg: string;
   error: string;
   errorBg: string;
   warning: string;
@@ -44,6 +46,8 @@ export const lightColors: ThemeColors = {
   borderLight: '#E8EBF4',
   accent: '#7B1C3E',
   accentLight: '#F5E6EC',
+  burgundy: '#9B3B5C',
+  selectedBg: '#FBE4EC',
   error: '#B91C1C',
   errorBg: '#FEE2E2',
   warning: '#B45309',
@@ -72,6 +76,8 @@ export const darkColors: ThemeColors = {
   borderLight: '#1E293B',
   accent: '#EC4899',
   accentLight: '#4C1D2F',
+  burgundy: '#D65A7E',
+  selectedBg: '#3D1A2A',
   error: '#F87171',
   errorBg: '#450A0A',
   warning: '#FBBF24',

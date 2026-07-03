@@ -33,6 +33,8 @@ interface Props {
   onUpdateReminderStatus: (id: string, status: ReminderStatus) => void;
   onDeleteReminder: (id: string) => void;
   timezone?: string;
+  selectedShDate?: ShDate;
+  selectedGregDate?: GregDate;
 }
 
 interface ModalState {
@@ -48,7 +50,7 @@ export default function MonthlyView({
   getDayData, getDayNote, setDayNote,
   habits, monthlyNote, onMonthlyNoteChange,
   reminders, onAddReminder, onUpdateReminderStatus, onDeleteReminder,
-  timezone,
+  timezone, selectedShDate, selectedGregDate,
 }: Props) {
   const [modal, setModal] = useState<ModalState>({ open: false, dateKeyStr: '', title: '' });
 
@@ -87,6 +89,7 @@ export default function MonthlyView({
           onMonthlyNoteChange={note => onMonthlyNoteChange(makeMonthKey('shamsi', viewShYear, viewShMonth), note)}
           reminders={reminders}
           timezone={timezone}
+          selectedDate={selectedShDate}
         />
         <DayModal
           open={modal.open}
@@ -124,6 +127,7 @@ export default function MonthlyView({
         onMonthlyNoteChange={note => onMonthlyNoteChange(makeMonthKey('gregorian', viewGregYear, viewGregMonth), note)}
         reminders={reminders}
         timezone={timezone}
+        selectedDate={selectedGregDate}
       />
       <DayModal
         open={modal.open}
@@ -177,11 +181,12 @@ interface ShMonthlyProps {
   onMonthlyNoteChange: (note: string) => void;
   reminders: Reminder[];
   timezone?: string;
+  selectedDate?: ShDate;
 }
 
 function ShMonthly({
   viewYear, viewMonth, onPrev, onNext, getDayData, getDayNote, habits, onDayClick,
-  monthlyNote, onMonthlyNoteChange, reminders, timezone,
+  monthlyNote, onMonthlyNoteChange, reminders, timezone, selectedDate,
 }: ShMonthlyProps) {
   const { colors } = useTheme();
   const today = todaySh(timezone);
@@ -223,6 +228,7 @@ function ShMonthly({
             const note = getDayNote(key);
             const dayReminders = reminders.filter(r => r.date_key === key);
             const isToday = today.year === viewYear && today.month === viewMonth && today.day === day;
+            const isSelected = selectedDate && selectedDate.year === viewYear && selectedDate.month === viewMonth && selectedDate.day === day;
             const checkboxDone = habits.filter(h => h.habit_type === 'checkbox' && data.habit_values[h.id]).length;
             const valueDone = habits.filter(h => h.habit_type === 'value' && (data.habit_values[h.id] as number) > 0).length;
 
@@ -231,9 +237,9 @@ function ShMonthly({
                 key={idx}
                 onClick={() => onDayClick(key, `${SH_MONTHS[viewMonth - 1].name} ${day}, ${viewYear} — Notes & Reminders`)}
                 className="rounded-lg p-1.5 cursor-pointer transition-all"
-                style={{ minHeight: 70, border: `1px solid ${isToday ? colors.accent : colors.bgSubtle}`, background: isToday ? colors.accentLight : colors.bgCard }}
-                onMouseEnter={e => { if (!isToday) (e.currentTarget as HTMLDivElement).style.borderColor = colors.accent; }}
-                onMouseLeave={e => { if (!isToday) (e.currentTarget as HTMLDivElement).style.borderColor = colors.bgSubtle; }}
+                style={{ minHeight: 70, border: `1px solid ${isToday ? colors.accent : isSelected ? colors.burgundy : colors.bgSubtle}`, background: isToday ? colors.accentLight : isSelected ? colors.selectedBg : colors.bgCard }}
+                onMouseEnter={e => { if (!isToday && !isSelected) (e.currentTarget as HTMLDivElement).style.borderColor = colors.accent; }}
+                onMouseLeave={e => { if (!isToday && !isSelected) (e.currentTarget as HTMLDivElement).style.borderColor = colors.bgSubtle; }}
               >
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold" style={{ color: isToday ? colors.accent : colors.textPrimary }}>{day}</span>
@@ -291,11 +297,12 @@ interface GregMonthlyProps {
   onMonthlyNoteChange: (note: string) => void;
   reminders: Reminder[];
   timezone?: string;
+  selectedDate?: GregDate;
 }
 
 function GregMonthly({
   viewYear, viewMonth, onPrev, onNext, getDayData, getDayNote, habits, onDayClick,
-  monthlyNote, onMonthlyNoteChange, reminders, timezone,
+  monthlyNote, onMonthlyNoteChange, reminders, timezone, selectedDate,
 }: GregMonthlyProps) {
   const { colors } = useTheme();
   const today = todayGreg(timezone);
@@ -338,6 +345,7 @@ function GregMonthly({
             const note = getDayNote(key);
             const dayReminders = reminders.filter(r => r.date_key === key);
             const isToday = today.year === viewYear && today.month === viewMonth && today.day === day;
+            const isSelected = selectedDate && selectedDate.year === viewYear && selectedDate.month === viewMonth && selectedDate.day === day;
             const checkboxDone = habits.filter(h => h.habit_type === 'checkbox' && data.habit_values[h.id]).length;
             const valueDone = habits.filter(h => h.habit_type === 'value' && (data.habit_values[h.id] as number) > 0).length;
 
@@ -346,9 +354,9 @@ function GregMonthly({
                 key={idx}
                 onClick={() => onDayClick(key, `${GREG_MONTH_NAMES[viewMonth - 1]} ${day}, ${viewYear} — Notes & Reminders`)}
                 className="rounded-lg p-1.5 cursor-pointer transition-all"
-                style={{ minHeight: 70, border: `1px solid ${isToday ? colors.accent : colors.bgSubtle}`, background: isToday ? colors.accentLight : colors.bgCard }}
-                onMouseEnter={e => { if (!isToday) (e.currentTarget as HTMLDivElement).style.borderColor = colors.accent; }}
-                onMouseLeave={e => { if (!isToday) (e.currentTarget as HTMLDivElement).style.borderColor = colors.bgSubtle; }}
+                style={{ minHeight: 70, border: `1px solid ${isToday ? colors.accent : isSelected ? colors.burgundy : colors.bgSubtle}`, background: isToday ? colors.accentLight : isSelected ? colors.selectedBg : colors.bgCard }}
+                onMouseEnter={e => { if (!isToday && !isSelected) (e.currentTarget as HTMLDivElement).style.borderColor = colors.accent; }}
+                onMouseLeave={e => { if (!isToday && !isSelected) (e.currentTarget as HTMLDivElement).style.borderColor = colors.bgSubtle; }}
               >
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold" style={{ color: isToday ? colors.accent : colors.textPrimary }}>{day}</span>

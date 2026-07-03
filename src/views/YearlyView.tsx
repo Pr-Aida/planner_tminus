@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useRef, useEffect } from 'react';
 import { useTheme } from '../lib/theme';
 import type { CalendarMode, Reminder, ShDate, GregDate } from '../types';
 import {
@@ -16,11 +17,14 @@ interface Props {
   reminders: Reminder[];
   onPickMonth: (month: number, mode: 'daily' | 'monthly') => void;
   timezone?: string;
+  selectedShDate?: ShDate;
+  selectedGregDate?: GregDate;
 }
 
 export default function YearlyView({
   calMode, viewShYear, viewGregYear,
   onViewShYearChange, onViewGregYearChange, reminders, onPickMonth, timezone,
+  selectedShDate, selectedGregDate,
 }: Props) {
   if (calMode === 'shamsi') {
     return (
@@ -31,6 +35,7 @@ export default function YearlyView({
         today={todaySh(timezone)}
         reminders={reminders}
         onPickMonth={m => onPickMonth(m, 'monthly')}
+        selectedDate={selectedShDate}
       />
     );
   }
@@ -43,6 +48,7 @@ export default function YearlyView({
       today={todayGreg(timezone)}
       reminders={reminders}
       onPickMonth={m => onPickMonth(m, 'monthly')}
+      selectedDate={selectedGregDate}
     />
   );
 }
@@ -55,11 +61,19 @@ interface ShYearlyProps {
   today: ShDate;
   reminders: Reminder[];
   onPickMonth: (month: number) => void;
+  selectedDate?: ShDate;
 }
 
-function ShYearly({ viewYear, onPrev, onNext, today, reminders, onPickMonth }: ShYearlyProps) {
+function ShYearly({ viewYear, onPrev, onNext, today, reminders, onPickMonth, selectedDate }: ShYearlyProps) {
   const { colors } = useTheme();
   const reminderKeys = new Set(reminders.map(r => r.date_key));
+  const selectedMonthRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (selectedDate && selectedDate.year === viewYear && selectedMonthRef.current) {
+      selectedMonthRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [selectedDate, viewYear]);
 
   return (
     <div className="rounded-xl p-6 mb-4" style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}>
@@ -85,6 +99,7 @@ function ShYearly({ viewYear, onPrev, onNext, today, reminders, onPickMonth }: S
           return (
             <button
               key={mi}
+              ref={selectedDate && selectedDate.month === monthIdx ? selectedMonthRef : undefined}
               onClick={() => onPickMonth(monthIdx)}
               className="rounded-lg p-3 text-left transition-all"
               data-tour={mi === 0 ? 'tour-year-grid' : undefined}
@@ -108,9 +123,10 @@ function ShYearly({ viewYear, onPrev, onNext, today, reminders, onPickMonth }: S
                   const dk = shDateKey(viewYear, monthIdx, day);
                   const hasReminder = reminderKeys.has(dk);
                   const isToday = isCurrentMonth && today.day === day;
+                  const isSelected = selectedDate && selectedDate.year === viewYear && selectedDate.month === monthIdx + 1 && selectedDate.day === day;
                   return (
-                    <div key={ci} className="text-center relative" style={{ minHeight: 14 }}>
-                      <span style={{ fontSize: 9, color: isToday ? colors.accent : colors.textSecondary, fontWeight: isToday ? 700 : 400 }}>{day}</span>
+                    <div key={ci} className="text-center relative" style={{ minHeight: 14, borderRadius: 3, background: isSelected ? colors.selectedBg : 'transparent' }}>
+                      <span style={{ fontSize: 9, color: isToday ? colors.accent : isSelected ? colors.burgundy : colors.textSecondary, fontWeight: isToday || isSelected ? 700 : 400 }}>{day}</span>
                       {hasReminder && (
                         <span className="absolute" style={{ bottom: 0, left: '50%', transform: 'translateX(-50%)', width: 3, height: 3, borderRadius: '50%', background: colors.accent }} />
                       )}
@@ -134,11 +150,19 @@ interface GregYearlyProps {
   today: GregDate;
   reminders: Reminder[];
   onPickMonth: (month: number) => void;
+  selectedDate?: GregDate;
 }
 
-function GregYearly({ viewYear, onPrev, onNext, today, reminders, onPickMonth }: GregYearlyProps) {
+function GregYearly({ viewYear, onPrev, onNext, today, reminders, onPickMonth, selectedDate }: GregYearlyProps) {
   const { colors } = useTheme();
   const reminderKeys = new Set(reminders.map(r => r.date_key));
+  const selectedMonthRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (selectedDate && selectedDate.year === viewYear && selectedMonthRef.current) {
+      selectedMonthRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [selectedDate, viewYear]);
 
   return (
     <div className="rounded-xl p-6 mb-4" style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}>
@@ -162,6 +186,7 @@ function GregYearly({ viewYear, onPrev, onNext, today, reminders, onPickMonth }:
           return (
             <button
               key={mi}
+              ref={selectedDate && selectedDate.month === monthIdx ? selectedMonthRef : undefined}
               onClick={() => onPickMonth(monthIdx)}
               className="rounded-lg p-3 text-left transition-all"
               data-tour={mi === 0 ? 'tour-year-grid' : undefined}
@@ -183,9 +208,10 @@ function GregYearly({ viewYear, onPrev, onNext, today, reminders, onPickMonth }:
                   const dk = dateKey({ year: viewYear, month: monthIdx, day });
                   const hasReminder = reminderKeys.has(dk);
                   const isToday = isCurrentMonth && today.day === day;
+                  const isSelected = selectedDate && selectedDate.year === viewYear && selectedDate.month === monthIdx + 1 && selectedDate.day === day;
                   return (
-                    <div key={ci} className="text-center relative" style={{ minHeight: 14 }}>
-                      <span style={{ fontSize: 9, color: isToday ? colors.accent : colors.textSecondary, fontWeight: isToday ? 700 : 400 }}>{day}</span>
+                    <div key={ci} className="text-center relative" style={{ minHeight: 14, borderRadius: 3, background: isSelected ? colors.selectedBg : 'transparent' }}>
+                      <span style={{ fontSize: 9, color: isToday ? colors.accent : isSelected ? colors.burgundy : colors.textSecondary, fontWeight: isToday || isSelected ? 700 : 400 }}>{day}</span>
                       {hasReminder && (
                         <span className="absolute" style={{ bottom: 0, left: '50%', transform: 'translateX(-50%)', width: 3, height: 3, borderRadius: '50%', background: colors.accent }} />
                       )}

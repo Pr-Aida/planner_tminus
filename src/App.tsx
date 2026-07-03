@@ -422,6 +422,19 @@ export default function App() {
     else setGregDate(addDaysGreg(gregDate, 1));
   }
 
+  function handleShDateChange(d: ShDate) {
+    setShDate(d);
+    setViewShYear(d.year);
+    setViewShMonth(d.month);
+    setViewShYearForYear(d.year);
+  }
+  function handleGregDateChange(d: GregDate) {
+    setGregDate(d);
+    setViewGregYear(d.year);
+    setViewGregMonth(d.month);
+    setViewGregYearForYear(d.year);
+  }
+
   // ─── Data accessors ───────────────────────────────────────────────────────
   const getDayData = useCallback((key: string): DailyData => {
     return dayCache.get(key) || emptyDay(key);
@@ -797,8 +810,8 @@ export default function App() {
       initialOpenRoomId={pendingOpenRoomId.current}
       shDate={shDate}
       gregDate={gregDate}
-      onShDateChange={setShDate}
-      onGregDateChange={setGregDate}
+      onShDateChange={handleShDateChange}
+      onGregDateChange={handleGregDateChange}
       onToday={goToday}
       onPrevDay={goPrevDay}
       onNextDay={goNextDay}
@@ -1078,6 +1091,8 @@ function MainAppContent(props: MainAppContentProps) {
             onUpdateReminderStatus={props.onUpdateReminderStatus}
             onDeleteReminder={props.onDeleteReminder}
             timezone={props.timezone}
+            selectedShDate={props.shDate}
+            selectedGregDate={props.gregDate}
           />
         )}
 
@@ -1091,6 +1106,8 @@ function MainAppContent(props: MainAppContentProps) {
             reminders={props.reminders}
             timezone={props.timezone}
             onPickMonth={props.onPickMonth}
+            selectedShDate={props.shDate}
+            selectedGregDate={props.gregDate}
           />
         )}
       </div>
