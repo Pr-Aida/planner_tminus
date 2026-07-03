@@ -31,6 +31,7 @@ export interface ThemeColors {
   navAccent: string;
   heroBg: string;
   overlay: string;
+  navBgGradient: string;
 }
 
 export const lightColors: ThemeColors = {
@@ -61,20 +62,21 @@ export const lightColors: ThemeColors = {
   navAccent: '#7B1C3E',
   heroBg: '#1B2A4A',
   overlay: 'rgba(0,0,0,0.5)',
+  navBgGradient: 'linear-gradient(90deg, #1B2A4A 0%, #1B2A4A 100%)',
 };
 
 export const darkColors: ThemeColors = {
   bg: '#0F172A',
   bgCard: '#1E293B',
-  bgSubtle: '#24344F',
+  bgSubtle: '#283549',
   bgInput: '#1A2538',
-  bgHover: '#2A3A55',
-  textPrimary: '#F1F5F9',
-  textSecondary: '#94A3B8',
-  textTertiary: '#64748B',
-  border: '#334155',
-  borderLight: '#1E293B',
-  accent: '#EC4899',
+  bgHover: '#2D3D5C',
+  textPrimary: '#F8FAFC',
+  textSecondary: '#B4C0D0',
+  textTertiary: '#8595AC',
+  border: '#3B4D6B',
+  borderLight: '#2C3A52',
+  accent: '#D65A7E',
   accentLight: '#4C1D2F',
   burgundy: '#D65A7E',
   selectedBg: '#3D1A2A',
@@ -84,13 +86,14 @@ export const darkColors: ThemeColors = {
   warningBg: '#451A03',
   success: '#34D399',
   successBg: '#064E3B',
-  shadow: 'rgba(0,0,0,0.40)',
-  navBg: '#0B1120',
-  navText: 'rgba(255,255,255,0.55)',
+  shadow: 'rgba(0,0,0,0.45)',
+  navBg: '#0B1426',
+  navText: 'rgba(255,255,255,0.70)',
   navTextActive: '#FFFFFF',
-  navAccent: '#EC4899',
-  heroBg: '#0B1120',
+  navAccent: '#9B3B5C',
+  heroBg: '#0B1426',
   overlay: 'rgba(0,0,0,0.7)',
+  navBgGradient: 'linear-gradient(90deg, #0B1426 0%, #1B2A4A 55%, #3D1A2A 100%)',
 };
 
 interface ThemeContextValue {

@@ -382,7 +382,7 @@ export default function TopNav({
     <div className="sticky top-0 z-50" style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.22)' }}>
       <nav
         className="flex items-center px-4 md:px-8 gap-2"
-        style={{ background: colors.navBg, height: '56px' }}
+        style={{ background: colors.navBgGradient || colors.navBg, height: '56px' }}
       >
         {/* Left: Calendar toggle */}
         <div className="flex-shrink-0 md:flex-1 flex items-center justify-start">
