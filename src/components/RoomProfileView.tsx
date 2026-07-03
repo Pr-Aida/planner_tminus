@@ -20,6 +20,15 @@ import {
 import { supabase } from '../lib/supabase';
 import { useTheme, type ThemeColors } from '../lib/theme';
 
+// Resolve a room's theme color for the current mode. In dark mode, dark navy
+// theme colors (like the default #1B2A4A) are nearly invisible on dark cards,
+// so swap them for a readable burgundy accent. Light mode is unchanged.
+function resolveThemeColor(themeColor: string, isDark: boolean): string {
+  if (!isDark) return themeColor;
+  if (themeColor && themeColor.toLowerCase() !== '#1b2a4a') return themeColor;
+  return '#D65A7E';
+}
+
 // ─── Shared styles ──────────────────────────────────────────────────────────────
 function getInputStyle(colors: ThemeColors) {
   return {
@@ -69,7 +78,7 @@ interface Props {
 }
 
 export default function RoomProfileView({ roomId, userId, onBack }: Props) {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
   const [room, setRoom] = useState<StudyRoom | null>(null);
   const [members, setMembers] = useState<RoomMember[]>([]);
   const [myMembership, setMyMembership] = useState<RoomMember | null>(null);
@@ -295,7 +304,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
   const inviteLink = `${window.location.origin}/room/${room.invite_code}`;
   const myMember = members.find(m => m.user_id === userId);
   const isAdmin = myMember?.role === 'admin' || isOwner;
-  const themeColor = room.theme_color || '#1B2A4A';
+  const themeColor = resolveThemeColor(room.theme_color || '#1B2A4A', theme === 'dark');
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: 'overview', label: 'Overview', icon: <Users size={14} /> },
@@ -479,10 +488,10 @@ function RoomHeader({ room }: { room: StudyRoom }) {
 function OverviewTab({ room, members, isOwner, userId, onUpdated }: {
   room: StudyRoom; members: RoomMember[]; isOwner: boolean; userId: string; onUpdated: () => void;
 }) {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
   const approved = members.filter(m => m.status === 'approved');
   const myM = members.find(m => m.user_id === userId);
-  const themeColor = room.theme_color || colors.textPrimary;
+  const themeColor = resolveThemeColor(room.theme_color || colors.textPrimary, theme === 'dark');
 
   return (
     <div className="space-y-4">
@@ -1036,8 +1045,8 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
     }
   }
 
-  const { colors } = useTheme();
-  const themeColor = room.theme_color || colors.textPrimary;
+  const { colors, theme } = useTheme();
+  const themeColor = resolveThemeColor(room.theme_color || colors.textPrimary, theme === 'dark');
 
   return (
     <div className="space-y-4">
@@ -1298,10 +1307,11 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
   onDelete: () => Promise<void>;
   onTransfer: (newOwnerId: string, oldOwnerRole: 'member' | 'admin') => Promise<void>;
 }) {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
   const [name, setName] = useState(room.name);
   const [description, setDescription] = useState(room.description);
   const [themeColor, setThemeColor] = useState(room.theme_color);
+  const displayThemeColor = resolveThemeColor(themeColor, theme === 'dark');
   const [inviteEnabled, setInviteEnabled] = useState(room.invite_enabled);
   const [leaderboardEnabled, setLeaderboardEnabled] = useState(room.leaderboard_enabled);
   const [saving, setSaving] = useState(false);
@@ -1354,7 +1364,7 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
     <div className="space-y-4">
       {/* Room info */}
       <div className="rounded-xl p-5" style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}>
-        <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: themeColor }}>Room info</p>
+        <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: displayThemeColor }}>Room info</p>
 
         <Field label="Room name">
           <input type="text" value={name} onChange={e => setName(e.target.value)} maxLength={60}
@@ -1438,7 +1448,7 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
 
       {/* Invite code */}
       <div className="rounded-xl p-5" style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}>
-        <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: themeColor }}>Invite code</p>
+        <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: displayThemeColor }}>Invite code</p>
         <div className="flex items-center gap-2">
           <span className="flex-1 font-mono text-sm font-bold px-3 py-2 rounded-lg" style={{ background: colors.bgSubtle, color: colors.textPrimary }}>{room.room_code}</span>
           <button
