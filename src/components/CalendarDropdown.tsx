@@ -43,7 +43,7 @@ export function CalendarDropdown({ mode, currentYear, currentShYear, onChange }:
           background: 'none',
           border: 'none',
           cursor: 'pointer',
-          color: colors.bgCard,
+          color: colors.textPrimary,
           fontSize: '16px',
           padding: '4px 0',
         }}
