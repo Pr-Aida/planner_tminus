@@ -13,7 +13,8 @@ html[data-theme="dark"] body {
 }
 
 /* Page-level backgrounds (auth screens, join room) */
-html[data-theme="dark"] [style*="background:#EDEDEE"] {
+html[data-theme="dark"] [style*="background:#EDEDEE"],
+html[data-theme="dark"] [style*="background: #EDEDEE"] {
   background: #0F172A !important;
 }
 
@@ -22,12 +23,27 @@ html[data-theme="dark"] [style*="background:#fff"],
 html[data-theme="dark"] [style*="background:#FFFFFF"],
 html[data-theme="dark"] [style*="background:#FFF"],
 html[data-theme="dark"] [style*="background: #fff"],
-html[data-theme="dark"] [style*="background: #FFFFFF"] {
+html[data-theme="dark"] [style*="background: #FFFFFF"],
+html[data-theme="dark"] [style*="background: #FFF"] {
   background: #1E293B !important;
   color: #F1F5F9 !important;
 }
 
-/* Light-gray input/secondary backgrounds */
+/* Very light blue-gray (#F8F9FC) — secondary cards, form backgrounds, list items */
+html[data-theme="dark"] [style*="background:#F8F9FC"],
+html[data-theme="dark"] [style*="background: #F8F9FC"] {
+  background: #24344F !important;
+  color: #F1F5F9 !important;
+}
+
+/* Light lavender-gray (#E8EBF4) — buttons, badges, dividers */
+html[data-theme="dark"] [style*="background:#E8EBF4"],
+html[data-theme="dark"] [style*="background: #E8EBF4"] {
+  background: #334155 !important;
+  color: #CBD5E1 !important;
+}
+
+/* Light-gray input/secondary backgrounds (#F2F2F2, #F8F8F8) */
 html[data-theme="dark"] [style*="background:#F2F2F2"],
 html[data-theme="dark"] [style*="background:#F8F8F8"],
 html[data-theme="dark"] [style*="background: #F2F2F2"],
@@ -124,11 +140,19 @@ html[data-theme="dark"] [style*="color: #059669"] {
   color: #34D399 !important;
 }
 
+/* Warning text (#92400E) becomes amber */
+html[data-theme="dark"] [style*="color:#92400E"],
+html[data-theme="dark"] [style*="color: #92400E"] {
+  color: #FBBF24 !important;
+}
+
 /* Light borders become dark slate */
 html[data-theme="dark"] [style*="border:1.5px solid #C8C8C8"],
 html[data-theme="dark"] [style*="border: 1.5px solid #C8C8C8"],
 html[data-theme="dark"] [style*="border:1.5px solid #E8EBF4"],
 html[data-theme="dark"] [style*="border: 1.5px solid #E8EBF4"],
+html[data-theme="dark"] [style*="border:1px solid #E8EBF4"],
+html[data-theme="dark"] [style*="border: 1px solid #E8EBF4"],
 html[data-theme="dark"] [style*="border:1px solid #E8E8E8"],
 html[data-theme="dark"] [style*="border: 1px solid #E8E8E8"],
 html[data-theme="dark"] [style*="border:1.5px solid #F2F2F2"],
@@ -148,12 +172,6 @@ html[data-theme="dark"] [style*="border: 1.5px solid #FCA5A5"] {
 html[data-theme="dark"] [style*="border:1.5px solid #FEF3C7"],
 html[data-theme="dark"] [style*="border: 1.5px solid #FEF3C7"] {
   border-color: #78350F !important;
-}
-
-/* Warning text (#92400E, #92400E) becomes amber */
-html[data-theme="dark"] [style*="color:#92400E"],
-html[data-theme="dark"] [style*="color: #92400E"] {
-  color: #FBBF24 !important;
 }
 
 /* Light border colors via borderColor property */
