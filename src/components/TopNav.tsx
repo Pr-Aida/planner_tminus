@@ -385,7 +385,7 @@ export default function TopNav({
         style={{ background: colors.navBg, height: '56px' }}
       >
         {/* Left: Calendar toggle */}
-        <div className="flex-1 flex items-center justify-start">
+        <div className="flex-shrink-0 md:flex-1 flex items-center justify-start">
           <CalendarDropdown
             mode={calMode}
             currentYear={currentGregYear}
@@ -403,7 +403,7 @@ export default function TopNav({
         </div>
 
         {/* Right: View tabs + Rooms + avatar (desktop) */}
-        <div className="flex-1 flex items-center justify-end gap-2 md:gap-3">
+        <div className="flex-1 md:flex-1 flex items-center justify-end gap-2 md:gap-3">
           {notificationsNode}
 
           <div className="hidden sm:flex gap-1" data-tour="tour-view-tabs">
@@ -441,7 +441,7 @@ export default function TopNav({
           {/* Mobile hamburger menu button */}
           <button
             onClick={() => setShowMobileMenu(!showMobileMenu)}
-            className="sm:hidden flex items-center justify-center rounded-md p-1.5 transition-all"
+            className="sm:hidden flex items-center justify-center rounded-md p-1.5 transition-all flex-shrink-0"
             style={{ background: showMobileMenu ? 'rgba(255,255,255,0.1)' : 'transparent', color: colors.navTextActive, border: 'none', cursor: 'pointer' }}
           >
             <Menu size={20} />
@@ -451,7 +451,9 @@ export default function TopNav({
             ref={buttonRef}
             onClick={() => setShowUserMenu(!showUserMenu)}
             data-tour="tour-profile"
-            className="flex items-center gap-2 px-1.5 py-1 rounded-md transition-all"
+            aria-label="Profile"
+            title="Profile"
+            className="flex items-center gap-2 px-1.5 py-1 rounded-md transition-all flex-shrink-0"
             style={{ background: showUserMenu ? 'rgba(255,255,255,0.1)' : 'transparent', cursor: 'pointer' }}
           >
             {userAvatar ? (

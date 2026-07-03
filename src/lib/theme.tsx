@@ -107,6 +107,14 @@ export function ThemeProvider({ children, initialTheme }: { children: ReactNode;
     return 'light';
   });
 
+  // Sync from profile load: when App's themePref updates after Supabase fetch,
+  // update the theme (but only if it differs, so we don't fight the user's toggle).
+  useEffect(() => {
+    if (initialTheme && initialTheme !== theme) {
+      setThemeState(initialTheme);
+    }
+  }, [initialTheme]);
+
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     try { localStorage.setItem('theme', theme); } catch { /* ignore */ }

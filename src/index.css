@@ -189,6 +189,18 @@ html[data-theme="dark"] select {
   border-color: #334155 !important;
 }
 
+/* Tailwind hover states — light grays become dark slate in dark mode */
+html[data-theme="dark"] .hover\:bg-gray-50:hover,
+html[data-theme="dark"] .hover\:bg-gray-100:hover {
+  background-color: #2A3A55 !important;
+}
+
+/* Tailwind bg-white utility (if used anywhere) */
+html[data-theme="dark"] .bg-white {
+  background-color: #1E293B !important;
+  color: #F1F5F9 !important;
+}
+
 /* ─── Scrollbar styling for dark mode ───────────────────────────────────────── */
 html[data-theme="dark"] ::-webkit-scrollbar {
   width: 8px;
