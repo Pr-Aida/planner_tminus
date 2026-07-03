@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, Bell } from 'lucide-react';
+import { useTheme } from '../lib/theme';
 import type { CalendarMode, DailyData, Habit, Reminder, ReminderOffset, ReminderStatus } from '../types';
 import {
   SH_MONTHS, SH_WEEKDAYS_SHORT, shDayOfWeek, shDateKey, shDaysInMonth, todaySh,
@@ -141,12 +142,13 @@ export default function MonthlyView({
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 function reminderDot() {
+  const { colors } = useTheme();
   return (
     <span
       className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded-full"
-      style={{ background: '#F5E6EC' }}
+      style={{ background: colors.accentLight }}
     >
-      <Bell size={7} color="#7B1C3E" />
+      <Bell size={7} color={colors.accent} />
     </span>
   );
 }
@@ -181,6 +183,7 @@ function ShMonthly({
   viewYear, viewMonth, onPrev, onNext, getDayData, getDayNote, habits, onDayClick,
   monthlyNote, onMonthlyNoteChange, reminders, timezone,
 }: ShMonthlyProps) {
+  const { colors } = useTheme();
   const today = todaySh(timezone);
   const daysInMonth = shDaysInMonth(viewYear, viewMonth);
   const firstWD = shDayOfWeek(viewYear, viewMonth, 1);
@@ -193,14 +196,14 @@ function ShMonthly({
       <div
         className="rounded-xl p-6 mb-4"
         data-tour="tour-monthly-reminders"
-        style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}
+        style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}
       >
         <div className="flex items-center gap-3 mb-5">
-          <button onClick={onPrev} style={navBtnStyle}><ChevronLeft size={16} /></button>
-          <span className="flex-1 text-center text-base font-bold" style={{ color: '#1B2A4A' }}>
+          <button onClick={onPrev} style={{ ...navBtnStyle, background: colors.bgHover, color: colors.textPrimary }}><ChevronLeft size={16} /></button>
+          <span className="flex-1 text-center text-base font-bold" style={{ color: colors.textPrimary }}>
             {SH_MONTHS[viewMonth - 1].name} {viewYear}
           </span>
-          <button onClick={onNext} style={navBtnStyle}><ChevronRight size={16} /></button>
+          <button onClick={onNext} style={{ ...navBtnStyle, background: colors.bgHover, color: colors.textPrimary }}><ChevronRight size={16} /></button>
         </div>
 
         <div className="flex flex-wrap gap-4 mb-4">
@@ -211,10 +214,10 @@ function ShMonthly({
 
         <div className="grid grid-cols-7 gap-1">
           {SH_WEEKDAYS_SHORT.map(wd => (
-            <div key={wd} className="text-center text-xs font-bold uppercase py-1" style={{ color: '#7B1C3E', letterSpacing: 1 }}>{wd}</div>
+            <div key={wd} className="text-center text-xs font-bold uppercase py-1" style={{ color: colors.accent, letterSpacing: 1 }}>{wd}</div>
           ))}
           {cells.map((day, idx) => {
-            if (day === null) return <div key={idx} className="rounded-lg" style={{ minHeight: 70, background: '#F2F2F2' }} />;
+            if (day === null) return <div key={idx} className="rounded-lg" style={{ minHeight: 70, background: colors.bgSubtle }} />;
             const key = shDateKey(viewYear, viewMonth, day);
             const data = getDayData(key);
             const note = getDayNote(key);
@@ -228,16 +231,16 @@ function ShMonthly({
                 key={idx}
                 onClick={() => onDayClick(key, `${SH_MONTHS[viewMonth - 1].name} ${day}, ${viewYear} — Notes & Reminders`)}
                 className="rounded-lg p-1.5 cursor-pointer transition-all"
-                style={{ minHeight: 70, border: `1px solid ${isToday ? '#7B1C3E' : '#F2F2F2'}`, background: isToday ? '#F5E6EC' : '#fff' }}
-                onMouseEnter={e => { if (!isToday) (e.currentTarget as HTMLDivElement).style.borderColor = '#7B1C3E'; }}
-                onMouseLeave={e => { if (!isToday) (e.currentTarget as HTMLDivElement).style.borderColor = '#F2F2F2'; }}
+                style={{ minHeight: 70, border: `1px solid ${isToday ? colors.accent : colors.bgSubtle}`, background: isToday ? colors.accentLight : colors.bgCard }}
+                onMouseEnter={e => { if (!isToday) (e.currentTarget as HTMLDivElement).style.borderColor = colors.accent; }}
+                onMouseLeave={e => { if (!isToday) (e.currentTarget as HTMLDivElement).style.borderColor = colors.bgSubtle; }}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold" style={{ color: isToday ? '#7B1C3E' : '#1B2A4A' }}>{day}</span>
+                  <span className="text-xs font-bold" style={{ color: isToday ? colors.accent : colors.textPrimary }}>{day}</span>
                   {dayReminders.length > 0 && reminderDot()}
                 </div>
                 {note && (
-                  <p className="text-xs leading-tight mt-0.5 line-clamp-2" style={{ color: '#6B6B6B', fontSize: '10px' }}>{note}</p>
+                  <p className="text-xs leading-tight mt-0.5 line-clamp-2" style={{ color: colors.textSecondary, fontSize: '10px' }}>{note}</p>
                 )}
                 {dayReminders.length > 0 && (
                   <div className="mt-0.5 space-y-0.5">
@@ -258,16 +261,16 @@ function ShMonthly({
         </div>
       </div>
 
-      <div className="rounded-xl p-6 mb-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
+      <div className="rounded-xl p-6 mb-4" style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}>
         <CardTitle>Monthly Notes</CardTitle>
         <textarea
           value={monthlyNote}
           onChange={e => onMonthlyNoteChange(e.target.value)}
           placeholder="Reflections, goals, highlights for this month..."
           className="w-full rounded-lg p-3 text-sm outline-none resize-y"
-          style={{ minHeight: '90px', border: '1.5px solid #C8C8C8', background: '#F2F2F2', fontFamily: 'inherit', color: '#111' }}
-          onFocus={e => { e.target.style.borderColor = '#7B1C3E'; e.target.style.background = '#fff'; }}
-          onBlur={e => { e.target.style.borderColor = '#C8C8C8'; e.target.style.background = '#F2F2F2'; }}
+          style={{ minHeight: '90px', border: `1.5px solid ${colors.border}`, background: colors.bgInput, fontFamily: 'inherit', color: colors.textPrimary }}
+          onFocus={e => { e.target.style.borderColor = colors.accent; e.target.style.background = colors.bgCard; }}
+          onBlur={e => { e.target.style.borderColor = colors.border; e.target.style.background = colors.bgInput; }}
         />
       </div>
     </div>
@@ -294,6 +297,7 @@ function GregMonthly({
   viewYear, viewMonth, onPrev, onNext, getDayData, getDayNote, habits, onDayClick,
   monthlyNote, onMonthlyNoteChange, reminders, timezone,
 }: GregMonthlyProps) {
+  const { colors } = useTheme();
   const today = todayGreg(timezone);
   const daysInMonth = gregMonthDays(viewYear, viewMonth);
   const firstWD = gregDayOfWeek(viewYear, viewMonth, 1);
@@ -307,14 +311,14 @@ function GregMonthly({
       <div
         className="rounded-xl p-6 mb-4"
         data-tour="tour-monthly-reminders"
-        style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}
+        style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}
       >
         <div className="flex items-center gap-3 mb-5">
-          <button onClick={onPrev} style={navBtnStyle}><ChevronLeft size={16} /></button>
-          <span className="flex-1 text-center text-base font-bold" style={{ color: '#1B2A4A' }}>
+          <button onClick={onPrev} style={{ ...navBtnStyle, background: colors.bgHover, color: colors.textPrimary }}><ChevronLeft size={16} /></button>
+          <span className="flex-1 text-center text-base font-bold" style={{ color: colors.textPrimary }}>
             {GREG_MONTH_NAMES[viewMonth - 1]} {viewYear}
           </span>
-          <button onClick={onNext} style={navBtnStyle}><ChevronRight size={16} /></button>
+          <button onClick={onNext} style={{ ...navBtnStyle, background: colors.bgHover, color: colors.textPrimary }}><ChevronRight size={16} /></button>
         </div>
 
         <div className="flex flex-wrap gap-4 mb-4">
@@ -325,10 +329,10 @@ function GregMonthly({
 
         <div className="grid grid-cols-7 gap-1">
           {GREG_WEEKDAYS_SHORT.map(wd => (
-            <div key={wd} className="text-center text-xs font-bold uppercase py-1" style={{ color: '#7B1C3E', letterSpacing: 1 }}>{wd}</div>
+            <div key={wd} className="text-center text-xs font-bold uppercase py-1" style={{ color: colors.accent, letterSpacing: 1 }}>{wd}</div>
           ))}
           {cells.map((day, idx) => {
-            if (day === null) return <div key={idx} className="rounded-lg" style={{ minHeight: 70, background: '#F2F2F2' }} />;
+            if (day === null) return <div key={idx} className="rounded-lg" style={{ minHeight: 70, background: colors.bgSubtle }} />;
             const key = dateKey({ year: viewYear, month: viewMonth, day });
             const data = getDayData(key);
             const note = getDayNote(key);
@@ -342,16 +346,16 @@ function GregMonthly({
                 key={idx}
                 onClick={() => onDayClick(key, `${GREG_MONTH_NAMES[viewMonth - 1]} ${day}, ${viewYear} — Notes & Reminders`)}
                 className="rounded-lg p-1.5 cursor-pointer transition-all"
-                style={{ minHeight: 70, border: `1px solid ${isToday ? '#7B1C3E' : '#F2F2F2'}`, background: isToday ? '#F5E6EC' : '#fff' }}
-                onMouseEnter={e => { if (!isToday) (e.currentTarget as HTMLDivElement).style.borderColor = '#7B1C3E'; }}
-                onMouseLeave={e => { if (!isToday) (e.currentTarget as HTMLDivElement).style.borderColor = '#F2F2F2'; }}
+                style={{ minHeight: 70, border: `1px solid ${isToday ? colors.accent : colors.bgSubtle}`, background: isToday ? colors.accentLight : colors.bgCard }}
+                onMouseEnter={e => { if (!isToday) (e.currentTarget as HTMLDivElement).style.borderColor = colors.accent; }}
+                onMouseLeave={e => { if (!isToday) (e.currentTarget as HTMLDivElement).style.borderColor = colors.bgSubtle; }}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold" style={{ color: isToday ? '#7B1C3E' : '#1B2A4A' }}>{day}</span>
+                  <span className="text-xs font-bold" style={{ color: isToday ? colors.accent : colors.textPrimary }}>{day}</span>
                   {dayReminders.length > 0 && reminderDot()}
                 </div>
                 {note && (
-                  <p className="text-xs leading-tight mt-0.5 line-clamp-2" style={{ color: '#6B6B6B', fontSize: '10px' }}>{note}</p>
+                  <p className="text-xs leading-tight mt-0.5 line-clamp-2" style={{ color: colors.textSecondary, fontSize: '10px' }}>{note}</p>
                 )}
                 {dayReminders.length > 0 && (
                   <div className="mt-0.5 space-y-0.5">
@@ -370,16 +374,16 @@ function GregMonthly({
         </div>
       </div>
 
-      <div className="rounded-xl p-6 mb-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
+      <div className="rounded-xl p-6 mb-4" style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}>
         <CardTitle>Monthly Notes</CardTitle>
         <textarea
           value={monthlyNote}
           onChange={e => onMonthlyNoteChange(e.target.value)}
           placeholder="Reflections, goals, highlights for this month..."
           className="w-full rounded-lg p-3 text-sm outline-none resize-y"
-          style={{ minHeight: '90px', border: '1.5px solid #C8C8C8', background: '#F2F2F2', fontFamily: 'inherit', color: '#111' }}
-          onFocus={e => { e.target.style.borderColor = '#7B1C3E'; e.target.style.background = '#fff'; }}
-          onBlur={e => { e.target.style.borderColor = '#C8C8C8'; e.target.style.background = '#F2F2F2'; }}
+          style={{ minHeight: '90px', border: `1.5px solid ${colors.border}`, background: colors.bgInput, fontFamily: 'inherit', color: colors.textPrimary }}
+          onFocus={e => { e.target.style.borderColor = colors.accent; e.target.style.background = colors.bgCard; }}
+          onBlur={e => { e.target.style.borderColor = colors.border; e.target.style.background = colors.bgInput; }}
         />
       </div>
     </div>
@@ -390,23 +394,25 @@ function GregMonthly({
 const navBtnStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center',
   width: 32, height: 32, borderRadius: 8, border: 'none',
-  background: '#E8EBF4', color: '#1B2A4A', cursor: 'pointer',
+  cursor: 'pointer',
 };
 
 function Legend({ color, label }: { color: string; label: string }) {
+  const { colors } = useTheme();
   return (
     <div className="flex items-center gap-1.5">
       <span className="w-2 h-2 rounded-full block" style={{ background: color }} />
-      <span className="text-xs" style={{ color: '#6B6B6B' }}>{label}</span>
+      <span className="text-xs" style={{ color: colors.textSecondary }}>{label}</span>
     </div>
   );
 }
 
 function CardTitle({ children }: { children: React.ReactNode }) {
+  const { colors } = useTheme();
   return (
     <div className="flex items-center mb-3">
-      <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#7B1C3E' }}>{children}</span>
-      <div className="flex-1 h-px ml-3" style={{ background: '#F5E6EC' }} />
+      <span className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.accent }}>{children}</span>
+      <div className="flex-1 h-px ml-3" style={{ background: colors.accentLight }} />
     </div>
   );
 }

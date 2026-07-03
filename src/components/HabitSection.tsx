@@ -2,6 +2,7 @@ import { useState, useRef, useMemo, useEffect } from 'react';
 import { Plus, Trash2, Check, Pencil, Save, EyeOff, CalendarDays, Layers } from 'lucide-react';
 import type { Habit, HabitType, HabitOverride, TempHabit } from '../types';
 import { evalMinuteExpr } from '../lib/expr';
+import { useTheme } from '../lib/theme';
 
 type EffectiveHabit = (Habit | TempHabit) & { isExtra: boolean };
 
@@ -30,6 +31,7 @@ export default function HabitSection({
   onAddHabitToTemplate, onAddHabitToDay, onDeleteHabit, onRenameHabit,
   onToggleHabit, onHideHabitForDay, onRemoveExtraHabit, onSaveTemplate,
 }: Props) {
+  const { colors } = useTheme();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<AddForm>({ name: '', type: 'checkbox', unit: '' });
   const [saving, setSaving] = useState(false);
@@ -67,19 +69,19 @@ export default function HabitSection({
     <div
       className="rounded-xl p-6 mb-4"
       data-tour="tour-habits"
-      style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}
+      style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}
     >
       {/* Card title */}
       <div className="flex items-center mb-4">
-        <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#7B1C3E' }}>
+        <span className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.accent }}>
           Daily Habits
         </span>
-        <div className="flex-1 h-px ml-3" style={{ background: '#F5E6EC' }} />
+        <div className="flex-1 h-px ml-3" style={{ background: colors.accentLight }} />
         <button
           onClick={onSaveTemplate}
           data-tour="tour-habit-save"
           className="ml-2 flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80"
-          style={{ background: '#F5E6EC', color: '#7B1C3E', border: 'none', cursor: 'pointer' }}
+          style={{ background: colors.accentLight, color: colors.accent, border: 'none', cursor: 'pointer' }}
           title="Save current habits as your daily template"
         >
           <Save size={12} /> Save
@@ -88,7 +90,7 @@ export default function HabitSection({
           onClick={() => { setShowForm(true); setScope('day'); }}
           data-tour="tour-habit-add"
           className="ml-2 flex items-center justify-center rounded-lg w-7 h-7 transition-opacity hover:opacity-80"
-          style={{ background: '#1B2A4A', border: 'none', cursor: 'pointer' }}
+          style={{ background: colors.heroBg, border: 'none', cursor: 'pointer' }}
           title="Add habit"
         >
           <Plus size={14} color="#fff" />
@@ -112,7 +114,7 @@ export default function HabitSection({
           />
         ))}
         {effectiveHabits.length === 0 && !showForm && (
-          <p className="text-xs py-2" style={{ color: '#C8C8C8' }}>
+          <p className="text-xs py-2" style={{ color: colors.textTertiary }}>
             No habits for this day — click + to add one.
           </p>
         )}
@@ -120,20 +122,20 @@ export default function HabitSection({
 
       {/* Add form */}
       {showForm && (
-        <div className="mt-4 pt-4" style={{ borderTop: '1px solid #F2F2F2' }}>
+        <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${colors.borderLight}` }}>
           {/* Scope selector */}
-          <div className="flex rounded-lg overflow-hidden mb-3" style={{ border: '1.5px solid #E8EBF4' }}>
+          <div className="flex rounded-lg overflow-hidden mb-3" style={{ border: `1.5px solid ${colors.borderLight}` }}>
             <button
               onClick={() => setScope('day')}
               className="flex-1 py-2 text-xs font-semibold transition-all flex items-center justify-center gap-1"
-              style={{ background: scope === 'day' ? '#1B2A4A' : '#fff', color: scope === 'day' ? '#fff' : '#6B6B6B', border: 'none', cursor: 'pointer' }}
+              style={{ background: scope === 'day' ? colors.heroBg : colors.bgInput, color: scope === 'day' ? '#fff' : colors.textSecondary, border: 'none', cursor: 'pointer' }}
             >
               <CalendarDays size={12} /> Only this day
             </button>
             <button
               onClick={() => setScope('template')}
               className="flex-1 py-2 text-xs font-semibold transition-all flex items-center justify-center gap-1"
-              style={{ background: scope === 'template' ? '#1B2A4A' : '#fff', color: scope === 'template' ? '#fff' : '#6B6B6B', border: 'none', cursor: 'pointer' }}
+              style={{ background: scope === 'template' ? colors.heroBg : colors.bgInput, color: scope === 'template' ? '#fff' : colors.textSecondary, border: 'none', cursor: 'pointer' }}
             >
               <Layers size={12} /> Daily template
             </button>
@@ -147,25 +149,25 @@ export default function HabitSection({
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
             placeholder="Habit name (e.g. Violin Practice)"
             className="w-full rounded-lg px-4 py-2.5 text-sm outline-none mb-3"
-            style={{ border: '1.5px solid #E8EBF4', background: '#F2F2F2', fontFamily: 'inherit', color: '#111' }}
-            onFocus={e => (e.target.style.borderColor = '#1B2A4A')}
-            onBlur={e => (e.target.style.borderColor = '#E8EBF4')}
+            style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, fontFamily: 'inherit', color: colors.textPrimary }}
+            onFocus={e => (e.target.style.borderColor = colors.heroBg)}
+            onBlur={e => (e.target.style.borderColor = colors.borderLight)}
             onKeyDown={e => e.key === 'Enter' && handleAdd()}
           />
 
           {/* Type toggle */}
-          <div className="flex rounded-lg overflow-hidden mb-3" style={{ border: '1.5px solid #E8EBF4' }}>
+          <div className="flex rounded-lg overflow-hidden mb-3" style={{ border: `1.5px solid ${colors.borderLight}` }}>
             <button
               onClick={() => setForm(f => ({ ...f, type: 'checkbox' }))}
               className="flex-1 py-2 text-xs font-semibold transition-all"
-              style={{ background: form.type === 'checkbox' ? '#1B2A4A' : '#fff', color: form.type === 'checkbox' ? '#fff' : '#6B6B6B', border: 'none', cursor: 'pointer' }}
+              style={{ background: form.type === 'checkbox' ? colors.heroBg : colors.bgInput, color: form.type === 'checkbox' ? '#fff' : colors.textSecondary, border: 'none', cursor: 'pointer' }}
             >
               Checkbox
             </button>
             <button
               onClick={() => setForm(f => ({ ...f, type: 'value' }))}
               className="flex-1 py-2 text-xs font-semibold transition-all"
-              style={{ background: form.type === 'value' ? '#1B2A4A' : '#fff', color: form.type === 'value' ? '#fff' : '#6B6B6B', border: 'none', cursor: 'pointer' }}
+              style={{ background: form.type === 'value' ? colors.heroBg : colors.bgInput, color: form.type === 'value' ? '#fff' : colors.textSecondary, border: 'none', cursor: 'pointer' }}
             >
               With Time (min)
             </button>
@@ -179,9 +181,9 @@ export default function HabitSection({
               onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}
               placeholder="Unit label (default: min)"
               className="w-full rounded-lg px-4 py-2.5 text-sm outline-none mb-3"
-              style={{ border: '1.5px solid #E8EBF4', background: '#F2F2F2', fontFamily: 'inherit', color: '#111' }}
-              onFocus={e => (e.target.style.borderColor = '#1B2A4A')}
-              onBlur={e => (e.target.style.borderColor = '#E8EBF4')}
+              style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, fontFamily: 'inherit', color: colors.textPrimary }}
+              onFocus={e => (e.target.style.borderColor = colors.heroBg)}
+              onBlur={e => (e.target.style.borderColor = colors.borderLight)}
             />
           )}
 
@@ -191,14 +193,14 @@ export default function HabitSection({
               onClick={handleAdd}
               disabled={saving || !form.name.trim()}
               className="flex-1 py-2.5 rounded-lg text-xs font-bold text-white transition-opacity"
-              style={{ background: '#1B2A4A', border: 'none', cursor: saving || !form.name.trim() ? 'not-allowed' : 'pointer', opacity: saving || !form.name.trim() ? 0.6 : 1 }}
+              style={{ background: colors.heroBg, border: 'none', cursor: saving || !form.name.trim() ? 'not-allowed' : 'pointer', opacity: saving || !form.name.trim() ? 0.6 : 1 }}
             >
               {scope === 'template' ? 'Add to Template' : 'Add to This Day'}
             </button>
             <button
               onClick={handleCancel}
               className="flex-1 py-2.5 rounded-lg text-xs font-semibold transition-colors"
-              style={{ background: '#F2F2F2', color: '#1B2A4A', border: 'none', cursor: 'pointer' }}
+              style={{ background: colors.bgHover, color: colors.textPrimary, border: 'none', cursor: 'pointer' }}
             >
               Cancel
             </button>
@@ -224,6 +226,7 @@ interface HabitRowProps {
 }
 
 function HabitRow({ habit, value, onToggle, onDelete, onRename, onHideForDay, isExtra, isLast, tourAttr }: HabitRowProps) {
+  const { colors } = useTheme();
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(habit.name);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -296,14 +299,14 @@ function HabitRow({ habit, value, onToggle, onDelete, onRename, onHideForDay, is
     <div
       className="flex items-center gap-3 py-2.5 group"
       data-tour={tourAttr}
-      style={{ borderBottom: isLast ? 'none' : '1px solid #F2F2F2' }}
+      style={{ borderBottom: isLast ? 'none' : `1px solid ${colors.borderLight}` }}
     >
       {/* Checkbox or time input */}
       {habit.habit_type === 'checkbox' ? (
         <button
           onClick={() => onToggle(!isDone)}
           className="flex-shrink-0 flex items-center justify-center rounded-md transition-all"
-          style={{ width: 24, height: 24, border: `2px solid ${isDone ? '#7B1C3E' : '#C8C8C8'}`, background: isDone ? '#7B1C3E' : '#fff', cursor: 'pointer' }}
+          style={{ width: 24, height: 24, border: `2px solid ${isDone ? colors.accent : colors.border}`, background: isDone ? colors.accent : colors.bgInput, cursor: 'pointer' }}
         >
           {isDone && <Check size={13} color="#fff" strokeWidth={3} />}
         </button>
@@ -317,16 +320,16 @@ function HabitRow({ habit, value, onToggle, onDelete, onRename, onHideForDay, is
               value={timeDraft}
               placeholder="0"
               onChange={e => { setTimeDraft(e.target.value); setTimeError(''); }}
-              onFocus={e => { e.target.style.borderColor = '#1B2A4A'; e.target.select(); }}
-              onBlur={e => { e.target.style.borderColor = timeError ? '#B45309' : '#C8C8C8'; commitTime(); }}
+              onFocus={e => { e.target.style.borderColor = colors.heroBg; e.target.select(); }}
+              onBlur={e => { e.target.style.borderColor = timeError ? colors.warning : colors.border; commitTime(); }}
               onKeyDown={handleTimeKeyDown}
               className="rounded-md text-center text-xs outline-none"
-              style={{ width: 64, height: 28, border: '1.5px solid #C8C8C8', color: '#1B2A4A', fontFamily: 'inherit' }}
+              style={{ width: 64, height: 28, border: `1.5px solid ${colors.border}`, color: colors.textPrimary, fontFamily: 'inherit', background: colors.bgInput }}
             />
-            <span className="text-xs" style={{ color: '#6B6B6B' }}>{habit.unit || 'min'}</span>
+            <span className="text-xs" style={{ color: colors.textSecondary }}>{habit.unit || 'min'}</span>
           </div>
           {timeError && (
-            <span className="text-[9px] leading-tight" style={{ color: '#B45309', maxWidth: 120 }}>
+            <span className="text-[9px] leading-tight" style={{ color: colors.warning, maxWidth: 120 }}>
               {timeError}
             </span>
           )}
@@ -340,17 +343,17 @@ function HabitRow({ habit, value, onToggle, onDelete, onRename, onHideForDay, is
           onChange={e => setEditName(e.target.value)}
           onBlur={commitEdit} onKeyDown={handleEditKeyDown}
           className="flex-1 text-sm font-medium rounded px-1 outline-none"
-          style={{ border: '1.5px solid #1B2A4A', color: '#1B2A4A', fontFamily: 'inherit', background: '#F8F9FC', minWidth: 0 }}
+          style={{ border: `1.5px solid ${colors.heroBg}`, color: colors.textPrimary, fontFamily: 'inherit', background: colors.bgSubtle, minWidth: 0 }}
           autoFocus
         />
       ) : (
         <span
           className="flex-1 text-sm font-medium min-w-0"
-          style={{ color: '#1B2A4A', textDecoration: habit.habit_type === 'checkbox' && isDone ? 'line-through' : 'none', opacity: habit.habit_type === 'checkbox' && isDone ? 0.5 : 1 }}
+          style={{ color: colors.textPrimary, textDecoration: habit.habit_type === 'checkbox' && isDone ? 'line-through' : 'none', opacity: habit.habit_type === 'checkbox' && isDone ? 0.5 : 1 }}
         >
           {habit.name}
           {isExtra && (
-            <span className="ml-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider" style={{ background: '#FEF3C7', color: '#B45309' }}>
+            <span className="ml-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider" style={{ background: colors.warningBg, color: colors.warning }}>
               Today only
             </span>
           )}
@@ -364,9 +367,9 @@ function HabitRow({ habit, value, onToggle, onDelete, onRename, onHideForDay, is
             <button
               onClick={startEdit}
               className="p-1 rounded transition-colors"
-              style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: '#C8C8C8' }}
-              onMouseEnter={e => (e.currentTarget.style.color = '#1B2A4A')}
-              onMouseLeave={e => (e.currentTarget.style.color = '#C8C8C8')}
+              style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textTertiary }}
+              onMouseEnter={e => (e.currentTarget.style.color = colors.textPrimary)}
+              onMouseLeave={e => (e.currentTarget.style.color = colors.textTertiary)}
               title="Rename habit"
             >
               <Pencil size={12} />
@@ -376,9 +379,9 @@ function HabitRow({ habit, value, onToggle, onDelete, onRename, onHideForDay, is
             <button
               onClick={onHideForDay}
               className="p-1 rounded transition-colors"
-              style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: '#C8C8C8' }}
-              onMouseEnter={e => (e.currentTarget.style.color = '#B45309')}
-              onMouseLeave={e => (e.currentTarget.style.color = '#C8C8C8')}
+              style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textTertiary }}
+              onMouseEnter={e => (e.currentTarget.style.color = colors.warning)}
+              onMouseLeave={e => (e.currentTarget.style.color = colors.textTertiary)}
               title="Hide for this day only"
             >
               <EyeOff size={12} />
@@ -387,9 +390,9 @@ function HabitRow({ habit, value, onToggle, onDelete, onRename, onHideForDay, is
           <button
             onClick={onDelete}
             className="p-1 rounded transition-colors"
-            style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: '#C8C8C8' }}
-            onMouseEnter={e => (e.currentTarget.style.color = isExtra ? '#B45309' : '#7B1C3E')}
-            onMouseLeave={e => (e.currentTarget.style.color = '#C8C8C8')}
+            style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textTertiary }}
+            onMouseEnter={e => (e.currentTarget.style.color = isExtra ? colors.warning : colors.accent)}
+            onMouseLeave={e => (e.currentTarget.style.color = colors.textTertiary)}
             title={isExtra ? 'Remove from this day' : 'Delete from template'}
           >
             <Trash2 size={12} />

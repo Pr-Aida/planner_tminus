@@ -188,7 +188,7 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
             className="flex items-center justify-center rounded-full w-7 h-7 transition-colors hover:bg-gray-100"
             style={{ border: 'none', cursor: 'pointer', background: 'transparent' }}
           >
-            <X size={16} color="#6B6B6B" />
+            <X size={16} color={colors.textSecondary} />
           </button>
         </div>
 
@@ -210,12 +210,12 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                       src={avatarUrl}
                       alt="Avatar"
                       className="rounded-full object-cover"
-                      style={{ width: 72, height: 72, border: '2px solid #E8EBF4' }}
+                      style={{ width: 72, height: 72, border: `2px solid ${colors.borderLight}` }}
                     />
                   ) : (
                     <div
                       className="rounded-full flex items-center justify-center"
-                      style={{ width: 72, height: 72, background: '#7B1C3E' }}
+                      style={{ width: 72, height: 72, background: colors.accent }}
                     >
                       <span className="text-2xl font-bold text-white">{initial}</span>
                     </div>
@@ -225,7 +225,7 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                     disabled={avatarUploading}
                     className="absolute -bottom-1 -right-1 flex items-center justify-center rounded-full transition-opacity hover:opacity-80"
                     style={{
-                      width: 28, height: 28, background: '#1B2A4A', border: '2px solid #fff',
+                      width: 28, height: 28, background: colors.heroBg, border: `2px solid ${colors.bgCard}`,
                       cursor: avatarUploading ? 'not-allowed' : 'pointer', opacity: avatarUploading ? 0.6 : 1,
                     }}
                     title="Change avatar"
@@ -235,9 +235,9 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                   <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
                 </div>
                 <div>
-                  <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>{profile.display_name || profile.username}</p>
-                  <p className="text-xs" style={{ color: '#6B6B6B' }}>@{profile.username}</p>
-                  {avatarUploading && <p className="text-xs mt-1" style={{ color: '#7B1C3E' }}>Uploading…</p>}
+                  <p className="text-sm font-bold" style={{ color: colors.textPrimary }}>{profile.display_name || profile.username}</p>
+                  <p className="text-xs" style={{ color: colors.textSecondary }}>@{profile.username}</p>
+                  {avatarUploading && <p className="text-xs mt-1" style={{ color: colors.accent }}>Uploading…</p>}
                 </div>
               </div>
 
@@ -266,24 +266,24 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                   className="w-full rounded-lg px-3 py-2 text-sm outline-none"
                   style={{
                     ...inputStyle,
-                    borderColor: usernameStatus === 'invalid' ? '#B91C1C' : usernameStatus === 'ok' ? '#059669' : '#C8C8C8',
+                    borderColor: usernameStatus === 'invalid' ? colors.error : usernameStatus === 'ok' ? colors.success : 'var(--theme-border, #C8C8C8)',
                   }}
-                  onFocus={e => { e.target.style.borderColor = '#7B1C3E'; e.target.style.background = '#fff'; }}
+                  onFocus={e => { e.target.style.borderColor = 'var(--theme-accent, #7B1C3E)'; e.target.style.background = 'var(--theme-bg-card, #fff)'; }}
                   onBlurCapture={e => {
-                    if (usernameStatus === 'idle') e.target.style.borderColor = '#C8C8C8';
-                    e.target.style.background = '#F2F2F2';
+                    if (usernameStatus === 'idle') e.target.style.borderColor = 'var(--theme-border, #C8C8C8)';
+                    e.target.style.background = 'var(--theme-bg-input, #F2F2F2)';
                   }}
                 />
-                {usernameStatus === 'checking' && <p className="text-xs mt-1" style={{ color: '#6B6B6B' }}>Checking…</p>}
+                {usernameStatus === 'checking' && <p className="text-xs mt-1" style={{ color: colors.textSecondary }}>Checking…</p>}
                 {usernameStatus === 'invalid' && (
-                  <p className="text-xs mt-1" style={{ color: '#B91C1C' }}>
+                  <p className="text-xs mt-1" style={{ color: colors.error }}>
                     Use only letters, numbers, _ and . (3–24 chars, no spaces).
                   </p>
                 )}
                 {usernameStatus === 'ok' && (
-                  <p className="text-xs mt-1" style={{ color: '#059669' }}>Looks good.</p>
+                  <p className="text-xs mt-1" style={{ color: colors.success }}>Looks good.</p>
                 )}
-                <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>Letters, numbers, _ and . only.</p>
+                <p className="text-xs mt-1" style={{ color: colors.textTertiary }}>Letters, numbers, _ and . only.</p>
               </Field>
 
               {/* Bio */}
@@ -294,8 +294,8 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                   rows={3}
                   className="w-full rounded-lg px-3 py-2 text-sm outline-none resize-y"
                   style={{ ...inputStyle, minHeight: '70px' }}
-                  onFocus={e => { e.target.style.borderColor = '#7B1C3E'; e.target.style.background = '#fff'; }}
-                  onBlur={e => { e.target.style.borderColor = '#C8C8C8'; e.target.style.background = '#F2F2F2'; }}
+                  onFocus={e => { e.target.style.borderColor = 'var(--theme-accent, #7B1C3E)'; e.target.style.background = 'var(--theme-bg-card, #fff)'; }}
+                  onBlur={e => { e.target.style.borderColor = 'var(--theme-border, #C8C8C8)'; e.target.style.background = 'var(--theme-bg-input, #F2F2F2)'; }}
                   placeholder="A short note about yourself"
                 />
               </Field>
@@ -312,7 +312,7 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                   onBlur={onBlur}
                   placeholder="used only to reset your password"
                 />
-                <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
+                <p className="text-xs mt-1" style={{ color: colors.textTertiary }}>
                   Not used for login. Needed only if you forget your password.
                 </p>
               </Field>
@@ -322,13 +322,13 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
           {tab === 'preferences' && (
             <div className="space-y-5">
               <Field label="Default Calendar">
-                <div className="flex rounded-lg overflow-hidden" style={{ border: '1.5px solid #E8EBF4' }}>
+                <div className="flex rounded-lg overflow-hidden" style={{ border: `1.5px solid ${colors.borderLight}` }}>
                   <button
                     onClick={() => setCalendarPref('shamsi')}
                     className="flex-1 py-2.5 text-xs font-semibold transition-all"
                     style={{
-                      background: calendarPref === 'shamsi' ? '#7B1C3E' : '#fff',
-                      color: calendarPref === 'shamsi' ? '#fff' : '#6B6B6B',
+                      background: calendarPref === 'shamsi' ? colors.accent : colors.bgInput,
+                      color: calendarPref === 'shamsi' ? '#fff' : colors.textSecondary,
                       border: 'none', cursor: 'pointer',
                     }}
                   >
@@ -338,15 +338,15 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                     onClick={() => setCalendarPref('gregorian')}
                     className="flex-1 py-2.5 text-xs font-semibold transition-all"
                     style={{
-                      background: calendarPref === 'gregorian' ? '#7B1C3E' : '#fff',
-                      color: calendarPref === 'gregorian' ? '#fff' : '#6B6B6B',
+                      background: calendarPref === 'gregorian' ? colors.accent : colors.bgInput,
+                      color: calendarPref === 'gregorian' ? '#fff' : colors.textSecondary,
                       border: 'none', cursor: 'pointer',
                     }}
                   >
                     Gregorian
                   </button>
                 </div>
-                <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>Applied on your next sign-in.</p>
+                <p className="text-xs mt-1" style={{ color: colors.textTertiary }}>Applied on your next sign-in.</p>
               </Field>
 
               <Field label="Timezone">
@@ -360,7 +360,7 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                     <option key={tz} value={tz}>{tz}</option>
                   ))}
                 </select>
-                <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>Used for date display defaults.</p>
+                <p className="text-xs mt-1" style={{ color: colors.textTertiary }}>Used for date display defaults.</p>
               </Field>
 
               <Field label="Appearance">
@@ -388,17 +388,17 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                     <Moon size={13} /> Dark
                   </button>
                 </div>
-                <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>Toggle dark mode for the entire app.</p>
+                <p className="text-xs mt-1" style={{ color: colors.textTertiary }}>Toggle dark mode for the entire app.</p>
               </Field>
 
               <div
                 className="rounded-lg p-4 flex items-start gap-3"
-                style={{ background: '#F8F9FC', border: '1px solid #E8EBF4' }}
+                style={{ background: colors.bgSubtle, border: `1px solid ${colors.borderLight}` }}
               >
-                <UserIcon size={16} color="#1B2A4A" style={{ flexShrink: 0, marginTop: 2 }} />
+                <UserIcon size={16} color={colors.textPrimary} style={{ flexShrink: 0, marginTop: 2 }} />
                 <div>
-                  <p className="text-xs font-semibold" style={{ color: '#1B2A4A' }}>Account</p>
-                  <p className="text-xs mt-0.5" style={{ color: '#6B6B6B' }}>
+                  <p className="text-xs font-semibold" style={{ color: colors.textPrimary }}>Account</p>
+                  <p className="text-xs mt-0.5" style={{ color: colors.textSecondary }}>
                     You sign in with your username and password. Your recovery email is only used to
                     send you a reset link if you forget your password.
                   </p>
@@ -406,26 +406,26 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
               </div>
 
               {/* Delete Account */}
-              <div className="rounded-lg overflow-hidden" style={{ border: '1.5px solid #FCA5A5' }}>
+              <div className="rounded-lg overflow-hidden" style={{ border: `1.5px solid ${colors.errorBg}` }}>
                 <button
                   onClick={() => { setShowDeleteConfirm(v => !v); setDeleteError(null); setDeleteConfirmText(''); }}
                   className="w-full px-4 py-3 flex items-center gap-3 text-left transition-colors"
-                  style={{ background: '#FFF5F5', border: 'none', cursor: 'pointer' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#FEE2E2'}
-                  onMouseLeave={e => e.currentTarget.style.background = '#FFF5F5'}
+                  style={{ background: colors.errorBg, border: 'none', cursor: 'pointer' }}
+                  onMouseEnter={e => e.currentTarget.style.background = colors.errorBg}
+                  onMouseLeave={e => e.currentTarget.style.background = colors.errorBg}
                 >
-                  <Trash2 size={15} color="#B91C1C" />
-                  <span className="text-sm font-semibold" style={{ color: '#B91C1C' }}>Delete Account</span>
+                  <Trash2 size={15} color={colors.error} />
+                  <span className="text-sm font-semibold" style={{ color: colors.error }}>Delete Account</span>
                 </button>
                 {showDeleteConfirm && (
-                  <div className="px-4 pb-4 pt-2" style={{ background: '#FFF5F5' }}>
+                  <div className="px-4 pb-4 pt-2" style={{ background: colors.errorBg }}>
                     <div className="flex items-start gap-2 mb-3">
-                      <AlertTriangle size={14} color="#B91C1C" style={{ flexShrink: 0, marginTop: 2 }} />
-                      <p className="text-xs" style={{ color: '#7F1D1D' }}>
+                      <AlertTriangle size={14} color={colors.error} style={{ flexShrink: 0, marginTop: 2 }} />
+                      <p className="text-xs" style={{ color: colors.error }}>
                         This will permanently delete your account and all your planner data — habits, notes, reminders, countdowns, and profile. This cannot be undone.
                       </p>
                     </div>
-                    <p className="text-xs font-semibold mb-1.5" style={{ color: '#B91C1C' }}>
+                    <p className="text-xs font-semibold mb-1.5" style={{ color: colors.error }}>
                       Type <strong>delete</strong> to confirm:
                     </p>
                     <input
@@ -434,17 +434,17 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                       onChange={e => setDeleteConfirmText(e.target.value)}
                       placeholder="delete"
                       className="w-full rounded-lg px-3 py-2 text-sm outline-none mb-3"
-                      style={{ border: '1.5px solid #FCA5A5', background: '#fff', color: '#111', fontFamily: 'inherit' }}
+                      style={{ border: `1.5px solid ${colors.error}`, background: colors.bgInput, color: colors.textPrimary, fontFamily: 'inherit' }}
                     />
                     {deleteError && (
-                      <p className="text-xs mb-2" style={{ color: '#B91C1C' }}>{deleteError}</p>
+                      <p className="text-xs mb-2" style={{ color: colors.error }}>{deleteError}</p>
                     )}
                     <button
                       onClick={handleDeleteAccount}
                       disabled={deleting || deleteConfirmText.trim().toLowerCase() !== 'delete'}
                       className="w-full py-2 rounded-lg text-sm font-bold text-white transition-opacity"
                       style={{
-                        background: '#B91C1C', border: 'none',
+                        background: colors.error, border: 'none',
                         cursor: deleting || deleteConfirmText.trim().toLowerCase() !== 'delete' ? 'not-allowed' : 'pointer',
                         opacity: deleting || deleteConfirmText.trim().toLowerCase() !== 'delete' ? 0.5 : 1,
                       }}
@@ -458,12 +458,12 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
           )}
 
           {error && (
-            <div className="rounded-lg px-4 py-3 text-sm mt-4" style={{ background: '#FEE2E2', color: '#B91C1C' }}>
+            <div className="rounded-lg px-4 py-3 text-sm mt-4" style={{ background: colors.errorBg, color: colors.error }}>
               {error}
             </div>
           )}
           {success && (
-            <div className="rounded-lg px-4 py-3 text-sm mt-4 flex items-center gap-2" style={{ background: '#D1FAE5', color: '#059669' }}>
+            <div className="rounded-lg px-4 py-3 text-sm mt-4 flex items-center gap-2" style={{ background: colors.successBg, color: colors.success }}>
               <Check size={14} /> Profile saved.
             </div>
           )}
@@ -497,19 +497,19 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
 }
 
 const inputStyle: React.CSSProperties = {
-  border: '1.5px solid #C8C8C8',
-  background: '#F2F2F2',
-  color: '#111',
+  border: '1.5px solid var(--theme-border, #C8C8C8)',
+  background: 'var(--theme-bg-input, #F2F2F2)',
+  color: 'var(--theme-text, #111)',
   fontFamily: 'inherit',
 };
 
 function onFocus(e: React.FocusEvent<HTMLInputElement>) {
-  e.target.style.borderColor = '#7B1C3E';
-  e.target.style.background = '#fff';
+  e.target.style.borderColor = 'var(--theme-accent, #7B1C3E)';
+  e.target.style.background = 'var(--theme-bg-card, #fff)';
 }
 function onBlur(e: React.FocusEvent<HTMLInputElement>) {
-  e.target.style.borderColor = '#C8C8C8';
-  e.target.style.background = '#F2F2F2';
+  e.target.style.borderColor = 'var(--theme-border, #C8C8C8)';
+  e.target.style.background = 'var(--theme-bg-input, #F2F2F2)';
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

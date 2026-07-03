@@ -18,20 +18,24 @@ import {
   makeAdmin, removeAdmin,
 } from '../lib/studyRooms';
 import { supabase } from '../lib/supabase';
+import { useTheme, type ThemeColors } from '../lib/theme';
 
 // ─── Shared styles ──────────────────────────────────────────────────────────────
-const inputStyle = {
-  border: '1.5px solid #E8EBF4',
-  background: '#F8F9FC',
-  color: '#1B2A4A',
-  fontSize: 13,
-};
+function getInputStyle(colors: ThemeColors) {
+  return {
+    border: `1.5px solid ${colors.borderLight}`,
+    background: colors.bgSubtle,
+    color: colors.textPrimary,
+    fontSize: 13,
+  };
+}
 
 // ─── Field / Label helpers ─────────────────────────────────────────────────────
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  const { colors } = useTheme();
   return (
     <div className="mb-4">
-      <label className="block text-xs font-bold mb-1.5 uppercase tracking-wider" style={{ color: '#1B2A4A' }}>
+      <label className="block text-xs font-bold mb-1.5 uppercase tracking-wider" style={{ color: colors.textPrimary }}>
         {label}
       </label>
       {children}
@@ -41,7 +45,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 // ─── MemberAvatar helper ──────────────────────────────────────────────────────
 function MemberAvatar({ m, themeColor }: { m: RoomMember; themeColor?: string }) {
-  const bg = themeColor || '#1B2A4A';
+  const { colors } = useTheme();
+  const bg = themeColor || colors.textPrimary;
   if (m.avatar_url) {
     return <img src={m.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />;
   }
@@ -64,6 +69,7 @@ interface Props {
 }
 
 export default function RoomProfileView({ roomId, userId, onBack }: Props) {
+  const { colors } = useTheme();
   const [room, setRoom] = useState<StudyRoom | null>(null);
   const [members, setMembers] = useState<RoomMember[]>([]);
   const [myMembership, setMyMembership] = useState<RoomMember | null>(null);
@@ -139,7 +145,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="animate-spin" size={28} color="#1B2A4A" />
+        <Loader2 className="animate-spin" size={28} color={colors.textPrimary} />
       </div>
     );
   }
@@ -148,14 +154,14 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
   if (error) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-6">
-        <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-semibold mb-6" style={{ color: '#1B2A4A', background: 'none', border: 'none', cursor: 'pointer' }}>
+        <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-semibold mb-6" style={{ color: colors.textPrimary, background: 'none', border: 'none', cursor: 'pointer' }}>
           <ArrowLeft size={15} /> Back
         </button>
-        <div className="rounded-xl p-6 text-center" style={{ background: '#FEE2E2' }}>
-          <AlertTriangle size={28} color="#B91C1C" className="mx-auto mb-3" />
-          <p className="text-sm font-bold" style={{ color: '#B91C1C' }}>Failed to load room</p>
-          <p className="text-xs mt-2 mb-4" style={{ color: '#6B6B6B' }}>{error}</p>
-          <button onClick={load} className="px-4 py-2 rounded-lg text-xs font-bold text-white" style={{ background: '#1B2A4A', border: 'none', cursor: 'pointer' }}>
+        <div className="rounded-xl p-6 text-center" style={{ background: colors.errorBg }}>
+          <AlertTriangle size={28} color={colors.error} className="mx-auto mb-3" />
+          <p className="text-sm font-bold" style={{ color: colors.error }}>Failed to load room</p>
+          <p className="text-xs mt-2 mb-4" style={{ color: colors.textSecondary }}>{error}</p>
+          <button onClick={load} className="px-4 py-2 rounded-lg text-xs font-bold text-white" style={{ background: colors.textPrimary, border: 'none', cursor: 'pointer' }}>
             Retry
           </button>
         </div>
@@ -167,13 +173,13 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
   if (!room) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-6">
-        <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-semibold mb-6" style={{ color: '#1B2A4A', background: 'none', border: 'none', cursor: 'pointer' }}>
+        <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-semibold mb-6" style={{ color: colors.textPrimary, background: 'none', border: 'none', cursor: 'pointer' }}>
           <ArrowLeft size={15} /> Back
         </button>
-        <div className="rounded-xl p-6 text-center" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
-          <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>Room not found</p>
-          <p className="text-xs mt-2 mb-4" style={{ color: '#6B6B6B' }}>This room may have been deleted or you do not have access.</p>
-          <button onClick={onBack} className="px-4 py-2 rounded-lg text-xs font-bold text-white" style={{ background: '#1B2A4A', border: 'none', cursor: 'pointer' }}>
+        <div className="rounded-xl p-6 text-center" style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}>
+          <p className="text-sm font-bold" style={{ color: colors.textPrimary }}>Room not found</p>
+          <p className="text-xs mt-2 mb-4" style={{ color: colors.textSecondary }}>This room may have been deleted or you do not have access.</p>
+          <button onClick={onBack} className="px-4 py-2 rounded-lg text-xs font-bold text-white" style={{ background: colors.textPrimary, border: 'none', cursor: 'pointer' }}>
             Back to Rooms
           </button>
         </div>
@@ -188,31 +194,31 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
   if (!isOwner && myStatus !== 'approved') {
     return (
       <div className="max-w-2xl mx-auto px-4 py-6">
-        <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-semibold mb-6" style={{ color: '#1B2A4A', background: 'none', border: 'none', cursor: 'pointer' }}>
+        <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-semibold mb-6" style={{ color: colors.textPrimary, background: 'none', border: 'none', cursor: 'pointer' }}>
           <ArrowLeft size={15} /> Back
         </button>
         <RoomHeader room={room} />
 
         {myStatus === 'pending' && (
-          <div className="mt-6 rounded-xl p-5 text-center" style={{ background: '#FEF3C7' }}>
-            <Clock size={24} color="#B45309" className="mx-auto mb-2" />
-            <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>Your request is pending approval.</p>
-            <p className="text-xs mt-2" style={{ color: '#6B6B6B' }}>The room owner will review your request.</p>
+          <div className="mt-6 rounded-xl p-5 text-center" style={{ background: colors.warningBg }}>
+            <Clock size={24} color={colors.warning} className="mx-auto mb-2" />
+            <p className="text-sm font-bold" style={{ color: colors.textPrimary }}>Your request is pending approval.</p>
+            <p className="text-xs mt-2" style={{ color: colors.textSecondary }}>The room owner will review your request.</p>
           </div>
         )}
 
         {myStatus === 'invited' && (
           <div className="mt-6 space-y-3">
-            <div className="rounded-xl p-5 text-center" style={{ background: '#E6F6EF' }}>
-              <UserPlus size={24} color="#059669" className="mx-auto mb-2" />
-              <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>You've been invited to join this room.</p>
+            <div className="rounded-xl p-5 text-center" style={{ background: colors.successBg }}>
+              <UserPlus size={24} color={colors.success} className="mx-auto mb-2" />
+              <p className="text-sm font-bold" style={{ color: colors.textPrimary }}>You've been invited to join this room.</p>
             </div>
             <div className="flex gap-2">
               <button
                 onClick={async () => { setRequesting(true); await acceptInvite(room.id, userId); load(); setRequesting(false); }}
                 disabled={requesting}
                 className="flex-1 py-2.5 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-1.5"
-                style={{ background: '#059669', border: 'none', cursor: requesting ? 'not-allowed' : 'pointer' }}
+                style={{ background: colors.success, border: 'none', cursor: requesting ? 'not-allowed' : 'pointer' }}
               >
                 {requesting ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Accept Invitation
               </button>
@@ -220,7 +226,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
                 onClick={async () => { setRequesting(true); await declineInvite(room.id, userId); load(); setRequesting(false); }}
                 disabled={requesting}
                 className="flex-1 py-2.5 rounded-lg text-xs font-semibold"
-                style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: requesting ? 'not-allowed' : 'pointer' }}
+                style={{ background: colors.bgInput, color: colors.textSecondary, border: 'none', cursor: requesting ? 'not-allowed' : 'pointer' }}
               >
                 Decline
               </button>
@@ -231,21 +237,21 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
         {(!myStatus || myStatus === 'left' || myStatus === 'removed' || myStatus === 'declined' || myStatus === 'rejected') && (
           <div className="mt-6 space-y-3">
             {!room.invite_enabled ? (
-              <div className="rounded-xl p-5 text-center" style={{ background: '#FEE2E2' }}>
-                <p className="text-sm font-bold" style={{ color: '#B91C1C' }}>This room is not accepting new members.</p>
+              <div className="rounded-xl p-5 text-center" style={{ background: colors.errorBg }}>
+                <p className="text-sm font-bold" style={{ color: colors.error }}>This room is not accepting new members.</p>
               </div>
             ) : (
               <>
-                <div className="rounded-xl p-5 text-center" style={{ background: '#FEF3C7' }}>
-                  <Users size={24} color="#B45309" className="mx-auto mb-2" />
-                  <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>Join this room to study with others.</p>
-                  <p className="text-xs mt-2" style={{ color: '#6B6B6B' }}>Your request will be sent to the room owner for approval.</p>
+                <div className="rounded-xl p-5 text-center" style={{ background: colors.warningBg }}>
+                  <Users size={24} color={colors.warning} className="mx-auto mb-2" />
+                  <p className="text-sm font-bold" style={{ color: colors.textPrimary }}>Join this room to study with others.</p>
+                  <p className="text-xs mt-2" style={{ color: colors.textSecondary }}>Your request will be sent to the room owner for approval.</p>
                 </div>
                 <button
                   onClick={async () => { setRequesting(true); await requestToJoin(room.id, userId); load(); setRequesting(false); }}
                   disabled={requesting}
                   className="w-full py-2.5 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-1.5"
-                  style={{ background: '#1B2A4A', border: 'none', cursor: requesting ? 'not-allowed' : 'pointer' }}
+                  style={{ background: colors.textPrimary, border: 'none', cursor: requesting ? 'not-allowed' : 'pointer' }}
                 >
                   {requesting ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />} Request to Join
                 </button>
@@ -280,7 +286,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
       {/* Back */}
-      <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-semibold mb-5" style={{ color: '#1B2A4A', background: 'none', border: 'none', cursor: 'pointer' }}>
+      <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-semibold mb-5" style={{ color: colors.textPrimary, background: 'none', border: 'none', cursor: 'pointer' }}>
         <ArrowLeft size={15} /> Back to Rooms
       </button>
 
@@ -293,23 +299,23 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
           onClick={() => copyToClipboard(inviteLink, 'link')}
           disabled={!room.invite_enabled}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
-          style={{ background: room.invite_enabled ? themeColor : '#F2F2F2', color: room.invite_enabled ? '#fff' : '#9CA3AF', border: 'none', cursor: room.invite_enabled ? 'pointer' : 'not-allowed', opacity: room.invite_enabled ? 1 : 0.5 }}
+          style={{ background: room.invite_enabled ? themeColor : colors.bgInput, color: room.invite_enabled ? '#fff' : colors.textTertiary, border: 'none', cursor: room.invite_enabled ? 'pointer' : 'not-allowed', opacity: room.invite_enabled ? 1 : 0.5 }}
         >
-          {copied === 'link' ? <Check size={13} color="#059669" /> : <LinkIcon size={13} />}
+          {copied === 'link' ? <Check size={13} color={colors.success} /> : <LinkIcon size={13} />}
           {copied === 'link' ? 'Copied!' : 'Copy invite link'}
         </button>
         <button
           onClick={() => copyToClipboard(room.room_code, 'code')}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold font-mono"
-          style={{ background: '#F2F2F2', color: themeColor, border: `1px solid ${themeColor}20`, cursor: 'pointer' }}
+          style={{ background: colors.bgInput, color: themeColor, border: `1px solid ${themeColor}20`, cursor: 'pointer' }}
         >
-          {copied === 'code' ? <Check size={13} color="#059669" /> : <Copy size={13} />}
+          {copied === 'code' ? <Check size={13} color={colors.success} /> : <Copy size={13} />}
           {copied === 'code' ? 'Copied!' : room.room_code}
         </button>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-5 rounded-xl p-1" style={{ background: '#F2F2F2' }}>
+      <div className="flex gap-1 mb-5 rounded-xl p-1" style={{ background: colors.bgInput }}>
         {tabs.map(t => (
           <button
             key={t.key}
@@ -317,7 +323,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold flex-1 justify-center transition-colors"
             style={{
               background: tab === t.key ? themeColor : 'transparent',
-              color: tab === t.key ? '#fff' : '#6B6B6B',
+              color: tab === t.key ? '#fff' : colors.textSecondary,
               border: 'none', cursor: 'pointer',
             }}
           >
@@ -375,15 +381,15 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
             <button
               onClick={() => setShowLeave(true)}
               className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg"
-              style={{ background: '#fff', color: '#B91C1C', border: '1.5px solid #FECACA', cursor: 'pointer' }}
+              style={{ background: colors.bgCard, color: colors.error, border: `1.5px solid ${colors.error}`, cursor: 'pointer' }}
             >
               <LogOut size={13} /> Leave room
             </button>
           ) : (
             <div className="space-y-3">
-              <div className="flex items-start gap-2 rounded-lg p-3" style={{ background: '#FEF2F2' }}>
-                <AlertTriangle size={16} color="#B91C1C" style={{ flexShrink: 0, marginTop: 1 }} />
-                <p className="text-xs font-semibold" style={{ color: '#B91C1C' }}>
+              <div className="flex items-start gap-2 rounded-lg p-3" style={{ background: colors.errorBg }}>
+                <AlertTriangle size={16} color={colors.error} style={{ flexShrink: 0, marginTop: 1 }} />
+                <p className="text-xs font-semibold" style={{ color: colors.error }}>
                   Are you sure you want to leave this room? You will lose access to this room, but the room will remain available for other members.
                 </p>
               </div>
@@ -391,14 +397,14 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
                 <button
                   onClick={async () => { await leaveRoom(room.id, userId); onBack(); }}
                   className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
-                  style={{ background: '#B91C1C', border: 'none', cursor: 'pointer' }}
+                  style={{ background: colors.error, border: 'none', cursor: 'pointer' }}
                 >
                   Yes, leave room
                 </button>
                 <button
                   onClick={() => setShowLeave(false)}
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold"
-                  style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: 'pointer' }}
+                  style={{ background: colors.bgInput, color: colors.textSecondary, border: 'none', cursor: 'pointer' }}
                 >
                   Cancel
                 </button>
@@ -413,6 +419,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
 
 // ─── Room header ───────────────────────────────────────────────────────────────
 function RoomHeader({ room }: { room: StudyRoom }) {
+  const { colors } = useTheme();
   const img = room.profile_image_url || room.avatar_url;
   return (
     <div className="flex items-center gap-4 mb-2">
@@ -425,8 +432,8 @@ function RoomHeader({ room }: { room: StudyRoom }) {
         </div>
       )}
       <div>
-        <h1 className="text-xl font-extrabold" style={{ color: '#1B2A4A' }}>{room.name}</h1>
-        {room.description && <p className="text-sm mt-0.5" style={{ color: '#6B6B6B' }}>{room.description}</p>}
+        <h1 className="text-xl font-extrabold" style={{ color: colors.textPrimary }}>{room.name}</h1>
+        {room.description && <p className="text-sm mt-0.5" style={{ color: colors.textSecondary }}>{room.description}</p>}
       </div>
     </div>
   );
@@ -436,9 +443,10 @@ function RoomHeader({ room }: { room: StudyRoom }) {
 function OverviewTab({ room, members, isOwner, userId, onUpdated }: {
   room: StudyRoom; members: RoomMember[]; isOwner: boolean; userId: string; onUpdated: () => void;
 }) {
+  const { colors } = useTheme();
   const approved = members.filter(m => m.status === 'approved');
   const myM = members.find(m => m.user_id === userId);
-  const themeColor = room.theme_color || '#1B2A4A';
+  const themeColor = room.theme_color || colors.textPrimary;
 
   return (
     <div className="space-y-4">
@@ -448,10 +456,10 @@ function OverviewTab({ room, members, isOwner, userId, onUpdated }: {
           { icon: <Users size={16} color={themeColor} />, label: 'Members', value: approved.length },
           { icon: <Trophy size={16} color={themeColor} />, label: 'Leaderboard', value: room.leaderboard_enabled ? 'On' : 'Off' },
         ].map(s => (
-          <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.08)' }}>
+          <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}>
             <div className="flex justify-center mb-1">{s.icon}</div>
-            <p className="text-lg font-extrabold" style={{ color: '#1B2A4A' }}>{s.value}</p>
-            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: '#9CA3AF' }}>{s.label}</p>
+            <p className="text-lg font-extrabold" style={{ color: colors.textPrimary }}>{s.value}</p>
+            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: colors.textTertiary }}>{s.label}</p>
           </div>
         ))}
       </div>
@@ -467,6 +475,7 @@ function OverviewTab({ room, members, isOwner, userId, onUpdated }: {
 function SharingPrefsCard({ member, roomId, onUpdated, themeColor }: {
   member: RoomMember; roomId: string; onUpdated: () => void; themeColor: string;
 }) {
+  const { colors } = useTheme();
   const [saving, setSaving] = useState(false);
   const toggle = async (field: 'share_today' | 'share_weekly' | 'show_active_now') => {
     setSaving(true);
@@ -477,27 +486,27 @@ function SharingPrefsCard({ member, roomId, onUpdated, themeColor }: {
   };
 
   return (
-    <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.08)' }}>
+    <div className="rounded-xl p-4" style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}>
       <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: themeColor }}>My sharing preferences</p>
       {([
         { key: 'share_today', label: "Share today's activity" },
         { key: 'share_weekly', label: "Share weekly activity" },
         { key: 'show_active_now', label: 'Show when I\'m active' },
       ] as { key: 'share_today' | 'share_weekly' | 'show_active_now'; label: string }[]).map(p => (
-        <div key={p.key} className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid #F2F2F2' }}>
-          <span className="text-xs font-semibold" style={{ color: '#1B2A4A' }}>{p.label}</span>
+        <div key={p.key} className="flex items-center justify-between py-2" style={{ borderBottom: `1px solid ${colors.bgInput}` }}>
+          <span className="text-xs font-semibold" style={{ color: colors.textPrimary }}>{p.label}</span>
           <button
             onClick={() => toggle(p.key)}
             disabled={saving}
             className="rounded-full transition-colors"
             style={{
-              width: 36, height: 20, background: member[p.key] ? themeColor : '#D1D5DB',
+              width: 36, height: 20, background: member[p.key] ? themeColor : colors.border,
               position: 'relative', border: 'none', cursor: saving ? 'not-allowed' : 'pointer',
             }}
           >
             <span style={{
               position: 'absolute', top: 2, left: member[p.key] ? 18 : 2, width: 16, height: 16,
-              borderRadius: '50%', background: '#fff', transition: 'left 0.15s',
+              borderRadius: '50%', background: colors.bgCard, transition: 'left 0.15s',
             }} />
           </button>
         </div>
@@ -508,6 +517,7 @@ function SharingPrefsCard({ member, roomId, onUpdated, themeColor }: {
 
 // ─── Activity tab ─────────────────────────────────────────────────────────────
 function ActivityTab({ roomId, userId, themeColor }: { roomId: string; userId: string; themeColor: string }) {
+  const { colors } = useTheme();
   const [activity, setActivity] = useState<RoomMemberActivity[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -521,45 +531,45 @@ function ActivityTab({ roomId, userId, themeColor }: { roomId: string; userId: s
       <StudyTimerSection roomId={roomId} userId={userId} themeColor={themeColor} />
 
       {/* Room Activity Summary — shared study times for all approved members */}
-      <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
+      <div className="rounded-xl p-4" style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}>
         <div className="flex items-center gap-2 mb-3">
           <Clock size={16} color={themeColor} />
           <p className="text-xs font-bold uppercase tracking-widest" style={{ color: themeColor }}>Room Activity Summary</p>
         </div>
         {loading ? (
-          <div className="py-4 text-center"><Loader2 className="animate-spin mx-auto" size={18} color="#1B2A4A" /></div>
+          <div className="py-4 text-center"><Loader2 className="animate-spin mx-auto" size={18} color={colors.textPrimary} /></div>
         ) : activity.length === 0 ? (
-          <p className="text-sm text-center py-4" style={{ color: '#9CA3AF' }}>No shared activity yet.</p>
+          <p className="text-sm text-center py-4" style={{ color: colors.textTertiary }}>No shared activity yet.</p>
         ) : (
           <div className="space-y-2">
             {activity.map(a => (
-              <div key={a.user_id} className="flex items-center gap-3 rounded-lg p-2.5" style={{ background: '#F8F9FC' }}>
+              <div key={a.user_id} className="flex items-center gap-3 rounded-lg p-2.5" style={{ background: colors.bgSubtle }}>
                 {a.avatar_url ? (
                   <img src={a.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
                 ) : (
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ background: '#1B2A4A' }}>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ background: colors.textPrimary }}>
                     {(a.username || a.display_name || '?').charAt(0).toUpperCase()}
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate" style={{ color: '#1B2A4A' }}>
+                  <p className="text-sm font-semibold truncate" style={{ color: colors.textPrimary }}>
                     {a.display_name || a.username || 'Member'}
-                    {a.user_id === userId && <span className="ml-1.5 text-[10px] font-bold uppercase" style={{ color: '#9CA3AF' }}>(you)</span>}
+                    {a.user_id === userId && <span className="ml-1.5 text-[10px] font-bold uppercase" style={{ color: colors.textTertiary }}>(you)</span>}
                   </p>
-                  <p className="text-xs" style={{ color: '#9CA3AF' }}>@{a.username || ''}</p>
+                  <p className="text-xs" style={{ color: colors.textTertiary }}>@{a.username || ''}</p>
                 </div>
                 {a.active_now && !a.hidden && (
-                  <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#E6F6EF', color: '#059669' }}>
-                    <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#059669' }} />
+                  <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: colors.successBg, color: colors.success }}>
+                    <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: colors.success }} />
                     Studying
                   </span>
                 )}
                 {!a.hidden ? (
-                  <div className="flex items-center gap-3 flex-shrink-0 text-xs" style={{ color: '#6B6B6B' }}>
-                    <span>Today: <strong style={{ color: '#1B2A4A' }}>{formatDuration(a.minutes * 60)}</strong></span>
+                  <div className="flex items-center gap-3 flex-shrink-0 text-xs" style={{ color: colors.textSecondary }}>
+                    <span>Today: <strong style={{ color: colors.textPrimary }}>{formatDuration(a.minutes * 60)}</strong></span>
                   </div>
                 ) : (
-                  <span className="text-[10px] italic flex-shrink-0" style={{ color: '#9CA3AF' }}>Hidden</span>
+                  <span className="text-[10px] italic flex-shrink-0" style={{ color: colors.textTertiary }}>Hidden</span>
                 )}
               </div>
             ))}
@@ -598,6 +608,7 @@ function formatClock(totalSeconds: number): string {
 
 /** Live ticking timer for a member who is currently studying. Updates every second. */
 function MemberLiveTimer({ accumulatedSeconds, startedAt }: { accumulatedSeconds: number; startedAt: string }) {
+  const { colors } = useTheme();
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTick(t => t + 1), 1000);
@@ -611,7 +622,7 @@ function MemberLiveTimer({ accumulatedSeconds, startedAt }: { accumulatedSeconds
     <span
       key={tick}
       className="text-lg font-bold tabular-nums flex-shrink-0 tracking-wider"
-      style={{ color: '#1B2A4A', fontVariantNumeric: 'tabular-nums' }}
+      style={{ color: colors.textPrimary, fontVariantNumeric: 'tabular-nums' }}
     >
       {formatClock(live)}
     </span>
@@ -646,6 +657,7 @@ function MemberTimerDisplay({ value, color, isRunning, startedAt, accumulated }:
 }
 
 function StudyTimerSection({ roomId, userId, themeColor }: { roomId: string; userId: string; themeColor: string }) {
+  const { colors } = useTheme();
   const [activeSession, setActiveSession] = useState<{ id: string; started_at: string; status: string; accumulated_seconds: number } | null>(null);
   const [summaries, setSummaries] = useState<MemberTimerSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -717,8 +729,8 @@ function StudyTimerSection({ roomId, userId, themeColor }: { roomId: string; use
     finally { setActing(false); }
   };
 
-  if (loading) return <div className="rounded-xl p-4 mb-4 flex items-center gap-2" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
-    <Loader2 size={16} className="animate-spin" color={themeColor} /><span className="text-xs" style={{ color: '#6B6B6B' }}>Loading timer…</span>
+  if (loading) return <div className="rounded-xl p-4 mb-4 flex items-center gap-2" style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}>
+    <Loader2 size={16} className="animate-spin" color={themeColor} /><span className="text-xs" style={{ color: colors.textSecondary }}>Loading timer…</span>
   </div>;
 
   const mySummary = summaries.find(s => s.user_id === userId);
@@ -726,37 +738,37 @@ function StudyTimerSection({ roomId, userId, themeColor }: { roomId: string; use
   const hasAccumulatedToday = todaySeconds > 0 || elapsed > 0;
 
   return (
-    <div className="rounded-xl p-4 mb-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
+    <div className="rounded-xl p-4 mb-4" style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}>
       <div className="flex items-center gap-2 mb-3">
         <Timer size={16} color={themeColor} />
         <p className="text-xs font-bold uppercase tracking-widest" style={{ color: themeColor }}>Study Timer</p>
       </div>
 
       {/* Timer controls for current user */}
-      <div className="flex items-center justify-between gap-3 mb-4 pb-4" style={{ borderBottom: '1px solid #F2F2F2' }}>
+      <div className="flex items-center justify-between gap-3 mb-4 pb-4" style={{ borderBottom: `1px solid ${colors.bgInput}` }}>
         <div>
           {activeSession ? (
             <div>
-              <p className="text-sm font-bold font-mono" style={{ color: activeSession.status === 'running' ? '#059669' : '#B45309' }}>
+              <p className="text-sm font-bold font-mono" style={{ color: activeSession.status === 'running' ? colors.success : colors.warning }}>
                 {activeSession.status === 'running' ? 'Studying: ' : 'Paused: '}
                 {formatTimer(elapsed)}
               </p>
-              <p className="text-xs" style={{ color: '#6B6B6B' }}>
+              <p className="text-xs" style={{ color: colors.textSecondary }}>
                 {activeSession.status === 'running' ? 'Timer is running' : 'Timer is paused'}
               </p>
             </div>
           ) : mySummary?.finished_for_day ? (
             <div>
-              <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>Finished for today</p>
-              <p className="text-xs" style={{ color: '#6B6B6B' }}>Today: {formatDuration(todaySeconds)}</p>
+              <p className="text-sm font-bold" style={{ color: colors.textPrimary }}>Finished for today</p>
+              <p className="text-xs" style={{ color: colors.textSecondary }}>Today: {formatDuration(todaySeconds)}</p>
             </div>
           ) : hasAccumulatedToday ? (
             <div>
-              <p className="text-sm font-bold font-mono" style={{ color: '#1B2A4A' }}>{formatTimer(elapsed || todaySeconds)}</p>
-              <p className="text-xs" style={{ color: '#6B6B6B' }}>Ready to continue</p>
+              <p className="text-sm font-bold font-mono" style={{ color: colors.textPrimary }}>{formatTimer(elapsed || todaySeconds)}</p>
+              <p className="text-xs" style={{ color: colors.textSecondary }}>Ready to continue</p>
             </div>
           ) : (
-            <p className="text-sm font-semibold" style={{ color: '#1B2A4A' }}>Ready to study</p>
+            <p className="text-sm font-semibold" style={{ color: colors.textPrimary }}>Ready to study</p>
           )}
         </div>
 
@@ -764,11 +776,11 @@ function StudyTimerSection({ roomId, userId, themeColor }: { roomId: string; use
           {activeSession?.status === 'running' && (
             <>
               <button onClick={handlePause} disabled={acting} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold"
-                style={{ background: '#FEF3C7', color: '#B45309', border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
+                style={{ background: colors.warningBg, color: colors.warning, border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
                 {acting ? <Loader2 size={14} className="animate-spin" /> : null} Pause
               </button>
               <button onClick={handleEnd} disabled={acting} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-white"
-                style={{ background: acting ? '#9CA3AF' : '#B91C1C', border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
+                style={{ background: acting ? colors.border : colors.error, border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
                 End Study
               </button>
             </>
@@ -777,11 +789,11 @@ function StudyTimerSection({ roomId, userId, themeColor }: { roomId: string; use
           {activeSession?.status === 'paused' && (
             <>
               <button onClick={handleResume} disabled={acting} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-white"
-                style={{ background: acting ? '#9CA3AF' : themeColor, border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
+                style={{ background: acting ? colors.border : themeColor, border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
                 {acting ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Resume
               </button>
               <button onClick={handleEnd} disabled={acting} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-white"
-                style={{ background: acting ? '#9CA3AF' : '#B91C1C', border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
+                style={{ background: acting ? colors.border : colors.error, border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
                 End Study
               </button>
             </>
@@ -789,21 +801,21 @@ function StudyTimerSection({ roomId, userId, themeColor }: { roomId: string; use
 
           {!activeSession && !mySummary?.finished_for_day && (
             <button onClick={handleStart} disabled={acting} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white"
-              style={{ background: acting ? '#9CA3AF' : themeColor, border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
+              style={{ background: acting ? colors.border : themeColor, border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
               {acting ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Start Timer
             </button>
           )}
 
           {!activeSession && mySummary?.finished_for_day && (
             <button onClick={handleStart} disabled={acting} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white"
-              style={{ background: acting ? '#9CA3AF' : themeColor, border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
+              style={{ background: acting ? colors.border : themeColor, border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}>
               {acting ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Start New Session
             </button>
           )}
         </div>
       </div>
 
-      {error && <div className="rounded-lg px-3 py-2 text-xs mb-3" style={{ background: '#FEE2E2', color: '#B91C1C' }}>{error}</div>}
+      {error && <div className="rounded-lg px-3 py-2 text-xs mb-3" style={{ background: colors.errorBg, color: colors.error }}>{error}</div>}
 
       {/* Member timer status list */}
       <div className="space-y-2">
@@ -816,6 +828,7 @@ function StudyTimerSection({ roomId, userId, themeColor }: { roomId: string; use
 }
 
 function MemberTimerRow({ s, userId, themeColor }: { s: MemberTimerSummary; userId: string; themeColor: string }) {
+  const { colors } = useTheme();
   // Live timer for running sessions; static for paused/ended
   const [liveElapsed, setLiveElapsed] = useState(0);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -848,27 +861,27 @@ function MemberTimerRow({ s, userId, themeColor }: { s: MemberTimerSummary; user
     : s.status === 'paused'
       ? (s.active_accumulated_seconds || 0)
       : s.today_seconds;
-  const timerColor = s.status === 'running' ? '#059669' : s.status === 'paused' ? '#B45309' : themeColor;
+  const timerColor = s.status === 'running' ? colors.success : s.status === 'paused' ? colors.warning : themeColor;
 
   const getStatusBadge = () => {
     if (s.status === 'running') {
       return (
-        <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#E6F6EF', color: '#059669' }}>
-          <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#059669' }} />
+        <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: colors.successBg, color: colors.success }}>
+          <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: colors.success }} />
           Studying now
         </span>
       );
     }
     if (s.status === 'paused') {
       return (
-        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#FEF3C7', color: '#B45309' }}>
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: colors.warningBg, color: colors.warning }}>
           Paused
         </span>
       );
     }
     if (s.finished_for_day) {
       return (
-        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#E6F6EF', color: '#059669' }}>
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: colors.successBg, color: colors.success }}>
           Stopped
         </span>
       );
@@ -887,9 +900,9 @@ function MemberTimerRow({ s, userId, themeColor }: { s: MemberTimerSummary; user
       )}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-xs font-semibold truncate" style={{ color: '#1B2A4A' }}>
+          <p className="text-xs font-semibold truncate" style={{ color: colors.textPrimary }}>
             {s.display_name || s.username}
-            {s.user_id === userId && <span className="ml-1.5 text-[9px] font-bold uppercase" style={{ color: '#9CA3AF' }}>(you)</span>}
+            {s.user_id === userId && <span className="ml-1.5 text-[9px] font-bold uppercase" style={{ color: colors.textTertiary }}>(you)</span>}
           </p>
           {/* Timer between name and status badge — large, bold */}
           {showTimer && (
@@ -899,7 +912,7 @@ function MemberTimerRow({ s, userId, themeColor }: { s: MemberTimerSummary; user
           )}
         </div>
         {/* Under name: only weekly total */}
-        <p className="text-[10px]" style={{ color: '#9CA3AF' }}>
+        <p className="text-[10px]" style={{ color: colors.textTertiary }}>
           This week: {formatDuration(s.week_seconds)}
         </p>
       </div>
@@ -987,13 +1000,14 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
     }
   }
 
-  const themeColor = room.theme_color || '#1B2A4A';
+  const { colors } = useTheme();
+  const themeColor = room.theme_color || colors.textPrimary;
 
   return (
     <div className="space-y-4">
       {/* Invite by username (owner/admin only) */}
       {isAdmin && (
-        <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
+        <div className="rounded-xl p-4" style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}>
           <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: themeColor }}>Invite by username</p>
           <div className="flex gap-2 mb-2">
             <input
@@ -1002,7 +1016,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
               onKeyDown={e => e.key === 'Enter' && handleSearch()}
               placeholder="Search username…"
               className="flex-1 rounded-lg px-3 py-2 text-xs outline-none"
-              style={inputStyle}
+              style={getInputStyle(colors)}
             />
             <button onClick={handleSearch} disabled={searching || !inviteQuery.trim()}
               className="px-3 py-2 rounded-lg text-xs font-bold text-white flex items-center gap-1"
@@ -1010,10 +1024,10 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
               {searching ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />} Search
             </button>
           </div>
-          {inviteError && <p className="text-xs mb-2" style={{ color: '#B91C1C' }}>{inviteError}</p>}
-          {inviteSuccess && <p className="text-xs mb-2" style={{ color: '#059669' }}>{inviteSuccess}</p>}
+          {inviteError && <p className="text-xs mb-2" style={{ color: colors.error }}>{inviteError}</p>}
+          {inviteSuccess && <p className="text-xs mb-2" style={{ color: colors.success }}>{inviteSuccess}</p>}
           {inviteResult && (
-            <div className="flex items-center gap-3 rounded-lg p-3 mb-2" style={{ background: '#F8F9FC' }}>
+            <div className="flex items-center gap-3 rounded-lg p-3 mb-2" style={{ background: colors.bgSubtle }}>
               {inviteResult.avatar_url ? (
                 <img src={inviteResult.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover" />
               ) : (
@@ -1022,8 +1036,8 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold" style={{ color: '#1B2A4A' }}>{inviteResult.display_name || inviteResult.username}</p>
-                <p className="text-xs" style={{ color: '#9CA3AF' }}>@{inviteResult.username}</p>
+                <p className="text-sm font-semibold" style={{ color: colors.textPrimary }}>{inviteResult.display_name || inviteResult.username}</p>
+                <p className="text-xs" style={{ color: colors.textTertiary }}>@{inviteResult.username}</p>
               </div>
               <button onClick={handleInvite} disabled={inviting}
                 className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
@@ -1037,18 +1051,18 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
 
       {/* Pending requests */}
       {isAdmin && pending.length > 0 && (
-        <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
+        <div className="rounded-xl p-4" style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}>
           <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: themeColor }}>Pending requests ({pending.length})</p>
           <div className="space-y-2">
             {pending.map(m => (
               <div key={m.id} className="flex items-center gap-2">
                 <MemberAvatar m={m} themeColor={themeColor} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate" style={{ color: '#1B2A4A' }}>{m.display_name || m.username || 'User'}</p>
-                  <p className="text-xs" style={{ color: '#9CA3AF' }}>@{m.username || m.user_id.slice(0, 8)}</p>
+                  <p className="text-sm font-medium truncate" style={{ color: colors.textPrimary }}>{m.display_name || m.username || 'User'}</p>
+                  <p className="text-xs" style={{ color: colors.textTertiary }}>@{m.username || m.user_id.slice(0, 8)}</p>
                 </div>
-                <button onClick={() => onApprove(m.user_id)} className="px-2 py-1 rounded-lg text-xs font-bold text-white" style={{ background: '#059669', border: 'none', cursor: 'pointer' }}>Approve</button>
-                <button onClick={() => onReject(m.user_id)} className="px-2 py-1 rounded-lg text-xs font-semibold" style={{ background: '#FEE2E2', color: '#B91C1C', border: 'none', cursor: 'pointer' }}>Reject</button>
+                <button onClick={() => onApprove(m.user_id)} className="px-2 py-1 rounded-lg text-xs font-bold text-white" style={{ background: colors.success, border: 'none', cursor: 'pointer' }}>Approve</button>
+                <button onClick={() => onReject(m.user_id)} className="px-2 py-1 rounded-lg text-xs font-semibold" style={{ background: colors.errorBg, color: colors.error, border: 'none', cursor: 'pointer' }}>Reject</button>
               </div>
             ))}
           </div>
@@ -1056,7 +1070,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
       )}
 
       {/* Approved members — avatar, name, role badge, management menu */}
-      <div className="rounded-xl p-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
+      <div className="rounded-xl p-4" style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}>
         <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: themeColor }}>Members ({approved.length})</p>
         <div className="space-y-2.5">
           {approved.map(m => {
@@ -1065,20 +1079,20 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                 <MemberAvatar m={m} themeColor={themeColor} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm font-medium truncate" style={{ color: '#1B2A4A' }}>
+                    <p className="text-sm font-medium truncate" style={{ color: colors.textPrimary }}>
                       {m.display_name || m.username || 'Member'}
                       {m.role === 'owner' && (
                         <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: `${themeColor}15`, color: themeColor }}>Owner</span>
                       )}
                       {m.role === 'admin' && (
-                        <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#EBF0FF', color: '#1B2A4A' }}>Admin</span>
+                        <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: colors.accentLight, color: colors.textPrimary }}>Admin</span>
                       )}
                       {m.user_id === currentUserId && (
-                        <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: '#E8EBF4', color: '#1B2A4A' }}>You</span>
+                        <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: colors.borderLight, color: colors.textPrimary }}>You</span>
                       )}
                     </p>
                   </div>
-                  <p className="text-xs" style={{ color: '#9CA3AF' }}>@{m.username || m.user_id.slice(0, 8)}</p>
+                  <p className="text-xs" style={{ color: colors.textTertiary }}>@{m.username || m.user_id.slice(0, 8)}</p>
                 </div>
 
                 {/* Member actions (owner only) */}
@@ -1087,23 +1101,23 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                     <button
                       onClick={() => setMemberMenuOpen(memberMenuOpen === m.user_id ? null : m.user_id)}
                       className="p-1 rounded transition-colors"
-                      style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: '#C8C8C8' }}
-                      onMouseEnter={e => (e.currentTarget.style.color = '#1B2A4A')}
-                      onMouseLeave={e => (e.currentTarget.style.color = '#C8C8C8')}
+                      style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.border }}
+                      onMouseEnter={e => (e.currentTarget.style.color = colors.textPrimary)}
+                      onMouseLeave={e => (e.currentTarget.style.color = colors.border)}
                     >
                       <MoreVertical size={14} />
                     </button>
                     {memberMenuOpen === m.user_id && (
                       <div
                         className="absolute right-0 top-full mt-1 z-50 rounded-lg py-1 min-w-[180px]"
-                        style={{ background: '#fff', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', border: '1px solid #E8E8E8' }}
+                        style={{ background: colors.bgCard, boxShadow: `0 4px 20px ${colors.shadow}`, border: `1px solid ${colors.borderLight}` }}
                         onClick={e => e.stopPropagation()}
                       >
                         {m.role !== 'admin' && (
                           <button
                             onClick={() => { setRoleAction({ type: 'makeAdmin', member: m }); setMemberMenuOpen(null); }}
                             className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-left hover:bg-gray-50"
-                            style={{ border: 'none', background: 'transparent', color: '#1B2A4A', cursor: 'pointer' }}
+                            style={{ border: 'none', background: 'transparent', color: colors.textPrimary, cursor: 'pointer' }}
                           >
                             <UserCog size={12} /> Make Admin
                           </button>
@@ -1112,7 +1126,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                           <button
                             onClick={() => { handleRemoveAdmin(m.user_id); setMemberMenuOpen(null); }}
                             className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-left hover:bg-gray-50"
-                            style={{ border: 'none', background: 'transparent', color: '#B45309', cursor: 'pointer' }}
+                            style={{ border: 'none', background: 'transparent', color: colors.warning, cursor: 'pointer' }}
                           >
                             <UserCog size={12} /> Remove Admin
                           </button>
@@ -1120,21 +1134,21 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                         <button
                           onClick={() => { setRoleAction({ type: 'transfer', member: m }); setMemberMenuOpen(null); }}
                           className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-left hover:bg-gray-50"
-                          style={{ border: 'none', background: 'transparent', color: '#92400E', cursor: 'pointer' }}
+                          style={{ border: 'none', background: 'transparent', color: colors.warning, cursor: 'pointer' }}
                         >
                           <UserCog size={12} /> Transfer Ownership
                         </button>
                         <button
                           onClick={() => { setRoleAction({ type: 'transferKeepAdmin', member: m }); setMemberMenuOpen(null); }}
                           className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-left hover:bg-gray-50"
-                          style={{ border: 'none', background: 'transparent', color: '#92400E', cursor: 'pointer' }}
+                          style={{ border: 'none', background: 'transparent', color: colors.warning, cursor: 'pointer' }}
                         >
                           <UserCog size={12} /> Transfer Ownership + Keep Me Admin
                         </button>
                         <button
                           onClick={() => { onRemove(m.user_id); setMemberMenuOpen(null); }}
                           className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-left hover:bg-red-50"
-                          style={{ border: 'none', background: 'transparent', color: '#B91C1C', cursor: 'pointer' }}
+                          style={{ border: 'none', background: 'transparent', color: colors.error, cursor: 'pointer' }}
                         >
                           <Trash2 size={12} /> Remove Member
                         </button>
@@ -1150,26 +1164,26 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
 
       {/* Role action error */}
       {roleError && (
-        <div className="rounded-lg px-3 py-2 text-xs" style={{ background: '#FEE2E2', color: '#B91C1C' }}>
+        <div className="rounded-lg px-3 py-2 text-xs" style={{ background: colors.errorBg, color: colors.error }}>
           {roleError}
         </div>
       )}
 
       {/* Role action confirmation modals */}
       {roleAction && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => !transferring && setRoleAction(null)}>
-          <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: '#fff' }} onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: colors.overlay }} onClick={() => !transferring && setRoleAction(null)}>
+          <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: colors.bgCard }} onClick={e => e.stopPropagation()}>
             <div className="flex items-start gap-3 mb-4">
-              <AlertTriangle size={20} color={roleAction.type === 'makeAdmin' ? themeColor : '#92400E'} style={{ flexShrink: 0, marginTop: 1 }} />
+              <AlertTriangle size={20} color={roleAction.type === 'makeAdmin' ? themeColor : colors.warning} style={{ flexShrink: 0, marginTop: 1 }} />
               <div>
-                <h3 className="text-sm font-bold mb-2" style={{ color: '#1B2A4A' }}>
+                <h3 className="text-sm font-bold mb-2" style={{ color: colors.textPrimary }}>
                   {roleAction.type === 'makeAdmin' ? 'Make Admin' : 'Transfer Ownership'}
                 </h3>
-                <p className="text-xs" style={{ color: '#6B6B6B' }}>
+                <p className="text-xs" style={{ color: colors.textSecondary }}>
                   {roleAction.type === 'transfer' && (
                     <>
                       Are you sure you want to transfer ownership to{' '}
-                      <strong style={{ color: '#1B2A4A' }}>
+                      <strong style={{ color: colors.textPrimary }}>
                         {roleAction.member.display_name || roleAction.member.username || 'this member'}
                       </strong>
                       ? You will become a normal member.
@@ -1178,7 +1192,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                   {roleAction.type === 'transferKeepAdmin' && (
                     <>
                       Are you sure you want to transfer ownership to{' '}
-                      <strong style={{ color: '#1B2A4A' }}>
+                      <strong style={{ color: colors.textPrimary }}>
                         {roleAction.member.display_name || roleAction.member.username || 'this member'}
                       </strong>
                       {' '}and keep yourself as admin?
@@ -1187,7 +1201,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                   {roleAction.type === 'makeAdmin' && (
                     <>
                       Make{' '}
-                      <strong style={{ color: '#1B2A4A' }}>
+                      <strong style={{ color: colors.textPrimary }}>
                         {roleAction.member.display_name || roleAction.member.username || 'this member'}
                       </strong>
                       {' '}an admin of this room?
@@ -1217,7 +1231,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                 }}
                 disabled={transferring}
                 className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
-                style={{ background: transferring ? '#9CA3AF' : roleAction.type === 'makeAdmin' ? themeColor : '#92400E', border: 'none', cursor: transferring ? 'not-allowed' : 'pointer' }}
+                style={{ background: transferring ? colors.border : roleAction.type === 'makeAdmin' ? themeColor : colors.warning, border: 'none', cursor: transferring ? 'not-allowed' : 'pointer' }}
               >
                 {transferring ? 'Transferring…' : roleAction.type === 'makeAdmin' ? 'Yes, make admin' : 'Yes, transfer'}
               </button>
@@ -1225,7 +1239,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                 onClick={() => setRoleAction(null)}
                 disabled={transferring}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold"
-                style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: transferring ? 'not-allowed' : 'pointer' }}
+                style={{ background: colors.bgInput, color: colors.textSecondary, border: 'none', cursor: transferring ? 'not-allowed' : 'pointer' }}
               >
                 Cancel
               </button>
@@ -1248,6 +1262,7 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
   onDelete: () => Promise<void>;
   onTransfer: (newOwnerId: string, oldOwnerRole: 'member' | 'admin') => Promise<void>;
 }) {
+  const { colors } = useTheme();
   const [name, setName] = useState(room.name);
   const [description, setDescription] = useState(room.description);
   const [themeColor, setThemeColor] = useState(room.theme_color);
@@ -1302,17 +1317,17 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
   return (
     <div className="space-y-4">
       {/* Room info */}
-      <div className="rounded-xl p-5" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
+      <div className="rounded-xl p-5" style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}>
         <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: themeColor }}>Room info</p>
 
         <Field label="Room name">
           <input type="text" value={name} onChange={e => setName(e.target.value)} maxLength={60}
-            className="w-full rounded-lg px-4 py-2.5 text-sm outline-none" style={inputStyle} />
+            className="w-full rounded-lg px-4 py-2.5 text-sm outline-none" style={getInputStyle(colors)} />
         </Field>
 
         <Field label="Description">
           <textarea value={description} onChange={e => setDescription(e.target.value)} maxLength={200} rows={2}
-            className="w-full rounded-lg px-4 py-2.5 text-sm outline-none resize-none" style={inputStyle} />
+            className="w-full rounded-lg px-4 py-2.5 text-sm outline-none resize-none" style={getInputStyle(colors)} />
         </Field>
 
         {/* Profile image */}
@@ -1329,7 +1344,7 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
               <div className="flex items-center gap-2 flex-wrap">
                 <label className="cursor-pointer">
                   <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
-                    style={{ background: '#F2F2F2', color: '#1B2A4A', border: '1px solid #E8EBF4', cursor: imageUploading ? 'not-allowed' : 'pointer' }}>
+                    style={{ background: colors.bgInput, color: colors.textPrimary, border: `1px solid ${colors.borderLight}`, cursor: imageUploading ? 'not-allowed' : 'pointer' }}>
                     {imageUploading ? <Loader2 size={12} className="animate-spin" /> : <ImageIcon size={12} />}
                     {imageUploading ? 'Uploading…' : 'Upload image'}
                   </span>
@@ -1340,13 +1355,13 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
                 {room.profile_image_url && (
                   <button onClick={handleImageRemove} disabled={imageUploading}
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold"
-                    style={{ background: '#FEE2E2', color: '#B91C1C', border: 'none', cursor: imageUploading ? 'not-allowed' : 'pointer' }}>
+                    style={{ background: colors.errorBg, color: colors.error, border: 'none', cursor: imageUploading ? 'not-allowed' : 'pointer' }}>
                     Remove
                   </button>
                 )}
               </div>
-              {imageError && <p className="text-[10px] mt-1" style={{ color: '#B91C1C' }}>{imageError}</p>}
-              <p className="text-[10px] mt-1" style={{ color: '#9CA3AF' }}>PNG, JPG, or WEBP. Max 5 MB.</p>
+              {imageError && <p className="text-[10px] mt-1" style={{ color: colors.error }}>{imageError}</p>}
+              <p className="text-[10px] mt-1" style={{ color: colors.textTertiary }}>PNG, JPG, or WEBP. Max 5 MB.</p>
             </div>
           </div>
         </Field>
@@ -1356,24 +1371,24 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
             {['#1B2A4A', '#7B1C3E', '#059669', '#B45309', '#2563EB', '#7c3aed'].map(c => (
               <button key={c} onClick={() => setThemeColor(c)} className="rounded-full"
                 style={{ width: 26, height: 26, background: c, cursor: 'pointer',
-                  border: themeColor === c ? '2px solid #1B2A4A' : '2px solid transparent' }} />
+                  border: themeColor === c ? `2px solid ${colors.textPrimary}` : '2px solid transparent' }} />
             ))}
           </div>
         </Field>
 
-        <div className="flex items-center justify-between py-2 mb-1" style={{ borderTop: '1px solid #F2F2F2' }}>
-          <span className="text-xs font-semibold" style={{ color: '#1B2A4A' }}>Invite link enabled</span>
+        <div className="flex items-center justify-between py-2 mb-1" style={{ borderTop: `1px solid ${colors.bgInput}` }}>
+          <span className="text-xs font-semibold" style={{ color: colors.textPrimary }}>Invite link enabled</span>
           <button onClick={() => setInviteEnabled(v => !v)} className="rounded-full transition-colors"
-            style={{ width: 36, height: 20, background: inviteEnabled ? '#1B2A4A' : '#D1D5DB', position: 'relative', border: 'none', cursor: 'pointer' }}>
-            <span style={{ position: 'absolute', top: 2, left: inviteEnabled ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.15s' }} />
+            style={{ width: 36, height: 20, background: inviteEnabled ? colors.textPrimary : colors.border, position: 'relative', border: 'none', cursor: 'pointer' }}>
+            <span style={{ position: 'absolute', top: 2, left: inviteEnabled ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: colors.bgCard, transition: 'left 0.15s' }} />
           </button>
         </div>
 
-        <div className="flex items-center justify-between py-2 mb-4" style={{ borderTop: '1px solid #F2F2F2' }}>
-          <span className="text-xs font-semibold" style={{ color: '#1B2A4A' }}>Leaderboard</span>
+        <div className="flex items-center justify-between py-2 mb-4" style={{ borderTop: `1px solid ${colors.bgInput}` }}>
+          <span className="text-xs font-semibold" style={{ color: colors.textPrimary }}>Leaderboard</span>
           <button onClick={() => setLeaderboardEnabled(v => !v)} className="rounded-full transition-colors"
-            style={{ width: 36, height: 20, background: leaderboardEnabled ? '#1B2A4A' : '#D1D5DB', position: 'relative', border: 'none', cursor: 'pointer' }}>
-            <span style={{ position: 'absolute', top: 2, left: leaderboardEnabled ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.15s' }} />
+            style={{ width: 36, height: 20, background: leaderboardEnabled ? colors.textPrimary : colors.border, position: 'relative', border: 'none', cursor: 'pointer' }}>
+            <span style={{ position: 'absolute', top: 2, left: leaderboardEnabled ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: colors.bgCard, transition: 'left 0.15s' }} />
           </button>
         </div>
 
@@ -1386,15 +1401,15 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
       </div>
 
       {/* Invite code */}
-      <div className="rounded-xl p-5" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
+      <div className="rounded-xl p-5" style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}>
         <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: themeColor }}>Invite code</p>
         <div className="flex items-center gap-2">
-          <span className="flex-1 font-mono text-sm font-bold px-3 py-2 rounded-lg" style={{ background: '#F8F9FC', color: '#1B2A4A' }}>{room.room_code}</span>
+          <span className="flex-1 font-mono text-sm font-bold px-3 py-2 rounded-lg" style={{ background: colors.bgSubtle, color: colors.textPrimary }}>{room.room_code}</span>
           <button
             onClick={async () => { setRegenerating(true); await onRegenerate(); setRegenerating(false); }}
             disabled={regenerating}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold"
-            style={{ background: '#F2F2F2', color: '#1B2A4A', border: 'none', cursor: regenerating ? 'not-allowed' : 'pointer' }}>
+            style={{ background: colors.bgInput, color: colors.textPrimary, border: 'none', cursor: regenerating ? 'not-allowed' : 'pointer' }}>
             {regenerating ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Regenerate
           </button>
         </div>
@@ -1402,25 +1417,25 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
 
       {/* Danger zone - Owner only */}
       {isOwner && (
-        <div className="rounded-xl p-5" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)', border: '1.5px solid #FECACA' }}>
-          <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: '#B91C1C' }}>Owner only</p>
+        <div className="rounded-xl p-5" style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}`, border: `1.5px solid ${colors.error}` }}>
+          <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: colors.error }}>Owner only</p>
 
           {/* Transfer ownership */}
-          <div className="mb-4 pb-4" style={{ borderBottom: '1px solid #F2F2F2' }}>
-            <p className="text-xs font-bold mb-1" style={{ color: '#1B2A4A' }}>Transfer ownership</p>
-            <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>Transfer ownership to another approved member. You will remain as a member or admin.</p>
+          <div className="mb-4 pb-4" style={{ borderBottom: `1px solid ${colors.bgInput}` }}>
+            <p className="text-xs font-bold mb-1" style={{ color: colors.textPrimary }}>Transfer ownership</p>
+            <p className="text-xs mb-3" style={{ color: colors.textSecondary }}>Transfer ownership to another approved member. You will remain as a member or admin.</p>
             {approvedOthers.length === 0 ? (
-              <p className="text-xs italic" style={{ color: '#9CA3AF' }}>No other approved members to transfer ownership to.</p>
+              <p className="text-xs italic" style={{ color: colors.textTertiary }}>No other approved members to transfer ownership to.</p>
             ) : !showTransfer ? (
               <button onClick={() => setShowTransfer(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold"
-                style={{ background: '#FEF3C7', color: '#92400E', border: 'none', cursor: 'pointer' }}>
+                style={{ background: colors.warningBg, color: colors.warning, border: 'none', cursor: 'pointer' }}>
                 <UserCog size={13} /> Transfer Ownership
               </button>
             ) : (
               <div className="space-y-3">
                 <select value={transferTarget} onChange={e => setTransferTarget(e.target.value)}
                   className="w-full rounded-lg px-3 py-2 text-xs outline-none"
-                  style={{ border: '1.5px solid #C8C8C8', background: '#F8F8F8', color: '#111' }}>
+                  style={{ border: `1.5px solid ${colors.border}`, background: colors.bgInput, color: colors.textPrimary }}>
                   <option value="">Select an approved member…</option>
                   {approvedOthers.map(m => (
                     <option key={m.user_id} value={m.user_id}>
@@ -1430,7 +1445,7 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
                 </select>
                 {transferTarget && (
                   <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-xs" style={{ color: '#1B2A4A' }}>
+                    <label className="flex items-center gap-2 text-xs" style={{ color: colors.textPrimary }}>
                       <input
                         type="checkbox"
                         checked={oldOwnerRole === 'admin'}
@@ -1438,8 +1453,8 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
                       />
                       Keep me as admin after transfer
                     </label>
-                    <p className="text-xs" style={{ color: '#6B6B6B' }}>
-                      Transfer ownership to <strong style={{ color: '#1B2A4A' }}>
+                    <p className="text-xs" style={{ color: colors.textSecondary }}>
+                      Transfer ownership to <strong style={{ color: colors.textPrimary }}>
                         {approvedOthers.find(m => m.user_id === transferTarget)?.username || 'this member'}
                       </strong>? They will become the new room owner. You will stay as {oldOwnerRole === 'admin' ? 'an admin' : 'a member'}.
                     </p>
@@ -1450,36 +1465,36 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
                     onClick={() => setShowTransferConfirm(true)}
                     disabled={!transferTarget || transferring}
                     className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
-                    style={{ background: !transferTarget || transferring ? '#9CA3AF' : '#92400E', border: 'none', cursor: !transferTarget || transferring ? 'not-allowed' : 'pointer' }}>
+                    style={{ background: !transferTarget || transferring ? colors.border : colors.warning, border: 'none', cursor: !transferTarget || transferring ? 'not-allowed' : 'pointer' }}>
                     {transferring ? 'Transferring…' : 'Transfer Ownership'}
                   </button>
                   <button onClick={() => { setShowTransfer(false); setTransferTarget(''); }}
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold"
-                    style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: 'pointer' }}>Cancel</button>
+                    style={{ background: colors.bgInput, color: colors.textSecondary, border: 'none', cursor: 'pointer' }}>Cancel</button>
                 </div>
               </div>
             )}
           </div>
 
           {/* Make Admin */}
-          <div className="mb-4 pb-4" style={{ borderBottom: '1px solid #F2F2F2' }}>
-            <p className="text-xs font-bold mb-1" style={{ color: '#1B2A4A' }}>Make admin</p>
-            <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>Promote an approved member to admin. You stay the owner — ownership does not change.</p>
+          <div className="mb-4 pb-4" style={{ borderBottom: `1px solid ${colors.bgInput}` }}>
+            <p className="text-xs font-bold mb-1" style={{ color: colors.textPrimary }}>Make admin</p>
+            <p className="text-xs mb-3" style={{ color: colors.textSecondary }}>Promote an approved member to admin. You stay the owner — ownership does not change.</p>
             {makeAdminError && (
-              <p className="text-xs mb-2" style={{ color: '#B91C1C' }}>{makeAdminError}</p>
+              <p className="text-xs mb-2" style={{ color: colors.error }}>{makeAdminError}</p>
             )}
             {approvedOthers.filter(m => m.role !== 'admin').length === 0 ? (
-              <p className="text-xs italic" style={{ color: '#9CA3AF' }}>No approved members available to promote.</p>
+              <p className="text-xs italic" style={{ color: colors.textTertiary }}>No approved members available to promote.</p>
             ) : !showMakeAdmin ? (
               <button onClick={() => { setShowMakeAdmin(true); setMakeAdminError(null); }} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold"
-                style={{ background: '#EBF0FF', color: '#1B2A4A', border: 'none', cursor: 'pointer' }}>
+                style={{ background: colors.accentLight, color: colors.textPrimary, border: 'none', cursor: 'pointer' }}>
                 <UserCog size={13} /> Make Admin
               </button>
             ) : (
               <div className="space-y-3">
                 <select value={makeAdminTarget} onChange={e => { setMakeAdminTarget(e.target.value); setMakeAdminError(null); }}
                   className="w-full rounded-lg px-3 py-2 text-xs outline-none"
-                  style={{ border: '1.5px solid #C8C8C8', background: '#F8F8F8', color: '#111' }}>
+                  style={{ border: `1.5px solid ${colors.border}`, background: colors.bgInput, color: colors.textPrimary }}>
                   <option value="">Select an approved member…</option>
                   {approvedOthers.filter(m => m.role !== 'admin').map(m => (
                     <option key={m.user_id} value={m.user_id}>
@@ -1488,8 +1503,8 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
                   ))}
                 </select>
                 {makeAdminTarget && (
-                  <p className="text-xs" style={{ color: '#6B6B6B' }}>
-                    Promote <strong style={{ color: '#1B2A4A' }}>
+                  <p className="text-xs" style={{ color: colors.textSecondary }}>
+                    Promote <strong style={{ color: colors.textPrimary }}>
                       {approvedOthers.find(m => m.user_id === makeAdminTarget)?.username || 'this member'}
                     </strong> to admin? You will remain the owner.
                   </p>
@@ -1499,37 +1514,37 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
                     onClick={() => setShowMakeAdminConfirm(true)}
                     disabled={!makeAdminTarget || makingAdmin}
                     className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
-                    style={{ background: !makeAdminTarget || makingAdmin ? '#9CA3AF' : themeColor, border: 'none', cursor: !makeAdminTarget || makingAdmin ? 'not-allowed' : 'pointer' }}>
+                    style={{ background: !makeAdminTarget || makingAdmin ? colors.border : themeColor, border: 'none', cursor: !makeAdminTarget || makingAdmin ? 'not-allowed' : 'pointer' }}>
                     {makingAdmin ? 'Promoting…' : 'Make Admin'}
                   </button>
                   <button onClick={() => { setShowMakeAdmin(false); setMakeAdminTarget(''); setMakeAdminError(null); }}
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold"
-                    style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: 'pointer' }}>Cancel</button>
+                    style={{ background: colors.bgInput, color: colors.textSecondary, border: 'none', cursor: 'pointer' }}>Cancel</button>
                 </div>
               </div>
             )}
           </div>
 
           {/* Delete room */}
-          <div className="mt-4 pt-4" style={{ borderTop: '1px solid #F2F2F2' }}>
-            <p className="text-xs font-bold mb-1" style={{ color: '#B91C1C' }}>Delete room</p>
-            <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>Deletes the room for all members. Cannot be undone.</p>
+          <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${colors.bgInput}` }}>
+            <p className="text-xs font-bold mb-1" style={{ color: colors.error }}>Delete room</p>
+            <p className="text-xs mb-3" style={{ color: colors.textSecondary }}>Deletes the room for all members. Cannot be undone.</p>
             {!showDelete ? (
               <button onClick={() => setShowDelete(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold"
-                style={{ background: '#FEE2E2', color: '#B91C1C', border: 'none', cursor: 'pointer' }}>
+                style={{ background: colors.errorBg, color: colors.error, border: 'none', cursor: 'pointer' }}>
                 <Trash2 size={13} /> Delete room
               </button>
             ) : (
               <div className="space-y-3">
-                <div className="flex items-start gap-2 rounded-lg p-3" style={{ background: '#FEF2F2' }}>
-                  <AlertTriangle size={16} color="#B91C1C" style={{ flexShrink: 0, marginTop: 1 }} />
-                  <p className="text-xs font-semibold" style={{ color: '#B91C1C' }}>
+                <div className="flex items-start gap-2 rounded-lg p-3" style={{ background: colors.errorBg }}>
+                  <AlertTriangle size={16} color={colors.error} style={{ flexShrink: 0, marginTop: 1 }} />
+                  <p className="text-xs font-semibold" style={{ color: colors.error }}>
                     Are you sure you want to delete this room? This will remove the room for all members. This action cannot be undone.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={onDelete} className="px-3 py-1.5 rounded-lg text-xs font-bold text-white" style={{ background: '#B91C1C', border: 'none', cursor: 'pointer' }}>Yes, delete room</button>
-                  <button onClick={() => setShowDelete(false)} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: 'pointer' }}>Cancel</button>
+                  <button onClick={onDelete} className="px-3 py-1.5 rounded-lg text-xs font-bold text-white" style={{ background: colors.error, border: 'none', cursor: 'pointer' }}>Yes, delete room</button>
+                  <button onClick={() => setShowDelete(false)} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: colors.bgInput, color: colors.textSecondary, border: 'none', cursor: 'pointer' }}>Cancel</button>
                 </div>
               </div>
             )}
@@ -1539,15 +1554,15 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
 
       {/* Transfer ownership confirmation modal */}
       {showTransferConfirm && transferTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => !transferring && setShowTransferConfirm(false)}>
-          <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: '#fff' }} onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: colors.overlay }} onClick={() => !transferring && setShowTransferConfirm(false)}>
+          <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: colors.bgCard }} onClick={e => e.stopPropagation()}>
             <div className="flex items-start gap-3 mb-4">
-              <AlertTriangle size={20} color="#92400E" style={{ flexShrink: 0, marginTop: 1 }} />
+              <AlertTriangle size={20} color={colors.warning} style={{ flexShrink: 0, marginTop: 1 }} />
               <div>
-                <h3 className="text-sm font-bold mb-2" style={{ color: '#1B2A4A' }}>Transfer Ownership</h3>
-                <p className="text-xs" style={{ color: '#6B6B6B' }}>
+                <h3 className="text-sm font-bold mb-2" style={{ color: colors.textPrimary }}>Transfer Ownership</h3>
+                <p className="text-xs" style={{ color: colors.textSecondary }}>
                   Are you sure you want to transfer ownership to{' '}
-                  <strong style={{ color: '#1B2A4A' }}>
+                  <strong style={{ color: colors.textPrimary }}>
                     {approvedOthers.find(m => m.user_id === transferTarget)?.username || 'this member'}
                   </strong>
                   ?{oldOwnerRole === 'admin' ? ' You will become an admin.' : ' You will become a normal member.'}
@@ -1564,14 +1579,14 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
                 }}
                 disabled={transferring}
                 className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
-                style={{ background: transferring ? '#9CA3AF' : '#92400E', border: 'none', cursor: transferring ? 'not-allowed' : 'pointer' }}>
+                style={{ background: transferring ? colors.border : colors.warning, border: 'none', cursor: transferring ? 'not-allowed' : 'pointer' }}>
                 {transferring ? 'Transferring…' : 'Yes, transfer'}
               </button>
               <button
                 onClick={() => setShowTransferConfirm(false)}
                 disabled={transferring}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold"
-                style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: transferring ? 'not-allowed' : 'pointer' }}>
+                style={{ background: colors.bgInput, color: colors.textSecondary, border: 'none', cursor: transferring ? 'not-allowed' : 'pointer' }}>
                 Cancel
               </button>
             </div>
@@ -1581,15 +1596,15 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
 
       {/* Make Admin confirmation modal */}
       {showMakeAdminConfirm && makeAdminTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => !makingAdmin && setShowMakeAdminConfirm(false)}>
-          <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: '#fff' }} onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: colors.overlay }} onClick={() => !makingAdmin && setShowMakeAdminConfirm(false)}>
+          <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: colors.bgCard }} onClick={e => e.stopPropagation()}>
             <div className="flex items-start gap-3 mb-4">
               <UserCog size={20} color={themeColor} style={{ flexShrink: 0, marginTop: 1 }} />
               <div>
-                <h3 className="text-sm font-bold mb-2" style={{ color: '#1B2A4A' }}>Make Admin</h3>
-                <p className="text-xs" style={{ color: '#6B6B6B' }}>
+                <h3 className="text-sm font-bold mb-2" style={{ color: colors.textPrimary }}>Make Admin</h3>
+                <p className="text-xs" style={{ color: colors.textSecondary }}>
                   Make{' '}
-                  <strong style={{ color: '#1B2A4A' }}>
+                  <strong style={{ color: colors.textPrimary }}>
                     {approvedOthers.find(m => m.user_id === makeAdminTarget)?.username || 'this member'}
                   </strong>
                   {' '}an admin of this room? You will remain the owner.
@@ -1611,14 +1626,14 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
                 }}
                 disabled={makingAdmin}
                 className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
-                style={{ background: makingAdmin ? '#9CA3AF' : themeColor, border: 'none', cursor: makingAdmin ? 'not-allowed' : 'pointer' }}>
+                style={{ background: makingAdmin ? colors.border : themeColor, border: 'none', cursor: makingAdmin ? 'not-allowed' : 'pointer' }}>
                 {makingAdmin ? 'Promoting…' : 'Yes, make admin'}
               </button>
               <button
                 onClick={() => setShowMakeAdminConfirm(false)}
                 disabled={makingAdmin}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold"
-                style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: makingAdmin ? 'not-allowed' : 'pointer' }}>
+                style={{ background: colors.bgInput, color: colors.textSecondary, border: 'none', cursor: makingAdmin ? 'not-allowed' : 'pointer' }}>
                 Cancel
               </button>
             </div>

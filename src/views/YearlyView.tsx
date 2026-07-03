@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useTheme } from '../lib/theme';
 import type { CalendarMode, Reminder, ShDate, GregDate } from '../types';
 import {
   SH_MONTHS, SH_WEEKDAYS_SHORT, shDayOfWeek, shDateKey, shDaysInMonth, todaySh,
@@ -57,16 +58,17 @@ interface ShYearlyProps {
 }
 
 function ShYearly({ viewYear, onPrev, onNext, today, reminders, onPickMonth }: ShYearlyProps) {
+  const { colors } = useTheme();
   const reminderKeys = new Set(reminders.map(r => r.date_key));
 
   return (
-    <div className="rounded-xl p-6 mb-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
+    <div className="rounded-xl p-6 mb-4" style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}>
       <div className="flex items-center gap-3 mb-5">
-        <button onClick={onPrev} style={navBtnStyle}><ChevronLeft size={16} /></button>
-        <span className="flex-1 text-center text-base font-bold" style={{ color: '#1B2A4A' }}>
+        <button onClick={onPrev} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 8, border: 'none', background: colors.bgHover, color: colors.textPrimary, cursor: 'pointer' }}><ChevronLeft size={16} /></button>
+        <span className="flex-1 text-center text-base font-bold" style={{ color: colors.textPrimary }}>
           {viewYear} — Solar Hijri Year
         </span>
-        <button onClick={onNext} style={navBtnStyle}><ChevronRight size={16} /></button>
+        <button onClick={onNext} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 8, border: 'none', background: colors.bgHover, color: colors.textPrimary, cursor: 'pointer' }}><ChevronRight size={16} /></button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -87,19 +89,19 @@ function ShYearly({ viewYear, onPrev, onNext, today, reminders, onPickMonth }: S
               className="rounded-lg p-3 text-left transition-all"
               data-tour={mi === 0 ? 'tour-year-grid' : undefined}
               style={{
-                border: `1.5px solid ${isCurrentMonth ? '#7B1C3E' : '#E8EBF4'}`,
-                background: isCurrentMonth ? '#F5E6EC' : '#FAFAFB',
+                border: `1.5px solid ${isCurrentMonth ? colors.accent : colors.borderLight}`,
+                background: isCurrentMonth ? colors.accentLight : colors.bgSubtle,
                 cursor: 'pointer',
               }}
-              onMouseEnter={e => { if (!isCurrentMonth) (e.currentTarget as HTMLButtonElement).style.borderColor = '#7B1C3E'; }}
-              onMouseLeave={e => { if (!isCurrentMonth) (e.currentTarget as HTMLButtonElement).style.borderColor = '#E8EBF4'; }}
+              onMouseEnter={e => { if (!isCurrentMonth) (e.currentTarget as HTMLButtonElement).style.borderColor = colors.accent; }}
+              onMouseLeave={e => { if (!isCurrentMonth) (e.currentTarget as HTMLButtonElement).style.borderColor = colors.borderLight; }}
             >
-              <p className="text-xs font-bold mb-2" style={{ color: isCurrentMonth ? '#7B1C3E' : '#1B2A4A' }}>
+              <p className="text-xs font-bold mb-2" style={{ color: isCurrentMonth ? colors.accent : colors.textPrimary }}>
                 {m.name}
               </p>
               <div className="grid grid-cols-7 gap-0.5">
                 {SH_WEEKDAYS_SHORT.map(wd => (
-                  <div key={wd} className="text-center" style={{ fontSize: 8, color: '#9CA3AF', fontWeight: 700 }}>{wd}</div>
+                  <div key={wd} className="text-center" style={{ fontSize: 8, color: colors.textSecondary, fontWeight: 700 }}>{wd}</div>
                 ))}
                 {cells.map((day, ci) => {
                   if (day === null) return <div key={ci} style={{ minHeight: 14 }} />;
@@ -108,9 +110,9 @@ function ShYearly({ viewYear, onPrev, onNext, today, reminders, onPickMonth }: S
                   const isToday = isCurrentMonth && today.day === day;
                   return (
                     <div key={ci} className="text-center relative" style={{ minHeight: 14 }}>
-                      <span style={{ fontSize: 9, color: isToday ? '#7B1C3E' : '#6B6B6B', fontWeight: isToday ? 700 : 400 }}>{day}</span>
+                      <span style={{ fontSize: 9, color: isToday ? colors.accent : colors.textSecondary, fontWeight: isToday ? 700 : 400 }}>{day}</span>
                       {hasReminder && (
-                        <span className="absolute" style={{ bottom: 0, left: '50%', transform: 'translateX(-50%)', width: 3, height: 3, borderRadius: '50%', background: '#7B1C3E' }} />
+                        <span className="absolute" style={{ bottom: 0, left: '50%', transform: 'translateX(-50%)', width: 3, height: 3, borderRadius: '50%', background: colors.accent }} />
                       )}
                     </div>
                   );
@@ -135,14 +137,15 @@ interface GregYearlyProps {
 }
 
 function GregYearly({ viewYear, onPrev, onNext, today, reminders, onPickMonth }: GregYearlyProps) {
+  const { colors } = useTheme();
   const reminderKeys = new Set(reminders.map(r => r.date_key));
 
   return (
-    <div className="rounded-xl p-6 mb-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
+    <div className="rounded-xl p-6 mb-4" style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}>
       <div className="flex items-center gap-3 mb-5">
-        <button onClick={onPrev} style={navBtnStyle}><ChevronLeft size={16} /></button>
-        <span className="flex-1 text-center text-base font-bold" style={{ color: '#1B2A4A' }}>{viewYear}</span>
-        <button onClick={onNext} style={navBtnStyle}><ChevronRight size={16} /></button>
+        <button onClick={onPrev} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 8, border: 'none', background: colors.bgHover, color: colors.textPrimary, cursor: 'pointer' }}><ChevronLeft size={16} /></button>
+        <span className="flex-1 text-center text-base font-bold" style={{ color: colors.textPrimary }}>{viewYear}</span>
+        <button onClick={onNext} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 8, border: 'none', background: colors.bgHover, color: colors.textPrimary, cursor: 'pointer' }}><ChevronRight size={16} /></button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -163,17 +166,17 @@ function GregYearly({ viewYear, onPrev, onNext, today, reminders, onPickMonth }:
               className="rounded-lg p-3 text-left transition-all"
               data-tour={mi === 0 ? 'tour-year-grid' : undefined}
               style={{
-                border: `1.5px solid ${isCurrentMonth ? '#7B1C3E' : '#E8EBF4'}`,
-                background: isCurrentMonth ? '#F5E6EC' : '#FAFAFB',
+                border: `1.5px solid ${isCurrentMonth ? colors.accent : colors.borderLight}`,
+                background: isCurrentMonth ? colors.accentLight : colors.bgSubtle,
                 cursor: 'pointer',
               }}
-              onMouseEnter={e => { if (!isCurrentMonth) (e.currentTarget as HTMLButtonElement).style.borderColor = '#7B1C3E'; }}
-              onMouseLeave={e => { if (!isCurrentMonth) (e.currentTarget as HTMLButtonElement).style.borderColor = '#E8EBF4'; }}
+              onMouseEnter={e => { if (!isCurrentMonth) (e.currentTarget as HTMLButtonElement).style.borderColor = colors.accent; }}
+              onMouseLeave={e => { if (!isCurrentMonth) (e.currentTarget as HTMLButtonElement).style.borderColor = colors.borderLight; }}
             >
-              <p className="text-xs font-bold mb-2" style={{ color: isCurrentMonth ? '#7B1C3E' : '#1B2A4A' }}>{name}</p>
+              <p className="text-xs font-bold mb-2" style={{ color: isCurrentMonth ? colors.accent : colors.textPrimary }}>{name}</p>
               <div className="grid grid-cols-7 gap-0.5">
                 {GREG_WEEKDAYS_SHORT.map(wd => (
-                  <div key={wd} className="text-center" style={{ fontSize: 8, color: '#9CA3AF', fontWeight: 700 }}>{wd}</div>
+                  <div key={wd} className="text-center" style={{ fontSize: 8, color: colors.textSecondary, fontWeight: 700 }}>{wd}</div>
                 ))}
                 {cells.map((day, ci) => {
                   if (day === null) return <div key={ci} style={{ minHeight: 14 }} />;
@@ -182,9 +185,9 @@ function GregYearly({ viewYear, onPrev, onNext, today, reminders, onPickMonth }:
                   const isToday = isCurrentMonth && today.day === day;
                   return (
                     <div key={ci} className="text-center relative" style={{ minHeight: 14 }}>
-                      <span style={{ fontSize: 9, color: isToday ? '#7B1C3E' : '#6B6B6B', fontWeight: isToday ? 700 : 400 }}>{day}</span>
+                      <span style={{ fontSize: 9, color: isToday ? colors.accent : colors.textSecondary, fontWeight: isToday ? 700 : 400 }}>{day}</span>
                       {hasReminder && (
-                        <span className="absolute" style={{ bottom: 0, left: '50%', transform: 'translateX(-50%)', width: 3, height: 3, borderRadius: '50%', background: '#7B1C3E' }} />
+                        <span className="absolute" style={{ bottom: 0, left: '50%', transform: 'translateX(-50%)', width: 3, height: 3, borderRadius: '50%', background: colors.accent }} />
                       )}
                     </div>
                   );
@@ -197,9 +200,3 @@ function GregYearly({ viewYear, onPrev, onNext, today, reminders, onPickMonth }:
     </div>
   );
 }
-
-const navBtnStyle: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', justifyContent: 'center',
-  width: 32, height: 32, borderRadius: 8, border: 'none',
-  background: '#E8EBF4', color: '#1B2A4A', cursor: 'pointer',
-};

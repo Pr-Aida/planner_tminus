@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { useTheme } from '../lib/theme';
 
 interface Props {
   onComplete: () => void;
 }
 
 export default function ResetPassword({ onComplete }: Props) {
+  const { colors } = useTheme();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -47,37 +49,37 @@ export default function ResetPassword({ onComplete }: Props) {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: '#EDEDEE' }}>
+      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: colors.bg }}>
         <div
           className="w-full max-w-md rounded-2xl p-8 text-center"
-          style={{ background: '#fff', boxShadow: '0 4px 24px rgba(27,42,74,0.15)' }}
+          style={{ background: colors.bgCard, boxShadow: `0 4px 24px ${colors.shadow}` }}
         >
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ background: '#D1FAE5' }}>
-            <svg className="w-8 h-8" fill="none" stroke="#059669" viewBox="0 0 24 24" strokeWidth={2.5}>
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ background: colors.successBg }}>
+            <svg className="w-8 h-8" fill="none" stroke={colors.success} viewBox="0 0 24 24" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h1 className="text-xl font-bold" style={{ color: '#1B2A4A' }}>Password Updated</h1>
-          <p className="text-sm mt-2" style={{ color: '#68768A' }}>Redirecting to planner...</p>
+          <h1 className="text-xl font-bold" style={{ color: colors.textPrimary }}>Password Updated</h1>
+          <p className="text-sm mt-2" style={{ color: colors.textSecondary }}>Redirecting to planner...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: '#EDEDEE' }}>
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: colors.bg }}>
       <div
         className="w-full max-w-md rounded-2xl p-8"
-        style={{ background: '#fff', boxShadow: '0 4px 24px rgba(27,42,74,0.15)' }}
+        style={{ background: colors.bgCard, boxShadow: `0 4px 24px ${colors.shadow}` }}
       >
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold" style={{ color: '#1B2A4A' }}>Set New Password</h1>
-          <p className="text-sm mt-2" style={{ color: '#68768A' }}>Enter your new password below</p>
+          <h1 className="text-2xl font-bold" style={{ color: colors.textPrimary }}>Set New Password</h1>
+          <p className="text-sm mt-2" style={{ color: colors.textSecondary }}>Enter your new password below</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#1B2A4A' }}>
+            <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: colors.textPrimary }}>
               New Password
             </label>
             <input
@@ -88,18 +90,18 @@ export default function ResetPassword({ onComplete }: Props) {
               autoComplete="new-password"
               className="w-full rounded-lg px-4 py-2.5 text-sm outline-none transition-colors"
               style={{
-                border: '1.5px solid #C8C8C8',
-                background: '#F2F2F2',
-                color: '#111',
+                border: `1.5px solid ${colors.border}`,
+                background: colors.bgInput,
+                color: colors.textPrimary,
               }}
-              onFocus={e => { e.target.style.borderColor = '#7B1C3E'; e.target.style.background = '#fff'; }}
-              onBlur={e => { e.target.style.borderColor = '#C8C8C8'; e.target.style.background = '#F2F2F2'; }}
+              onFocus={e => { e.target.style.borderColor = colors.accent; e.target.style.background = colors.bgCard; }}
+              onBlur={e => { e.target.style.borderColor = colors.border; e.target.style.background = colors.bgInput; }}
               placeholder="At least 6 characters"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#1B2A4A' }}>
+            <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: colors.textPrimary }}>
               Confirm New Password
             </label>
             <input
@@ -110,18 +112,18 @@ export default function ResetPassword({ onComplete }: Props) {
               autoComplete="new-password"
               className="w-full rounded-lg px-4 py-2.5 text-sm outline-none transition-colors"
               style={{
-                border: '1.5px solid #C8C8C8',
-                background: '#F2F2F2',
-                color: '#111',
+                border: `1.5px solid ${colors.border}`,
+                background: colors.bgInput,
+                color: colors.textPrimary,
               }}
-              onFocus={e => { e.target.style.borderColor = '#7B1C3E'; e.target.style.background = '#fff'; }}
-              onBlur={e => { e.target.style.borderColor = '#C8C8C8'; e.target.style.background = '#F2F2F2'; }}
+              onFocus={e => { e.target.style.borderColor = colors.accent; e.target.style.background = colors.bgCard; }}
+              onBlur={e => { e.target.style.borderColor = colors.border; e.target.style.background = colors.bgInput; }}
               placeholder="Confirm your new password"
             />
           </div>
 
           {error && (
-            <div className="rounded-lg px-4 py-3 text-sm" style={{ background: '#FEE2E2', color: '#B91C1C' }}>
+            <div className="rounded-lg px-4 py-3 text-sm" style={{ background: colors.errorBg, color: colors.error }}>
               {error}
             </div>
           )}

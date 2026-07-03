@@ -5,6 +5,7 @@ import {
   SH_WEEKDAYS_FULL, GREG_WEEKDAYS_FULL,
   shDayOfWeek, gregDayOfWeek,
 } from '../lib/calendar';
+import { useTheme } from '../lib/theme';
 
 interface Props {
   calMode: CalendarMode;
@@ -21,6 +22,7 @@ export default function DateBar({
   calMode, shDate, gregDate,
   onShDateChange, onGregDateChange, onToday, onPrevDay, onNextDay,
 }: Props) {
+  const { colors } = useTheme();
   if (calMode === 'shamsi') {
     const daysInMonth = SH_MONTHS[shDate.month - 1].days;
     const weekday = SH_WEEKDAYS_FULL[shDayOfWeek(shDate.year, shDate.month, shDate.day)];
@@ -29,14 +31,14 @@ export default function DateBar({
       <div
         className="flex flex-wrap items-center gap-3 rounded-xl px-5 py-3 mb-5"
         data-tour="tour-datebar"
-        style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}
+        style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}
       >
       <div className="flex items-center gap-2" data-tour="tour-prev-next">
         <button
           onClick={onPrevDay}
           data-tour="tour-prev-day"
           className="flex items-center justify-center rounded-lg w-8 h-8 transition-colors"
-          style={{ background: '#E8EBF4', border: 'none', cursor: 'pointer', color: '#1B2A4A' }}
+          style={{ background: colors.bgHover, border: 'none', cursor: 'pointer', color: colors.textPrimary }}
           title="Previous day"
         >
           <ChevronLeft size={16} />
@@ -55,7 +57,7 @@ export default function DateBar({
           onClick={onNextDay}
           data-tour="tour-next-day"
           className="flex items-center justify-center rounded-lg w-8 h-8 transition-colors"
-          style={{ background: '#E8EBF4', border: 'none', cursor: 'pointer', color: '#1B2A4A' }}
+          style={{ background: colors.bgHover, border: 'none', cursor: 'pointer', color: colors.textPrimary }}
           title="Next day"
         >
           <ChevronRight size={16} />
@@ -70,7 +72,7 @@ export default function DateBar({
             onShDateChange({ ...shDate, month: m, day: d });
           }}
           className="border rounded-lg px-3 py-1.5 text-xs outline-none cursor-pointer"
-          style={{ borderColor: '#C8C8C8', color: '#1B2A4A' }}
+          style={{ borderColor: colors.border, color: colors.textPrimary }}
         >
           {SH_MONTHS.map((m, i) => (
             <option key={i} value={i + 1}>{m.name}</option>
@@ -81,15 +83,15 @@ export default function DateBar({
           value={shDate.day}
           onChange={e => onShDateChange({ ...shDate, day: Number(e.target.value) })}
           className="border rounded-lg px-3 py-1.5 text-xs outline-none cursor-pointer"
-          style={{ borderColor: '#C8C8C8', color: '#1B2A4A' }}
+          style={{ borderColor: colors.border, color: colors.textPrimary }}
         >
           {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(d => (
             <option key={d} value={d}>{d}</option>
           ))}
         </select>
 
-        <div className="ml-auto text-sm font-semibold" style={{ color: '#1B2A4A' }}>
-          <span style={{ color: '#7B1C3E' }}>{weekday}</span>
+        <div className="ml-auto text-sm font-semibold" style={{ color: colors.textPrimary }}>
+          <span style={{ color: colors.accent }}>{weekday}</span>
           {`, ${SH_MONTHS[shDate.month - 1].name} ${shDate.day}, ${shDate.year}`}
         </div>
       </div>
@@ -104,14 +106,14 @@ export default function DateBar({
     <div
       className="flex flex-wrap items-center gap-3 rounded-xl px-5 py-3 mb-5"
       data-tour="tour-datebar"
-      style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}
+      style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}
     >
       <div className="flex items-center gap-2" data-tour="tour-prev-next">
         <button
           onClick={onPrevDay}
           data-tour="tour-prev-day"
           className="flex items-center justify-center rounded-lg w-8 h-8 transition-colors"
-          style={{ background: '#E8EBF4', border: 'none', cursor: 'pointer', color: '#1B2A4A' }}
+          style={{ background: colors.bgHover, border: 'none', cursor: 'pointer', color: colors.textPrimary }}
           title="Previous day"
         >
           <ChevronLeft size={16} />
@@ -130,7 +132,7 @@ export default function DateBar({
           onClick={onNextDay}
           data-tour="tour-next-day"
           className="flex items-center justify-center rounded-lg w-8 h-8 transition-colors"
-          style={{ background: '#E8EBF4', border: 'none', cursor: 'pointer', color: '#1B2A4A' }}
+          style={{ background: colors.bgHover, border: 'none', cursor: 'pointer', color: colors.textPrimary }}
           title="Next day"
         >
           <ChevronRight size={16} />
@@ -145,7 +147,7 @@ export default function DateBar({
           onGregDateChange({ year: y, month: gregDate.month, day: d });
         }}
         className="border rounded-lg px-3 py-1.5 text-xs outline-none cursor-pointer"
-        style={{ borderColor: '#C8C8C8', color: '#1B2A4A' }}
+        style={{ borderColor: colors.border, color: colors.textPrimary }}
       >
         <option value={2026}>2026</option>
         <option value={2027}>2027</option>
@@ -159,7 +161,7 @@ export default function DateBar({
           onGregDateChange({ ...gregDate, month: m, day: d });
         }}
         className="border rounded-lg px-3 py-1.5 text-xs outline-none cursor-pointer"
-        style={{ borderColor: '#C8C8C8', color: '#1B2A4A' }}
+        style={{ borderColor: colors.border, color: colors.textPrimary }}
       >
         {GREG_MONTH_NAMES.map((name, i) => (
           <option key={i} value={i + 1}>{name}</option>
@@ -170,15 +172,15 @@ export default function DateBar({
         value={gregDate.day}
         onChange={e => onGregDateChange({ ...gregDate, day: Number(e.target.value) })}
         className="border rounded-lg px-3 py-1.5 text-xs outline-none cursor-pointer"
-        style={{ borderColor: '#C8C8C8', color: '#1B2A4A' }}
+        style={{ borderColor: colors.border, color: colors.textPrimary }}
       >
         {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(d => (
           <option key={d} value={d}>{d}</option>
         ))}
       </select>
 
-      <div className="ml-auto text-sm font-semibold" style={{ color: '#1B2A4A' }}>
-        <span style={{ color: '#7B1C3E' }}>{weekday}</span>
+      <div className="ml-auto text-sm font-semibold" style={{ color: colors.textPrimary }}>
+        <span style={{ color: colors.accent }}>{weekday}</span>
         {`, ${GREG_MONTH_NAMES[gregDate.month - 1]} ${gregDate.day}, ${gregDate.year}`}
       </div>
     </div>

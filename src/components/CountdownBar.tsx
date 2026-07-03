@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Pencil, X, Clock } from 'lucide-react';
 import type { CalendarMode } from '../types';
 import { SH_MONTHS, shToGregorian, todaySh } from '../lib/calendar';
+import { useTheme } from '../lib/theme';
 
 export interface CountdownConfig {
   name: string;
@@ -116,6 +117,7 @@ interface ModalProps {
 type InputMode = 'days' | 'date';
 
 function CountdownModal({ initial, calMode, currentShMonth, onSave, onClose }: ModalProps) {
+  const { colors } = useTheme();
   const [name, setName] = useState(initial?.name || '');
   const [inputMode, setInputMode] = useState<InputMode>(initial ? 'date' : 'days');
   const [daysInput, setDaysInput] = useState('');
@@ -177,21 +179,21 @@ function CountdownModal({ initial, calMode, currentShMonth, onSave, onClose }: M
     >
       <div
         className="w-full max-w-md rounded-2xl p-7"
-        style={{ background: '#fff', boxShadow: '0 12px 40px rgba(0,0,0,0.2)' }}
+        style={{ background: colors.bgCard, boxShadow: '0 12px 40px rgba(0,0,0,0.2)' }}
       >
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-base font-bold" style={{ color: '#1B2A4A' }}>Countdown</h2>
+          <h2 className="text-base font-bold" style={{ color: colors.textPrimary }}>Countdown</h2>
           <button
             onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#C8C8C8' }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.border }}
           >
             <X size={18} />
           </button>
         </div>
 
         {/* Name */}
-        <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#6B6B6B' }}>
+        <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: colors.textSecondary }}>
           Name
         </label>
         <input
@@ -202,27 +204,27 @@ function CountdownModal({ initial, calMode, currentShMonth, onSave, onClose }: M
           placeholder="e.g. Violin Recital, Final Exam..."
           className="w-full rounded-xl px-4 py-3 text-sm outline-none mb-5"
           style={{
-            border: '1.5px solid #E8EBF4',
-            background: '#fff',
+            border: `1.5px solid ${colors.borderLight}`,
+            background: colors.bgCard,
             fontFamily: 'inherit',
-            color: '#111',
+            color: colors.textPrimary,
           }}
-          onFocus={e => (e.target.style.borderColor = '#7B1C3E')}
-          onBlur={e => (e.target.style.borderColor = '#E8EBF4')}
+          onFocus={e => (e.target.style.borderColor = colors.accent)}
+          onBlur={e => (e.target.style.borderColor = colors.borderLight)}
         />
 
         {/* Mode toggle */}
         <div
           className="flex rounded-xl overflow-hidden mb-5"
-          style={{ border: '1.5px solid #E8EBF4' }}
+          style={{ border: `1.5px solid ${colors.borderLight}` }}
         >
           <button
             onClick={() => setInputMode('days')}
             className="flex-1 py-2.5 text-xs font-bold transition-all"
             style={{
-              background: inputMode === 'days' ? '#F5E6EC' : '#fff',
-              color: inputMode === 'days' ? '#7B1C3E' : '#6B6B6B',
-              border: inputMode === 'days' ? '1.5px solid #7B1C3E' : '1.5px solid transparent',
+              background: inputMode === 'days' ? colors.accentLight : colors.bgCard,
+              color: inputMode === 'days' ? colors.accent : colors.textSecondary,
+              border: inputMode === 'days' ? `1.5px solid ${colors.accent}` : '1.5px solid transparent',
               borderRadius: '10px 0 0 10px',
               cursor: 'pointer',
             }}
@@ -233,9 +235,9 @@ function CountdownModal({ initial, calMode, currentShMonth, onSave, onClose }: M
             onClick={() => setInputMode('date')}
             className="flex-1 py-2.5 text-xs font-bold transition-all"
             style={{
-              background: inputMode === 'date' ? '#F5E6EC' : '#fff',
-              color: inputMode === 'date' ? '#7B1C3E' : '#6B6B6B',
-              border: inputMode === 'date' ? '1.5px solid #7B1C3E' : '1.5px solid transparent',
+              background: inputMode === 'date' ? colors.accentLight : colors.bgCard,
+              color: inputMode === 'date' ? colors.accent : colors.textSecondary,
+              border: inputMode === 'date' ? `1.5px solid ${colors.accent}` : '1.5px solid transparent',
               borderRadius: '0 10px 10px 0',
               cursor: 'pointer',
             }}
@@ -247,7 +249,7 @@ function CountdownModal({ initial, calMode, currentShMonth, onSave, onClose }: M
         {/* Input based on mode */}
         {inputMode === 'days' ? (
           <>
-            <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#6B6B6B' }}>
+            <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: colors.textSecondary }}>
               Days from Today
             </label>
             <input
@@ -259,19 +261,19 @@ function CountdownModal({ initial, calMode, currentShMonth, onSave, onClose }: M
               placeholder="e.g. 30"
               className="w-full rounded-xl px-4 py-3 text-sm outline-none mb-6"
               style={{
-                border: '1.5px solid #E8EBF4',
-                background: '#fff',
+                border: `1.5px solid ${colors.borderLight}`,
+                background: colors.bgCard,
                 fontFamily: 'inherit',
-                color: '#111',
+                color: colors.textPrimary,
               }}
-              onFocus={e => (e.target.style.borderColor = '#7B1C3E')}
-              onBlur={e => (e.target.style.borderColor = '#E8EBF4')}
+              onFocus={e => (e.target.style.borderColor = colors.accent)}
+              onBlur={e => (e.target.style.borderColor = colors.borderLight)}
               onKeyDown={e => e.key === 'Enter' && handleSave()}
             />
           </>
         ) : calMode === 'shamsi' ? (
           <>
-            <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#6B6B6B' }}>
+            <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: colors.textSecondary }}>
               Target Date (SH)
             </label>
             <div className="flex gap-2 mb-6">
@@ -279,7 +281,7 @@ function CountdownModal({ initial, calMode, currentShMonth, onSave, onClose }: M
                 value={shYear}
                 onChange={e => setShYear(Number(e.target.value))}
                 className="rounded-xl px-3 py-3 text-sm outline-none"
-                style={{ width: '90px', border: '1.5px solid #E8EBF4', color: '#1B2A4A', background: '#fff' }}
+                style={{ width: '90px', border: `1.5px solid ${colors.borderLight}`, color: colors.textPrimary, background: colors.bgCard }}
               >
                 {Array.from({ length: 6 }, (_, i) => todayShDate.year + i).map(y => (
                   <option key={y} value={y}>{y}</option>
@@ -289,7 +291,7 @@ function CountdownModal({ initial, calMode, currentShMonth, onSave, onClose }: M
                 value={shMonth}
                 onChange={e => { setShMonth(Number(e.target.value)); setShDay(1); }}
                 className="flex-1 rounded-xl px-3 py-3 text-sm outline-none"
-                style={{ border: '1.5px solid #E8EBF4', color: '#1B2A4A', background: '#fff' }}
+                style={{ border: `1.5px solid ${colors.borderLight}`, color: colors.textPrimary, background: colors.bgCard }}
               >
                 {SH_MONTHS.map((m, i) => (
                   <option key={i} value={i + 1}>{m.name}</option>
@@ -299,7 +301,7 @@ function CountdownModal({ initial, calMode, currentShMonth, onSave, onClose }: M
                 value={shDay}
                 onChange={e => setShDay(Number(e.target.value))}
                 className="rounded-xl px-3 py-3 text-sm outline-none"
-                style={{ width: '72px', border: '1.5px solid #E8EBF4', color: '#1B2A4A', background: '#fff' }}
+                style={{ width: '72px', border: `1.5px solid ${colors.borderLight}`, color: colors.textPrimary, background: colors.bgCard }}
               >
                 {Array.from({ length: SH_MONTHS[shMonth - 1].days }, (_, i) => i + 1).map(d => (
                   <option key={d} value={d}>{d}</option>
@@ -309,7 +311,7 @@ function CountdownModal({ initial, calMode, currentShMonth, onSave, onClose }: M
           </>
         ) : (
           <>
-            <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#6B6B6B' }}>
+            <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: colors.textSecondary }}>
               Target Date
             </label>
             <input
@@ -318,13 +320,13 @@ function CountdownModal({ initial, calMode, currentShMonth, onSave, onClose }: M
               onChange={e => setGregDateStr(e.target.value)}
               className="w-full rounded-xl px-4 py-3 text-sm outline-none mb-6"
               style={{
-                border: '1.5px solid #E8EBF4',
-                color: '#1B2A4A',
-                background: '#fff',
+                border: `1.5px solid ${colors.borderLight}`,
+                color: colors.textPrimary,
+                background: colors.bgCard,
                 fontFamily: 'inherit',
               }}
-              onFocus={e => (e.target.style.borderColor = '#7B1C3E')}
-              onBlur={e => (e.target.style.borderColor = '#E8EBF4')}
+              onFocus={e => (e.target.style.borderColor = colors.accent)}
+              onBlur={e => (e.target.style.borderColor = colors.borderLight)}
             />
           </>
         )}
@@ -346,7 +348,7 @@ function CountdownModal({ initial, calMode, currentShMonth, onSave, onClose }: M
               <button
                 onClick={onClose}
                 className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors"
-                style={{ background: '#F2F2F2', color: '#1B2A4A', border: 'none', cursor: 'pointer' }}
+                style={{ background: colors.bgInput, color: colors.textPrimary, border: 'none', cursor: 'pointer' }}
               >
                 Cancel
               </button>
@@ -355,7 +357,7 @@ function CountdownModal({ initial, calMode, currentShMonth, onSave, onClose }: M
                 disabled={!canSave}
                 className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-opacity"
                 style={{
-                  background: '#7B1C3E',
+                  background: colors.accent,
                   border: 'none',
                   cursor: canSave ? 'pointer' : 'not-allowed',
                   opacity: canSave ? 1 : 0.5,

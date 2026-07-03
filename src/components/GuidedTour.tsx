@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, X, Check, Sparkles } from 'lucide-react';
+import { useTheme } from '../lib/theme';
 
 // ─── Version & What's New ─────────────────────────────────────────────────────
 // Bump APP_VERSION and add a new entry to WHATS_NEW_UPDATES whenever you ship
@@ -208,6 +209,7 @@ export default function GuidedTour({
   mode, whatsNewSteps, whatsNewTitle, whatsNewSummary,
   onFinish, onSkip, onRequireView,
 }: Props) {
+  const { colors } = useTheme();
   const steps = mode === 'whats-new' && whatsNewSteps ? whatsNewSteps : ONBOARDING_STEPS;
 
   const [stepIdx, setStepIdx] = useState(-1); // -1 = intro screen
@@ -361,7 +363,7 @@ export default function GuidedTour({
           top: tooltipPos.top,
           left: tooltipPos.left,
           width: ttWidth,
-          background: '#fff',
+          background: colors.bgCard,
           boxShadow: '0 16px 48px rgba(0,0,0,0.35)',
           transform: tooltipPos.placement === 'above' ? 'translateY(-100%)' : 'none',
           transition: 'top 0.3s ease, left 0.3s ease',
@@ -379,7 +381,7 @@ export default function GuidedTour({
 
         {/* Progress bar (only during steps) */}
         {!isIntro && (
-          <div style={{ height: 3, background: '#F3F4F6', position: 'relative' }}>
+          <div style={{ height: 3, background: colors.borderLight, position: 'relative' }}>
             <div
               style={{
                 position: 'absolute', left: 0, top: 0, height: '100%',
@@ -399,7 +401,7 @@ export default function GuidedTour({
                 className="inline-flex items-center justify-center rounded-full mb-4"
                 style={{
                   width: 56, height: 56,
-                  background: isWhatsNew ? '#D1FAE5' : '#F5E6EC',
+                  background: isWhatsNew ? '#D1FAE5' : colors.accentLight,
                 }}
               >
                 {isWhatsNew
@@ -408,16 +410,16 @@ export default function GuidedTour({
                 }
               </div>
 
-              <h2 className="text-lg font-extrabold mb-1" style={{ color: '#1B2A4A' }}>
+              <h2 className="text-lg font-extrabold mb-1" style={{ color: colors.textPrimary }}>
                 {isWhatsNew ? (whatsNewTitle || "What's New") : 'Welcome to T Minus'}
               </h2>
 
               {isWhatsNew && whatsNewSummary && (
-                <p className="text-sm mb-3" style={{ color: '#6B6B6B' }}>{whatsNewSummary}</p>
+                <p className="text-sm mb-3" style={{ color: colors.textSecondary }}>{whatsNewSummary}</p>
               )}
 
               {!isWhatsNew && (
-                <p className="text-sm mb-4" style={{ color: '#6B6B6B', lineHeight: 1.6 }}>
+                <p className="text-sm mb-4" style={{ color: colors.textSecondary, lineHeight: 1.6 }}>
                   Let's take a quick tour of your planner. We'll walk through each feature one by one, right where it lives in the interface.
                 </p>
               )}
@@ -435,7 +437,7 @@ export default function GuidedTour({
                 ))}
               </div>
 
-              <p className="text-xs mb-5" style={{ color: '#9CA3AF' }}>
+              <p className="text-xs mb-5" style={{ color: colors.textSecondary }}>
                 {steps.length} {steps.length === 1 ? 'step' : 'steps'} · Takes about a minute
               </p>
 
@@ -443,9 +445,9 @@ export default function GuidedTour({
                 <button
                   onClick={onSkip}
                   className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors"
-                  style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: 'pointer' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#E5E7EB'}
-                  onMouseLeave={e => e.currentTarget.style.background = '#F2F2F2'}
+                  style={{ background: colors.bgInput, color: colors.textSecondary, border: 'none', cursor: 'pointer' }}
+                  onMouseEnter={e => e.currentTarget.style.background = colors.bgHover}
+                  onMouseLeave={e => e.currentTarget.style.background = colors.bgInput}
                 >
                   Skip
                 </button>
@@ -480,8 +482,8 @@ export default function GuidedTour({
                     borderLeft: '8px solid transparent',
                     borderRight: '8px solid transparent',
                     ...(tooltipPos.placement === 'below'
-                      ? { borderBottom: '8px solid #fff' }
-                      : { borderTop: '8px solid #fff' }),
+                      ? { borderBottom: `8px solid ${colors.bgCard}` }
+                      : { borderTop: `8px solid ${colors.bgCard}` }),
                   } as React.CSSProperties}
                 />
               )}
@@ -512,11 +514,11 @@ export default function GuidedTour({
                   style={{ border: 'none', cursor: 'pointer', background: 'transparent' }}
                   title="Skip"
                 >
-                  <X size={14} color="#9CA3AF" />
+                  <X size={14} color={colors.textSecondary} />
                 </button>
               </div>
 
-              <p className="text-sm leading-relaxed mb-4" style={{ color: '#374151', lineHeight: 1.65 }}>
+              <p className="text-sm leading-relaxed mb-4" style={{ color: colors.textSecondary, lineHeight: 1.65 }}>
                 {step?.body}
               </p>
 
@@ -542,7 +544,7 @@ export default function GuidedTour({
                     title={`Step ${i + 1}`}
                   />
                 ))}
-                <span className="text-xs ml-auto" style={{ color: '#9CA3AF' }}>
+                <span className="text-xs ml-auto" style={{ color: colors.textSecondary }}>
                   {stepIdx + 1} / {steps.length}
                 </span>
               </div>
@@ -553,11 +555,11 @@ export default function GuidedTour({
                   onClick={back}
                   className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-semibold transition-opacity"
                   style={{
-                    background: '#F2F2F2', color: '#1B2A4A', border: 'none',
+                    background: colors.bgInput, color: colors.textPrimary, border: 'none',
                     cursor: 'pointer',
                   }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#E5E7EB'}
-                  onMouseLeave={e => e.currentTarget.style.background = '#F2F2F2'}
+                  onMouseEnter={e => e.currentTarget.style.background = colors.bgHover}
+                  onMouseLeave={e => e.currentTarget.style.background = colors.bgInput}
                 >
                   <ChevronLeft size={14} /> Back
                 </button>
@@ -565,7 +567,7 @@ export default function GuidedTour({
                 <button
                   onClick={onSkip}
                   className="px-3 py-2 rounded-lg text-xs font-semibold transition-colors"
-                  style={{ background: 'transparent', color: '#9CA3AF', border: 'none', cursor: 'pointer' }}
+                  style={{ background: 'transparent', color: colors.textSecondary, border: 'none', cursor: 'pointer' }}
                 >
                   Skip
                 </button>

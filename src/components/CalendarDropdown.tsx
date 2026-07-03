@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { ChevronUp, ChevronDown, Check } from 'lucide-react';
 import type { CalendarMode } from '../types';
 import { todaySh } from '../lib/calendar';
+import { useTheme } from '../lib/theme';
 
 interface Props {
   mode: CalendarMode;
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export function CalendarDropdown({ mode, currentYear, currentShYear, onChange }: Props) {
+  const { colors } = useTheme();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -41,7 +43,7 @@ export function CalendarDropdown({ mode, currentYear, currentShYear, onChange }:
           background: 'none',
           border: 'none',
           cursor: 'pointer',
-          color: '#fff',
+          color: colors.bgCard,
           fontSize: '16px',
           padding: '4px 0',
         }}
@@ -58,7 +60,7 @@ export function CalendarDropdown({ mode, currentYear, currentShYear, onChange }:
         <div
           className="absolute top-full mt-2 rounded-xl overflow-hidden"
           style={{
-            background: '#fff',
+            background: colors.bgCard,
             boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
             minWidth: '240px',
             zIndex: 200,
@@ -71,7 +73,7 @@ export function CalendarDropdown({ mode, currentYear, currentShYear, onChange }:
             selected={mode === 'shamsi'}
             onClick={() => select('shamsi')}
           />
-          <div style={{ height: '1px', background: '#F2F2F2' }} />
+          <div style={{ height: '1px', background: colors.borderLight }} />
           <DropOption
             title="Gregorian"
             subtitle="Standard month/day/year"
@@ -92,30 +94,31 @@ interface OptionProps {
 }
 
 function DropOption({ title, subtitle, selected, onClick }: OptionProps) {
+  const { colors } = useTheme();
   return (
     <button
       onClick={onClick}
       className="w-full text-left px-5 py-3.5 flex items-start justify-between gap-3 transition-colors"
       style={{
-        background: selected ? '#F5E6EC' : '#fff',
+        background: selected ? colors.accentLight : colors.bgCard,
         border: 'none',
         cursor: 'pointer',
       }}
-      onMouseEnter={e => { if (!selected) (e.currentTarget as HTMLButtonElement).style.background = '#F8F9FC'; }}
-      onMouseLeave={e => { if (!selected) (e.currentTarget as HTMLButtonElement).style.background = '#fff'; }}
+      onMouseEnter={e => { if (!selected) (e.currentTarget as HTMLButtonElement).style.background = colors.bgSubtle; }}
+      onMouseLeave={e => { if (!selected) (e.currentTarget as HTMLButtonElement).style.background = colors.bgCard; }}
     >
       <div>
         <div
           className="text-sm font-bold mb-0.5"
-          style={{ color: selected ? '#7B1C3E' : '#1B2A4A' }}
+          style={{ color: selected ? colors.accent : colors.textPrimary }}
         >
           {title}
         </div>
-        <div className="text-xs" style={{ color: selected ? '#A0274F' : '#6B6B6B' }}>
+        <div className="text-xs" style={{ color: selected ? '#A0274F' : colors.textSecondary }}>
           {subtitle}
         </div>
       </div>
-      {selected && <Check size={16} color="#7B1C3E" strokeWidth={2.5} style={{ flexShrink: 0, marginTop: 2 }} />}
+      {selected && <Check size={16} color={colors.accent} strokeWidth={2.5} style={{ flexShrink: 0, marginTop: 2 }} />}
     </button>
   );
 }

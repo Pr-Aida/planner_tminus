@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Trash2 } from 'lucide-react';
 import { fetchChatMessages, sendChatMessage, deleteChatMessage, subscribeToChat, type ChatMessage } from '../lib/roomChat';
+import { useTheme } from '../lib/theme';
 
 interface Props {
   roomId: string;
@@ -10,7 +11,8 @@ interface Props {
 }
 
 export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }: Props) {
-  const accent = themeColor || '#7B1C3E';
+  const { colors } = useTheme();
+  const accent = themeColor || colors.accent;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(true);
@@ -69,7 +71,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <p className="text-sm" style={{ color: '#9CA3AF' }}>Loading chat…</p>
+        <p className="text-sm" style={{ color: colors.textSecondary }}>Loading chat…</p>
       </div>
     );
   }
@@ -80,7 +82,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
       <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-3 px-1 py-2">
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
-            <p className="text-sm" style={{ color: '#9CA3AF' }}>No messages yet.</p>
+            <p className="text-sm" style={{ color: colors.textSecondary }}>No messages yet.</p>
           </div>
         ) : (
           messages.map(m => {
@@ -92,7 +94,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
                 {m.avatar_url ? (
                   <img src={m.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0 mt-0.5" />
                 ) : (
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5" style={{ background: isOwn ? accent : '#1B2A4A' }}>
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5" style={{ background: isOwn ? accent : colors.textPrimary }}>
                     {(m.display_name || m.username || 'M').charAt(0).toUpperCase()}
                   </div>
                 )}
@@ -100,21 +102,21 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
                 {/* Message bubble */}
                 <div className={`group flex-1 min-w-0 max-w-[75%] ${isOwn ? 'text-right' : 'text-left'}`}>
                   <div className="flex items-center gap-1.5 mb-0.5" style={{ flexDirection: isOwn ? 'row-reverse' : 'row' }}>
-                    <span className="text-xs font-semibold truncate" style={{ color: '#1B2A4A' }}>
+                    <span className="text-xs font-semibold truncate" style={{ color: colors.textPrimary }}>
                       {isOwn ? 'You' : (m.display_name || m.username || 'Member')}
                     </span>
                     {!isOwn && m.username && m.display_name && (
-                      <span className="text-[10px] flex-shrink-0" style={{ color: '#9CA3AF' }}>@{m.username}</span>
+                      <span className="text-[10px] flex-shrink-0" style={{ color: colors.textSecondary }}>@{m.username}</span>
                     )}
-                    <span className="text-[10px] flex-shrink-0" style={{ color: '#9CA3AF' }}>
+                    <span className="text-[10px] flex-shrink-0" style={{ color: colors.textSecondary }}>
                       {formatTime(m.created_at)}
                     </span>
                   </div>
                   <div
                     className="inline-block rounded-lg px-3 py-1.5 text-sm break-words"
                     style={{
-                      background: m.is_deleted ? '#F3F4F6' : (isOwn ? accent : '#F8F9FC'),
-                      color: m.is_deleted ? '#9CA3AF' : (isOwn ? '#FFFFFF' : '#1B2A4A'),
+                      background: m.is_deleted ? colors.bgSubtle : (isOwn ? accent : colors.bgSubtle),
+                      color: m.is_deleted ? colors.textSecondary : (isOwn ? '#FFFFFF' : colors.textPrimary),
                       fontStyle: m.is_deleted ? 'italic' : 'normal',
                       textAlign: 'left',
                     }}
@@ -141,11 +143,11 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
 
       {/* Error */}
       {error && (
-        <p className="text-xs text-center py-1" style={{ color: '#D97706' }}>{error}</p>
+        <p className="text-xs text-center py-1" style={{ color: colors.accent }}>{error}</p>
       )}
 
       {/* Input */}
-      <div className="flex gap-2 pt-2" style={{ borderTop: '1px solid #E8EBF4' }}>
+      <div className="flex gap-2 pt-2" style={{ borderTop: `1px solid ${colors.borderLight}` }}>
         <input
           type="text"
           value={input}
@@ -155,15 +157,15 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
           maxLength={1000}
           disabled={sending}
           className="flex-1 rounded-lg px-3 py-2 text-sm outline-none"
-          style={{ border: '1px solid #E8EBF4', background: '#F8F9FC', color: '#1B2A4A' }}
+          style={{ border: `1px solid ${colors.borderLight}`, background: colors.bgSubtle, color: colors.textPrimary }}
         />
         <button
           onClick={handleSend}
           disabled={sending || !input.trim()}
           className="flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-semibold transition-opacity"
           style={{
-            background: input.trim() ? accent : '#E8EBF4',
-            color: input.trim() ? '#FFFFFF' : '#9CA3AF',
+            background: input.trim() ? accent : colors.bgHover,
+            color: input.trim() ? '#FFFFFF' : colors.textSecondary,
             border: 'none',
             cursor: input.trim() ? 'pointer' : 'default',
           }}

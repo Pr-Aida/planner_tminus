@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import WeeklyChart from '../components/WeeklyChart';
+import { useTheme } from '../lib/theme';
 import type { CalendarMode, DailyData, Habit, ShDate, GregDate } from '../types';
 import {
   SH_MONTHS, SH_WEEKDAYS_SHORT, shDayOfWeek, shDateKey,
@@ -75,6 +76,7 @@ function currentWeekIdx(weeks: Week[], selectedKey: string): number {
 export default function WeeklyView({
   calMode, shDate, gregDate, getDayData, habits, weeklyNote, onWeeklyNoteChange,
 }: Props) {
+  const { colors } = useTheme();
   const weeks = useMemo(() => {
     return calMode === 'shamsi'
       ? buildShWeeks(shDate.year, shDate.month)
@@ -149,7 +151,7 @@ export default function WeeklyView({
       {/* Weekly Notes */}
       <div
         className="rounded-xl p-6 mb-4"
-        style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}
+        style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}
       >
         <CardTitle>Weekly Notes</CardTitle>
         <textarea
@@ -159,20 +161,20 @@ export default function WeeklyView({
           className="w-full rounded-lg p-3 text-sm outline-none resize-y"
           style={{
             minHeight: '60px',
-            border: '1.5px solid #C8C8C8',
-            background: '#F2F2F2',
+            border: `1.5px solid ${colors.border}`,
+            background: colors.bgInput,
             fontFamily: 'inherit',
-            color: '#111',
+            color: colors.textPrimary,
           }}
-          onFocus={e => { e.target.style.borderColor = '#7B1C3E'; e.target.style.background = '#fff'; }}
-          onBlur={e => { e.target.style.borderColor = '#C8C8C8'; e.target.style.background = '#F2F2F2'; }}
+          onFocus={e => { e.target.style.borderColor = colors.accent; e.target.style.background = colors.bgCard; }}
+          onBlur={e => { e.target.style.borderColor = colors.border; e.target.style.background = colors.bgInput; }}
         />
       </div>
 
       {/* Week Selector */}
       <div
         className="rounded-xl p-6 mb-4"
-        style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}
+        style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}
       >
         <CardTitle>Select Week — {monthLabel}</CardTitle>
         <div className="flex flex-wrap gap-2">
@@ -182,9 +184,9 @@ export default function WeeklyView({
               onClick={() => setActiveWeek(i)}
               className="rounded-full px-4 py-1.5 text-xs font-semibold transition-all"
               style={{
-                background: activeWeek === i ? '#7B1C3E' : '#E8EBF4',
-                color: activeWeek === i ? '#fff' : '#1B2A4A',
-                border: `1.5px solid ${activeWeek === i ? '#7B1C3E' : 'transparent'}`,
+                background: activeWeek === i ? colors.accent : colors.bgHover,
+                color: activeWeek === i ? colors.bgCard : colors.textPrimary,
+                border: `1.5px solid ${activeWeek === i ? colors.accent : 'transparent'}`,
                 cursor: 'pointer',
               }}
             >
@@ -197,20 +199,20 @@ export default function WeeklyView({
       {/* Keywords */}
       <div
         className="rounded-xl p-6 mb-4"
-        style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}
+        style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}
       >
         <CardTitle>This Week's Keywords</CardTitle>
         <div
           className="flex flex-wrap gap-2 rounded-lg p-3 min-h-10"
-          style={{ background: '#E8EBF4' }}
+          style={{ background: colors.bgHover }}
         >
           {keywords.length === 0 ? (
-            <span className="text-xs" style={{ color: '#C8C8C8' }}>
+            <span className="text-xs" style={{ color: colors.textSecondary }}>
               Add activities to see keywords…
             </span>
           ) : keywords.map(([word, count], i) => {
             const max = keywords[0][1];
-            const cls = count >= max * 0.7 ? '#7B1C3E' : count >= max * 0.4 ? '#B8860B' : '#253660';
+            const cls = count >= max * 0.7 ? colors.accent : count >= max * 0.4 ? '#B8860B' : colors.textPrimary;
             return (
               <span
                 key={i}
@@ -227,13 +229,13 @@ export default function WeeklyView({
       {/* Chart */}
       <div
         className="rounded-xl p-6 mb-4"
-        style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}
+        style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}
       >
         <CardTitle>Weekly Overview</CardTitle>
         {chartData.length > 0 ? (
           <WeeklyChart data={chartData} />
         ) : (
-          <p className="text-xs" style={{ color: '#C8C8C8' }}>No data for this week.</p>
+          <p className="text-xs" style={{ color: colors.textSecondary }}>No data for this week.</p>
         )}
       </div>
     </div>
@@ -241,12 +243,13 @@ export default function WeeklyView({
 }
 
 function CardTitle({ children }: { children: React.ReactNode }) {
+  const { colors } = useTheme();
   return (
     <div className="flex items-center mb-4">
-      <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#7B1C3E' }}>
+      <span className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.accent }}>
         {children}
       </span>
-      <div className="flex-1 h-px ml-3" style={{ background: '#F5E6EC' }} />
+      <div className="flex-1 h-px ml-3" style={{ background: colors.accentLight }} />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import {
   fetchRoomByInviteCode, fetchMyMembership, requestToJoin,
   acceptInvite, declineInvite,
 } from '../lib/studyRooms';
+import { useTheme } from '../lib/theme';
 
 interface Props {
   inviteCode: string;
@@ -18,6 +19,7 @@ interface Props {
 export default function JoinRoomView({
   inviteCode, userId, isAuthenticated, onRequireAuth, onOpenRoom, onBack,
 }: Props) {
+  const { colors } = useTheme();
   const [room, setRoom] = useState<StudyRoom | null>(null);
   const [membership, setMembership] = useState<RoomMember | null>(null);
   const [loading, setLoading] = useState(true);
@@ -85,18 +87,18 @@ export default function JoinRoomView({
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#EDEDEE' }}>
-        <Loader2 className="animate-spin" size={28} color="#1B2A4A" />
+      <div className="min-h-screen flex items-center justify-center" style={{ background: colors.bg }}>
+        <Loader2 className="animate-spin" size={28} color={colors.textPrimary} />
       </div>
     );
   }
 
   if (error || !room) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: '#EDEDEE' }}>
-        <div className="max-w-md w-full rounded-2xl p-8 text-center" style={{ background: '#fff', boxShadow: '0 4px 24px rgba(27,42,74,0.15)' }}>
-          <h1 className="text-xl font-bold mb-2" style={{ color: '#1B2A4A' }}>Room not found</h1>
-          <p className="text-sm mb-5" style={{ color: '#6B6B6B' }}>
+      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: colors.bg }}>
+        <div className="max-w-md w-full rounded-2xl p-8 text-center" style={{ background: colors.bgCard, boxShadow: `0 4px 24px ${colors.shadow}` }}>
+          <h1 className="text-xl font-bold mb-2" style={{ color: colors.textPrimary }}>Room not found</h1>
+          <p className="text-sm mb-5" style={{ color: colors.textSecondary }}>
             {error || 'This invite link is invalid or the room no longer exists.'}
           </p>
           <button onClick={onBack} className="px-4 py-2 rounded-lg text-sm font-bold text-white" style={{ background: '#1B2A4A', border: 'none', cursor: 'pointer' }}>
@@ -109,16 +111,16 @@ export default function JoinRoomView({
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: '#EDEDEE' }}>
-        <div className="max-w-md w-full rounded-2xl p-8" style={{ background: '#fff', boxShadow: '0 4px 24px rgba(27,42,74,0.15)' }}>
+      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: colors.bg }}>
+        <div className="max-w-md w-full rounded-2xl p-8" style={{ background: colors.bgCard, boxShadow: `0 4px 24px ${colors.shadow}` }}>
           <RoomPreview room={room} />
-          <div className="rounded-lg px-4 py-3 mb-4 text-sm" style={{ background: '#FEF3C7', color: '#B45309' }}>
+          <div className="rounded-lg px-4 py-3 mb-4 text-sm" style={{ background: colors.warningBg, color: colors.warning }}>
             You need an account to join this room. Sign in or sign up — you'll come back here.
           </div>
           <button onClick={onRequireAuth} className="w-full py-2.5 rounded-lg text-sm font-bold text-white" style={{ background: '#1B2A4A', border: 'none', cursor: 'pointer' }}>
             Sign in or Sign up
           </button>
-          <button onClick={onBack} className="w-full mt-2 py-2 text-xs font-semibold" style={{ background: 'none', border: 'none', color: '#6B6B6B', cursor: 'pointer' }}>
+          <button onClick={onBack} className="w-full mt-2 py-2 text-xs font-semibold" style={{ background: 'none', border: 'none', color: colors.textSecondary, cursor: 'pointer' }}>
             Back to planner
           </button>
         </div>
@@ -130,16 +132,16 @@ export default function JoinRoomView({
   const status = membership?.status;
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-8" style={{ background: '#EDEDEE' }}>
-      <div className="max-w-md w-full rounded-2xl p-8" style={{ background: '#fff', boxShadow: '0 4px 24px rgba(27,42,74,0.15)' }}>
-        <button onClick={onBack} className="flex items-center gap-1 text-xs font-semibold mb-4" style={{ color: '#1B2A4A', background: 'none', border: 'none', cursor: 'pointer' }}>
+    <div className="min-h-screen flex items-center justify-center px-4 py-8" style={{ background: colors.bg }}>
+      <div className="max-w-md w-full rounded-2xl p-8" style={{ background: colors.bgCard, boxShadow: `0 4px 24px ${colors.shadow}` }}>
+        <button onClick={onBack} className="flex items-center gap-1 text-xs font-semibold mb-4" style={{ color: colors.textPrimary, background: 'none', border: 'none', cursor: 'pointer' }}>
           <ArrowLeft size={14} /> Back to planner
         </button>
 
         <RoomPreview room={room} />
 
         {!room.invite_enabled && (
-          <div className="rounded-lg px-4 py-3 mb-4 text-sm" style={{ background: '#FEE2E2', color: '#B91C1C' }}>
+          <div className="rounded-lg px-4 py-3 mb-4 text-sm" style={{ background: colors.errorBg, color: colors.error }}>
             The owner has disabled this invite link.
           </div>
         )}
@@ -147,7 +149,7 @@ export default function JoinRoomView({
         {/* Status-based content */}
         {(!status || status === 'left' || status === 'removed' || status === 'declined' || status === 'rejected') && (
           <>
-            <p className="text-sm mb-4" style={{ color: '#6B6B6B' }}>
+            <p className="text-sm mb-4" style={{ color: colors.textSecondary }}>
               This is a private room. Request to join — the owner will review your request.
             </p>
             <button
@@ -162,10 +164,10 @@ export default function JoinRoomView({
         )}
 
         {status === 'pending' && (
-          <div className="text-center rounded-lg p-4" style={{ background: '#FEF3C7' }}>
-            <Clock size={22} color="#B45309" className="mx-auto mb-2" />
-            <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>Request pending</p>
-            <p className="text-xs mt-1" style={{ color: '#6B6B6B' }}>
+          <div className="text-center rounded-lg p-4" style={{ background: colors.warningBg }}>
+            <Clock size={22} color={colors.warning} className="mx-auto mb-2" />
+            <p className="text-sm font-bold" style={{ color: colors.textPrimary }}>Request pending</p>
+            <p className="text-xs mt-1" style={{ color: colors.textSecondary }}>
               Your request to join this room is pending approval.
             </p>
           </div>
@@ -173,7 +175,7 @@ export default function JoinRoomView({
 
         {status === 'invited' && (
           <div>
-            <p className="text-sm mb-4 text-center" style={{ color: '#6B6B6B' }}>
+            <p className="text-sm mb-4 text-center" style={{ color: colors.textSecondary }}>
               You've been invited to join this room.
             </p>
             <div className="flex gap-2">
@@ -181,7 +183,7 @@ export default function JoinRoomView({
                 onClick={handleAccept}
                 disabled={acting}
                 className="flex-1 py-2.5 rounded-lg text-sm font-bold text-white flex items-center justify-center gap-1.5"
-                style={{ background: '#059669', border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}
+                style={{ background: colors.success, border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}
               >
                 <Check size={16} /> Accept
               </button>
@@ -189,7 +191,7 @@ export default function JoinRoomView({
                 onClick={handleDecline}
                 disabled={acting}
                 className="flex-1 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-1.5"
-                style={{ background: '#F2F2F2', color: '#6B6B6B', border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}
+                style={{ background: colors.bgInput, color: colors.textSecondary, border: 'none', cursor: acting ? 'not-allowed' : 'pointer' }}
               >
                 <X size={16} /> Decline
               </button>
@@ -201,7 +203,7 @@ export default function JoinRoomView({
           <button
             onClick={() => onOpenRoom(room.id)}
             className="w-full py-2.5 rounded-lg text-sm font-bold text-white"
-            style={{ background: '#059669', border: 'none', cursor: 'pointer' }}
+            style={{ background: colors.success, border: 'none', cursor: 'pointer' }}
           >
             You're a member — Open room
           </button>
@@ -212,6 +214,7 @@ export default function JoinRoomView({
 }
 
 function RoomPreview({ room }: { room: StudyRoom }) {
+  const { colors } = useTheme();
   return (
     <div className="text-center mb-5">
       {(room.profile_image_url || room.avatar_url) ? (
@@ -221,11 +224,11 @@ function RoomPreview({ room }: { room: StudyRoom }) {
           {room.name.charAt(0).toUpperCase()}
         </div>
       )}
-      <h1 className="text-xl font-extrabold" style={{ color: '#1B2A4A' }}>{room.name}</h1>
+      <h1 className="text-xl font-extrabold" style={{ color: colors.textPrimary }}>{room.name}</h1>
       {room.description && (
-        <p className="text-sm mt-1.5" style={{ color: '#6B6B6B' }}>{room.description}</p>
+        <p className="text-sm mt-1.5" style={{ color: colors.textSecondary }}>{room.description}</p>
       )}
-      <p className="text-xs mt-2" style={{ color: '#9CA3AF' }}>Private study room</p>
+      <p className="text-xs mt-2" style={{ color: colors.textSecondary }}>Private study room</p>
     </div>
   );
 }

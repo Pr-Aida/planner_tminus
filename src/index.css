@@ -2,6 +2,55 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─── CSS Variables for theme-aware inline styles ──────────────────────────── */
+:root {
+  --theme-bg: #EDEDEE;
+  --theme-bg-card: #FFFFFF;
+  --theme-bg-subtle: #F8F9FC;
+  --theme-bg-input: #F2F2F2;
+  --theme-bg-hover: #F5F5F5;
+  --theme-text: #1B2A4A;
+  --theme-text-secondary: #6B6B6B;
+  --theme-text-tertiary: #9CA3AF;
+  --theme-border: #C8C8C8;
+  --theme-border-light: #E8EBF4;
+  --theme-accent: #7B1C3E;
+  --theme-accent-light: #F5E6EC;
+  --theme-error: #B91C1C;
+  --theme-error-bg: #FEE2E2;
+  --theme-warning: #B45309;
+  --theme-warning-bg: #FEF3C7;
+  --theme-success: #059669;
+  --theme-success-bg: #E6F6EF;
+  --theme-shadow: rgba(27,42,74,0.10);
+  --theme-hero-bg: #1B2A4A;
+  --theme-overlay: rgba(0,0,0,0.5);
+}
+
+html[data-theme="dark"] {
+  --theme-bg: #0F172A;
+  --theme-bg-card: #1E293B;
+  --theme-bg-subtle: #24344F;
+  --theme-bg-input: #1A2538;
+  --theme-bg-hover: #2A3A55;
+  --theme-text: #F1F5F9;
+  --theme-text-secondary: #94A3B8;
+  --theme-text-tertiary: #64748B;
+  --theme-border: #334155;
+  --theme-border-light: #1E293B;
+  --theme-accent: #EC4899;
+  --theme-accent-light: #4C1D2F;
+  --theme-error: #F87171;
+  --theme-error-bg: #450A0A;
+  --theme-warning: #FBBF24;
+  --theme-warning-bg: #451A03;
+  --theme-success: #34D399;
+  --theme-success-bg: #064E3B;
+  --theme-shadow: rgba(0,0,0,0.40);
+  --theme-hero-bg: #0B1120;
+  --theme-overlay: rgba(0,0,0,0.7);
+}
+
 /* ─── Dark Mode Overrides ─────────────────────────────────────────────────── */
 /* Targets html[data-theme="dark"] to override hardcoded inline light colors.  */
 /* React renders inline styles as "background:#fff" (no space after colon).    */

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Bell, Plus, Trash2, Check, RotateCcw, Ban } from 'lucide-react';
 import type { Reminder, ReminderStatus, ReminderOffset } from '../types';
+import { useTheme } from '../lib/theme';
 
 interface Props {
   open: boolean;
@@ -21,21 +22,22 @@ const OFFSET_LABELS: Record<ReminderOffset, string> = {
   0: 'On the day',
 };
 
-const STATUS_META: Record<ReminderStatus, { label: string; color: string; bg: string }> = {
-  pending: { label: 'Pending', color: '#1B2A4A', bg: '#E8EBF4' },
-  completed: { label: 'Completed', color: '#059669', bg: '#D1FAE5' },
-  not_completed: { label: 'Not completed', color: '#B91C1C', bg: '#FEE2E2' },
-  postponed: { label: 'Postponed', color: '#B45309', bg: '#FEF3C7' },
-  cancelled: { label: 'Cancelled', color: '#6B6B6B', bg: '#F2F2F2' },
-};
-
 export default function DayModal({
   open, title, initialNote, onSave, onClose,
   reminders, onAddReminder, onUpdateReminderStatus, onDeleteReminder,
 }: Props) {
+  const { colors } = useTheme();
   const [note, setNote] = useState(initialNote);
   const [newReminder, setNewReminder] = useState('');
   const [newOffset, setNewOffset] = useState<ReminderOffset>(0);
+
+  const STATUS_META: Record<ReminderStatus, { label: string; color: string; bg: string }> = {
+    pending: { label: 'Pending', color: colors.textPrimary, bg: colors.bgHover },
+    completed: { label: 'Completed', color: '#059669', bg: '#D1FAE5' },
+    not_completed: { label: 'Not completed', color: colors.error, bg: colors.errorBg },
+    postponed: { label: 'Postponed', color: colors.warning, bg: colors.warningBg },
+    cancelled: { label: 'Cancelled', color: colors.textSecondary, bg: colors.bgInput },
+  };
 
   useEffect(() => { setNote(initialNote); }, [initialNote]);
   useEffect(() => { if (open) { setNewReminder(''); setNewOffset(0); } }, [open]);
@@ -58,21 +60,21 @@ export default function DayModal({
     >
       <div
         className="w-full max-w-md rounded-2xl p-6"
-        style={{ background: '#fff', boxShadow: '0 8px 32px rgba(0,0,0,0.25)', maxHeight: '85vh', overflowY: 'auto' }}
+        style={{ background: colors.bgCard, boxShadow: '0 8px 32px rgba(0,0,0,0.25)', maxHeight: '85vh', overflowY: 'auto' }}
       >
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-bold" style={{ color: '#1B2A4A' }}>{title}</h2>
+          <h2 className="text-sm font-bold" style={{ color: colors.textPrimary }}>{title}</h2>
           <button
             onClick={onClose}
             className="flex items-center justify-center rounded-full w-7 h-7 transition-colors hover:bg-gray-100"
             style={{ border: 'none', cursor: 'pointer', background: 'transparent' }}
           >
-            <X size={16} color="#6B6B6B" />
+            <X size={16} color={colors.textSecondary} />
           </button>
         </div>
 
         {/* Notes */}
-        <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#1B2A4A' }}>
+        <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: colors.textPrimary }}>
           Day Notes
         </label>
         <textarea
@@ -80,19 +82,19 @@ export default function DayModal({
           onChange={e => setNote(e.target.value)}
           placeholder="Notes for this day..."
           className="w-full rounded-lg p-3 text-sm outline-none resize-y"
-          style={{ minHeight: '70px', border: '1.5px solid #C8C8C8', background: '#F2F2F2', fontFamily: 'inherit', color: '#111' }}
-          onFocus={e => { e.target.style.borderColor = '#7B1C3E'; e.target.style.background = '#fff'; }}
-          onBlur={e => { e.target.style.borderColor = '#C8C8C8'; e.target.style.background = '#F2F2F2'; }}
+          style={{ minHeight: '70px', border: `1.5px solid ${colors.border}`, background: colors.bgInput, fontFamily: 'inherit', color: colors.textPrimary }}
+          onFocus={e => { e.target.style.borderColor = colors.accent; e.target.style.background = colors.bgCard; }}
+          onBlur={e => { e.target.style.borderColor = colors.border; e.target.style.background = colors.bgInput; }}
         />
 
         {/* Reminders section */}
         <div className="mt-5" data-tour="tour-monthly-reminders">
           <div className="flex items-center gap-2 mb-3">
-            <Bell size={14} color="#7B1C3E" />
-            <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#7B1C3E' }}>
+            <Bell size={14} color={colors.accent} />
+            <span className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.accent }}>
               Reminders & Events
             </span>
-            <div className="flex-1 h-px ml-2" style={{ background: '#F5E6EC' }} />
+            <div className="flex-1 h-px ml-2" style={{ background: colors.accentLight }} />
           </div>
 
           {/* Add new reminder */}
@@ -104,9 +106,9 @@ export default function DayModal({
               onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
               placeholder="Event title e.g. Exam, Recital..."
               className="flex-1 rounded-lg px-3 py-2 text-sm outline-none"
-              style={{ border: '1.5px solid #C8C8C8', background: '#F2F2F2', color: '#111' }}
-              onFocus={e => { e.target.style.borderColor = '#7B1C3E'; e.target.style.background = '#fff'; }}
-              onBlur={e => { e.target.style.borderColor = '#C8C8C8'; e.target.style.background = '#F2F2F2'; }}
+              style={{ border: `1.5px solid ${colors.border}`, background: colors.bgInput, color: colors.textPrimary }}
+              onFocus={e => { e.target.style.borderColor = colors.accent; e.target.style.background = colors.bgCard; }}
+              onBlur={e => { e.target.style.borderColor = colors.border; e.target.style.background = colors.bgInput; }}
             />
           </div>
           <div className="flex gap-2 mb-3">
@@ -114,7 +116,7 @@ export default function DayModal({
               value={newOffset}
               onChange={e => setNewOffset(Number(e.target.value) as ReminderOffset)}
               className="flex-1 rounded-lg px-3 py-2 text-xs outline-none cursor-pointer"
-              style={{ border: '1.5px solid #C8C8C8', color: '#1B2A4A', background: '#fff' }}
+              style={{ border: `1.5px solid ${colors.border}`, color: colors.textPrimary, background: colors.bgCard }}
             >
               {(Object.keys(OFFSET_LABELS) as unknown as ReminderOffset[]).map(k => (
                 <option key={k} value={k}>{OFFSET_LABELS[k]}</option>
@@ -124,7 +126,7 @@ export default function DayModal({
               onClick={handleAdd}
               disabled={!newReminder.trim()}
               className="flex items-center gap-1 px-4 py-2 rounded-lg text-xs font-bold text-white transition-opacity"
-              style={{ background: newReminder.trim() ? '#7B1C3E' : '#9CA3AF', border: 'none', cursor: newReminder.trim() ? 'pointer' : 'not-allowed' }}
+              style={{ background: newReminder.trim() ? colors.accent : '#9CA3AF', border: 'none', cursor: newReminder.trim() ? 'pointer' : 'not-allowed' }}
             >
               <Plus size={14} /> Add
             </button>
@@ -140,10 +142,10 @@ export default function DayModal({
               {reminders.map(r => {
                 const meta = STATUS_META[r.status];
                 return (
-                  <div key={r.id} className="rounded-lg p-3" style={{ background: '#F8F9FC', border: '1px solid #E8EBF4' }}>
+                  <div key={r.id} className="rounded-lg p-3" style={{ background: colors.bgSubtle, border: `1px solid ${colors.borderLight}` }}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold truncate" style={{ color: '#1B2A4A' }}>{r.title}</p>
+                        <p className="text-sm font-semibold truncate" style={{ color: colors.textPrimary }}>{r.title}</p>
                         <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>
                           {OFFSET_LABELS[r.remind_offset]}
                         </p>
@@ -188,14 +190,14 @@ export default function DayModal({
           <button
             onClick={onClose}
             className="px-5 py-2 rounded-lg text-xs font-semibold transition-colors"
-            style={{ background: '#F2F2F2', color: '#1B2A4A', border: 'none', cursor: 'pointer' }}
+            style={{ background: colors.bgInput, color: colors.textPrimary, border: 'none', cursor: 'pointer' }}
           >
             Cancel
           </button>
           <button
             onClick={() => onSave(note)}
             className="px-5 py-2 rounded-lg text-xs font-semibold text-white transition-colors"
-            style={{ background: '#7B1C3E', border: 'none', cursor: 'pointer' }}
+            style={{ background: colors.accent, border: 'none', cursor: 'pointer' }}
           >
             Save
           </button>

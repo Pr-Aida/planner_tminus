@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react';
 import { Bell, Check, X, RotateCcw, Ban, PartyPopper } from 'lucide-react';
 import ActivitySection from '../components/ActivitySection';
 import HabitSection from '../components/HabitSection';
+import { useTheme } from '../lib/theme';
 import type { Activity, DailyData, Habit, HabitType, Reminder, ReminderStatus } from '../types';
 function genId() { return crypto.randomUUID(); }
 
@@ -23,6 +24,7 @@ interface Props {
 }
 
 export default function DailyView({ data, habits, isToday, reminders, onDataChange, onAddHabitToTemplate, onAddHabitToDay, onDeleteHabit, onRenameHabit, onHideHabitForDay, onRemoveExtraHabit, onSaveTemplate, onUpdateReminderStatus }: Props) {
+  const { colors } = useTheme();
   // Compute summary stats
   const { totalMinutes, namedActivities } = useMemo(() => {
     let totalMinutes = 0;
@@ -92,10 +94,10 @@ export default function DailyView({ data, habits, isToday, reminders, onDataChan
 
       {/* Upcoming reminders (not today) */}
       {!isToday && reminders.length > 0 && (
-        <div className="rounded-xl p-6 mb-4" style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}>
+        <div className="rounded-xl p-6 mb-4" style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}>
           <div className="flex items-center gap-2 mb-3">
-            <Bell size={14} color="#7B1C3E" />
-            <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#7B1C3E' }}>Reminders on this day</span>
+            <Bell size={14} color={colors.accent} />
+            <span className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.accent }}>Reminders on this day</span>
           </div>
           <div className="space-y-2">
             {reminders.map(r => (
@@ -109,7 +111,7 @@ export default function DailyView({ data, habits, isToday, reminders, onDataChan
       <div
         className="rounded-xl p-6 mb-4"
         data-tour="tour-notes"
-        style={{ background: '#fff', boxShadow: '0 2px 12px rgba(27,42,74,0.10)' }}
+        style={{ background: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}` }}
       >
         <CardTitle>Quick Notes</CardTitle>
         <textarea
@@ -119,13 +121,13 @@ export default function DailyView({ data, habits, isToday, reminders, onDataChan
           className="w-full rounded-lg p-3 text-sm outline-none resize-y"
           style={{
             minHeight: '64px',
-            border: '1.5px solid #C8C8C8',
-            background: '#F2F2F2',
+            border: `1.5px solid ${colors.border}`,
+            background: colors.bgInput,
             fontFamily: 'inherit',
-            color: '#111',
+            color: colors.textPrimary,
           }}
-          onFocus={e => { e.target.style.borderColor = '#7B1C3E'; e.target.style.background = '#fff'; }}
-          onBlur={e => { e.target.style.borderColor = '#C8C8C8'; e.target.style.background = '#F2F2F2'; }}
+          onFocus={e => { e.target.style.borderColor = colors.accent; e.target.style.background = colors.bgCard; }}
+          onBlur={e => { e.target.style.borderColor = colors.border; e.target.style.background = colors.bgInput; }}
         />
       </div>
 
@@ -169,12 +171,13 @@ export default function DailyView({ data, habits, isToday, reminders, onDataChan
 }
 
 function CardTitle({ children }: { children: React.ReactNode }) {
+  const { colors } = useTheme();
   return (
     <div className="flex items-center mb-3">
-      <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#7B1C3E' }}>
+      <span className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.accent }}>
         {children}
       </span>
-      <div className="flex-1 h-px ml-3" style={{ background: '#F5E6EC' }} />
+      <div className="flex-1 h-px ml-3" style={{ background: colors.accentLight }} />
     </div>
   );
 }
@@ -234,4 +237,3 @@ function CheckBtn({ onClick, icon, label, active }: { onClick: () => void; icon:
     </button>
   );
 }
-

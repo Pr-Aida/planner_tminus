@@ -6,6 +6,7 @@ import {
   deleteNotification, unreadNotificationCount, approveMember, rejectMember,
 } from '../lib/studyRooms';
 import { supabase } from '../lib/supabase';
+import { useTheme } from '../lib/theme';
 
 interface Props {
   userId: string;
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export default function RoomNotifications({ userId, onOpenRoom }: Props) {
+  const { colors } = useTheme();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<RoomNotification[]>([]);
   const [unread, setUnread] = useState(0);
@@ -118,22 +120,22 @@ export default function RoomNotifications({ userId, onOpenRoom }: Props) {
         <div
           ref={ref}
           className="absolute top-12 right-0 w-80 max-w-[calc(100vw-2rem)] rounded-xl py-2 z-[200]"
-          style={{ background: '#fff', boxShadow: '0 8px 32px rgba(0,0,0,0.22)' }}
+          style={{ background: colors.bgCard, boxShadow: '0 8px 32px rgba(0,0,0,0.22)' }}
         >
           <div className="flex items-center justify-between px-4 py-2">
-            <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#1B2A4A' }}>Notifications</span>
+            <span className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.textPrimary }}>Notifications</span>
             {unread > 0 && (
-              <button onClick={handleMarkAllRead} className="text-[10px] font-semibold" style={{ color: '#7B1C3E', background: 'none', border: 'none', cursor: 'pointer' }}>
+              <button onClick={handleMarkAllRead} className="text-[10px] font-semibold" style={{ color: colors.accent, background: 'none', border: 'none', cursor: 'pointer' }}>
                 Mark all read
               </button>
             )}
           </div>
-          <div style={{ height: 1, background: '#E8EBF4', margin: '0 0 4px' }} />
+          <div style={{ height: 1, background: colors.borderLight, margin: '0 0 4px' }} />
 
           {loading ? (
-            <div className="px-4 py-6 text-center text-xs" style={{ color: '#9CA3AF' }}>Loading…</div>
+            <div className="px-4 py-6 text-center text-xs" style={{ color: colors.textSecondary }}>Loading…</div>
           ) : notifications.length === 0 ? (
-            <div className="px-4 py-6 text-center text-xs" style={{ color: '#9CA3AF' }}>No notifications yet.</div>
+            <div className="px-4 py-6 text-center text-xs" style={{ color: colors.textSecondary }}>No notifications yet.</div>
           ) : (
             <div className="max-h-80 overflow-y-auto">
               {/* Room notifications */}
@@ -172,7 +174,7 @@ function NotificationRow({
   return (
     <div
       className="px-4 py-3 transition-colors"
-      style={{ background: n.read ? 'transparent' : '#F8F9FC', borderBottom: '1px solid #F2F2F2' }}
+      style={{ background: n.read ? 'transparent' : colors.bgSubtle, borderBottom: `1px solid ${colors.bgInput}` }}
     >
       <div className="flex items-start gap-2">
         {n.type === 'join_request' && actorAvatar ? (
@@ -181,10 +183,10 @@ function NotificationRow({
           <span style={{ color: icon.color, marginTop: 2, width: 20, display: 'inline-flex', justifyContent: 'center' }}>{icon.icon}</span>
         )}
         <div className="flex-1 min-w-0">
-          <p className="text-xs leading-relaxed" style={{ color: '#1B2A4A' }}>
+          <p className="text-xs leading-relaxed" style={{ color: colors.textPrimary }}>
             {textFor(n)}
           </p>
-          <p className="text-[10px] mt-1" style={{ color: '#9CA3AF' }}>{timeAgo(n.created_at)}</p>
+          <p className="text-[10px] mt-1" style={{ color: colors.textSecondary }}>{timeAgo(n.created_at)}</p>
 
           {/* Inline actions for join_request */}
           {n.type === 'join_request' && !n.read && n.actor_user_id && (
@@ -211,7 +213,7 @@ function NotificationRow({
             <button
               onClick={onOpenRoom}
               className="text-[10px] font-semibold mt-1.5"
-              style={{ color: '#1B2A4A', background: 'none', border: 'none', cursor: 'pointer' }}
+              style={{ color: colors.textPrimary, background: 'none', border: 'none', cursor: 'pointer' }}
             >
               Open room →
             </button>
@@ -220,7 +222,7 @@ function NotificationRow({
         <button
           onClick={onDismiss}
           className="flex-shrink-0 p-0.5"
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#C8C8C8' }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.border }}
           title="Dismiss"
         >
           <X size={12} />
@@ -235,11 +237,11 @@ function iconFor(type: RoomNotificationType): { icon: React.ReactNode; color: st
     case 'join_request': return { icon: <UserPlus size={14} />, color: '#B45309' };
     case 'request_approved': return { icon: <Check size={14} />, color: '#059669' };
     case 'request_rejected': return { icon: <Ban size={14} />, color: '#B91C1C' };
-    case 'room_invited': return { icon: <UserPlus size={14} />, color: '#1B2A4A' };
+    case 'room_invited': return { icon: <UserPlus size={14} />, color: 'var(--theme-text, #1B2A4A)' };
     case 'invite_accepted': return { icon: <UserCheck size={14} />, color: '#059669' };
     case 'member_left': return { icon: <LogOut size={14} />, color: '#9CA3AF' };
     case 'member_removed': return { icon: <LogIn size={14} />, color: '#B91C1C' };
-    default: return { icon: <Bell size={14} />, color: '#1B2A4A' };
+    default: return { icon: <Bell size={14} />, color: 'var(--theme-text, #1B2A4A)' };
   }
 }
 
