@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Send, Trash2, Paperclip, Smile, Download, FileText, ImageIcon, Music, File,
-  Loader2, X, AlertTriangle, MoreVertical,
+  Loader2, X, Mic, Square, AlertTriangle, MoreVertical,
 } from 'lucide-react';
 import {
   fetchChatMessages, sendChatMessage, sendChatMessageWithAttachment, deleteChatMessage,
@@ -22,6 +22,8 @@ interface Props {
 }
 
 const EMOJIS = ['😀', '😂', '😍', '👍', '👏', '🎉', '🔥', '💪', '📚', '✏️', '☕', '🎯', '⭐', '💡', '🙏', '😅', '🥳', '😴', '🤔', '👀', '💯', '✅', '❤️', '🎓'];
+const MAX_VOICE_DURATION = 120; // 2 minutes
+const MAX_VOICE_SIZE = 5 * 1024 * 1024; // 5 MB
 
 export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }: Props) {
   const { colors } = useTheme();
@@ -38,6 +40,18 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Voice recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [readyToSend, setReadyToSend] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const recordedBlobRef = useRef<Blob | null>(null);
+  const cancelRef = useRef(false);
+
   // Delete confirmation state
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
@@ -50,7 +64,6 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
   useEffect(() => {
     setLoading(true);
     load();
-    // Mark messages as read when chat is opened/loaded
     markRoomChatRead(roomId);
     const sub = subscribeToChat(roomId, () => { load(); });
     return () => { sub.unsubscribe(); };
@@ -61,6 +74,22 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  // Clean up recording resources on unmount
+  useEffect(() => {
+    return () => {
+      stopRecordingTimer();
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        try { mediaRecorderRef.current.stop(); } catch { /* ignore */ }
+      }
+      audioChunksRef.current = [];
+      recordedBlobRef.current = null;
+    };
+  }, []);
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -125,7 +154,6 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     const result = await deleteChatMessage(deleteConfirmId);
     setDeleteConfirmId(null);
     if (result.ok) {
-      // Reload messages to reflect the deletion for everyone
       await load();
     } else {
       setError(result.error || 'Failed to delete message.');
@@ -134,26 +162,15 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
 
   async function handleDownloadAttachment(msg: ChatMessage) {
     if (!msg.attachment) return;
-
     setError(null);
-    console.log('[Download] Starting download for attachment:', msg.attachment.id);
-
     try {
-      // Try to get file metadata from the attachment or fetch it
       const { fetchFileById } = await import('../lib/files');
       const fileMeta = await fetchFileById(msg.attachment.id);
-
       if (!fileMeta) {
-        console.error('[Download] Could not fetch file metadata');
         setError('Could not find file. It may have been deleted.');
         return;
       }
-
-      console.log('[Download] Got file metadata:', fileMeta.storage_bucket, fileMeta.storage_path);
-
-      // Use the download helper
       const result = await downloadFile(fileMeta.storage_bucket, fileMeta.storage_path, fileMeta.original_file_name);
-
       if (!result.ok) {
         setError(result.error || 'Could not download file. Please try again.');
       }
@@ -173,12 +190,238 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
+  function formatDuration(seconds: number): string {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  }
+
   function getAttachmentIcon(type: FileType) {
     switch (type) {
       case 'image': return <ImageIcon size={18} color={accent} />;
       case 'pdf': return <FileText size={18} color={accent} />;
       case 'audio': return <Music size={18} color={accent} />;
       default: return <File size={18} color={accent} />;
+    }
+  }
+
+  // ─── Voice recording ──────────────────────────────────────────────────────
+  function stopRecordingTimer() {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  }
+
+  async function startRecording() {
+    setVoiceError(null);
+    setError(null);
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setVoiceError('Voice recording is not supported in this browser.');
+      return;
+    }
+
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setVoiceError('Microphone access was denied. Please allow microphone permission to record voice messages.');
+      return;
+    }
+
+    streamRef.current = stream;
+    audioChunksRef.current = [];
+    recordedBlobRef.current = null;
+    cancelRef.current = false;
+
+    const mimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
+    let mimeType = '';
+    for (const mt of mimeTypes) {
+      if (MediaRecorder.isTypeSupported(mt)) { mimeType = mt; break; }
+    }
+
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    } catch {
+      setVoiceError('Could not start recording. Please try again.');
+      stream.getTracks().forEach(t => t.stop());
+      return;
+    }
+
+    mediaRecorderRef.current = recorder;
+
+    recorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) {
+        audioChunksRef.current.push(e.data);
+      }
+    };
+
+    recorder.start(500);
+    setIsRecording(true);
+    setReadyToSend(false);
+    setRecordingSeconds(0);
+
+    recordingTimerRef.current = setInterval(() => {
+      setRecordingSeconds(s => {
+        if (s + 1 >= MAX_VOICE_DURATION) {
+          stopRecording();
+          return MAX_VOICE_DURATION;
+        }
+        return s + 1;
+      });
+    }, 1000);
+  }
+
+  function stopRecording() {
+    stopRecordingTimer();
+
+    const recorder = mediaRecorderRef.current;
+    const stream = streamRef.current;
+
+    if (!recorder || recorder.state === 'inactive') {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      }
+      setIsRecording(false);
+      if (audioChunksRef.current.length > 0) {
+        const mimeType = recorder?.mimeType || 'audio/webm';
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        if (blob.size > 0) {
+          recordedBlobRef.current = blob;
+          setReadyToSend(true);
+        }
+      }
+      return;
+    }
+
+    const mimeType = recorder.mimeType || 'audio/webm';
+
+    recorder.onstop = () => {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      }
+      setIsRecording(false);
+
+      if (cancelRef.current) {
+        audioChunksRef.current = [];
+        recordedBlobRef.current = null;
+        setReadyToSend(false);
+        return;
+      }
+
+      if (audioChunksRef.current.length > 0) {
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        if (blob.size > 0) {
+          recordedBlobRef.current = blob;
+          setReadyToSend(true);
+        } else {
+          setVoiceError('Recording was empty. Please try again.');
+          setReadyToSend(false);
+        }
+      } else {
+        setVoiceError('Recording was empty. Please try again.');
+        setReadyToSend(false);
+      }
+    };
+
+    try {
+      recorder.stop();
+    } catch (err) {
+      console.error('[Voice] stop error:', err);
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      }
+      setIsRecording(false);
+      if (audioChunksRef.current.length > 0) {
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        if (blob.size > 0) {
+          recordedBlobRef.current = blob;
+          setReadyToSend(true);
+        }
+      }
+    }
+  }
+
+  function cancelRecording() {
+    stopRecordingTimer();
+    cancelRef.current = true;
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try { mediaRecorderRef.current.stop(); } catch { /* ignore */ }
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    setIsRecording(false);
+    setReadyToSend(false);
+    setRecordingSeconds(0);
+    audioChunksRef.current = [];
+    recordedBlobRef.current = null;
+  }
+
+  async function sendVoiceMessage() {
+    const blob = recordedBlobRef.current;
+
+    if (!blob || blob.size === 0) {
+      setVoiceError('Audio file is empty. Please try recording again.');
+      setReadyToSend(false);
+      recordedBlobRef.current = null;
+      audioChunksRef.current = [];
+      return;
+    }
+
+    if (blob.size > MAX_VOICE_SIZE) {
+      setVoiceError('Voice message is too large (max 5 MB). Please record a shorter message.');
+      return;
+    }
+
+    // Strip codec parameters for a clean MIME type
+    const rawMime = blob.type || mediaRecorderRef.current?.mimeType || 'audio/webm';
+    const mimeType = rawMime.split(';')[0].trim() || 'audio/webm';
+
+    // Map MIME type to file extension
+    const ext = mimeType.includes('webm') ? 'webm'
+      : mimeType.includes('mp4') || mimeType.includes('m4a') ? 'm4a'
+      : mimeType.includes('ogg') ? 'ogg'
+      : mimeType.includes('mpeg') || mimeType.includes('mp3') ? 'mp3'
+      : mimeType.includes('wav') ? 'wav'
+      : 'webm';
+    const fileName = `voice-${Date.now()}.${ext}`;
+
+    // Create File from Blob — the existing attachment pipeline handles the rest
+    const arrayBuffer = await blob.arrayBuffer();
+    const file = new File([arrayBuffer], fileName, { type: mimeType });
+
+    setSending(true);
+    setUploadProgress(true);
+    setVoiceError(null);
+
+    try {
+      const result = await sendChatMessageWithAttachment(roomId, '', file, userId, 'audio');
+
+      setSending(false);
+      setUploadProgress(false);
+
+      if (result.ok) {
+        audioChunksRef.current = [];
+        recordedBlobRef.current = null;
+        setRecordingSeconds(0);
+        setReadyToSend(false);
+        await load();
+      } else {
+        setVoiceError(result.error || 'Failed to send voice message.');
+      }
+    } catch (err) {
+      setSending(false);
+      setUploadProgress(false);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setVoiceError(`Failed to send voice message: ${errMsg}`);
+      console.error('[Voice] send error:', err);
     }
   }
 
@@ -269,8 +512,52 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
       </div>
 
       {/* Error */}
-      {error && (
-        <p className="text-xs text-center py-1" style={{ color: colors.error }}>{error}</p>
+      {(error || voiceError) && (
+        <p className="text-xs text-center py-1" style={{ color: colors.error }}>{error || voiceError}</p>
+      )}
+
+      {/* Recording indicator */}
+      {isRecording && (
+        <div className="flex items-center gap-2 px-3 py-2 mb-1 rounded-lg" style={{ background: colors.errorBg, border: `1px solid ${colors.error}` }}>
+          <span className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: colors.error }} />
+          <span className="text-xs font-semibold" style={{ color: colors.error }}>Recording</span>
+          <span className="text-xs font-mono" style={{ color: colors.error }}>{formatDuration(recordingSeconds)}</span>
+          <span className="text-[10px]" style={{ color: colors.textSecondary }}>Max 2:00</span>
+          <div className="flex-1" />
+          <button
+            onClick={cancelRecording}
+            className="px-2 py-1 rounded-lg text-xs font-semibold flex-shrink-0"
+            style={{ background: colors.bgInput, color: colors.textSecondary, border: 'none', cursor: 'pointer' }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {/* Ready to send indicator (after recording stops) */}
+      {readyToSend && !isRecording && (
+        <div className="flex items-center gap-2 px-3 py-2 mb-1 rounded-lg" style={{ background: colors.bgInput, border: `1px solid ${accent}` }}>
+          <Music size={16} color={accent} />
+          <span className="text-xs font-semibold" style={{ color: colors.textPrimary }}>Voice message ready</span>
+          <span className="text-xs font-mono" style={{ color: colors.textSecondary }}>{formatDuration(recordingSeconds)}</span>
+          <div className="flex-1" />
+          <button
+            onClick={cancelRecording}
+            className="px-2 py-1 rounded-lg text-xs font-semibold flex-shrink-0"
+            style={{ background: colors.bgSubtle, color: colors.textSecondary, border: 'none', cursor: 'pointer' }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={sendVoiceMessage}
+            disabled={sending}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold text-white flex-shrink-0"
+            style={{ background: accent, border: 'none', cursor: sending ? 'not-allowed' : 'pointer', opacity: sending ? 0.6 : 1 }}
+          >
+            {sending ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+            Send
+          </button>
+        </div>
       )}
 
       {/* Pending file preview bar */}
@@ -316,9 +603,9 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         {/* Attachment button */}
         <button
           onClick={() => fileRef.current?.click()}
-          disabled={uploadProgress}
+          disabled={uploadProgress || isRecording}
           className="flex items-center justify-center rounded-lg px-2 py-2 transition-colors flex-shrink-0"
-          style={{ background: 'transparent', border: 'none', cursor: uploadProgress ? 'not-allowed' : 'pointer' }}
+          style={{ background: 'transparent', border: 'none', cursor: (uploadProgress || isRecording) ? 'not-allowed' : 'pointer' }}
           title="Attach file"
         >
           <Paperclip size={18} color={colors.textSecondary} />
@@ -331,15 +618,26 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
           onChange={handleFileSelect}
         />
 
+        {/* Microphone / voice button */}
+        <button
+          onClick={isRecording ? stopRecording : startRecording}
+          disabled={uploadProgress || sending || readyToSend}
+          className="flex items-center justify-center rounded-lg px-2 py-2 transition-colors flex-shrink-0"
+          style={{ background: isRecording ? colors.errorBg : 'transparent', border: 'none', cursor: (uploadProgress || sending || readyToSend) ? 'not-allowed' : 'pointer' }}
+          title={isRecording ? 'Stop recording' : 'Record voice message'}
+        >
+          {isRecording ? <Square size={16} color={colors.error} /> : <Mic size={18} color={colors.textSecondary} />}
+        </button>
+
         {/* Text input */}
         <input
           type="text"
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-          placeholder={pendingFile ? 'Add a caption (optional)…' : 'Write a message…'}
+          placeholder={pendingFile ? 'Add a caption (optional)…' : isRecording ? 'Recording voice message…' : 'Write a message…'}
           maxLength={1000}
-          disabled={sending}
+          disabled={sending || isRecording}
           className="flex-1 rounded-lg px-3 py-2 text-sm outline-none min-w-0"
           style={{ border: `1px solid ${colors.borderLight}`, background: colors.bgSubtle, color: colors.textPrimary }}
         />
@@ -347,13 +645,13 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         {/* Send button */}
         <button
           onClick={handleSend}
-          disabled={sending || (!input.trim() && !pendingFile)}
+          disabled={sending || (!input.trim() && !pendingFile) || isRecording}
           className="flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-semibold transition-opacity flex-shrink-0"
           style={{
-            background: (input.trim() || pendingFile) ? accent : colors.bgHover,
-            color: (input.trim() || pendingFile) ? '#FFFFFF' : colors.textSecondary,
+            background: (input.trim() || pendingFile) && !isRecording ? accent : colors.bgHover,
+            color: (input.trim() || pendingFile) && !isRecording ? '#FFFFFF' : colors.textSecondary,
             border: 'none',
-            cursor: (input.trim() || pendingFile) ? 'pointer' : 'default',
+            cursor: (input.trim() || pendingFile) && !isRecording ? 'pointer' : 'default',
           }}
         >
           {uploadProgress ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
