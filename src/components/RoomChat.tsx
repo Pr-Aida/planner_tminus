@@ -49,6 +49,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const recordedBlobRef = useRef<Blob | null>(null);
 
   const load = useCallback(async () => {
     const msgs = await fetchChatMessages(roomId);
@@ -82,6 +83,8 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         try { mediaRecorderRef.current.stop(); } catch { /* ignore */ }
       }
+      audioChunksRef.current = [];
+      recordedBlobRef.current = null;
     };
   }, []);
 
@@ -249,6 +252,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
 
     streamRef.current = stream;
     audioChunksRef.current = [];
+    recordedBlobRef.current = null;
 
     // Pick the best supported MIME type
     const mimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
@@ -273,10 +277,16 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     };
 
     recorder.onstop = () => {
-      // Cleanup will be done in sendVoice/cancelVoice
+      // Create the blob immediately when recording stops
+      const chunks = audioChunksRef.current;
+      if (chunks.length > 0) {
+        const type = recorder.mimeType || 'audio/webm';
+        recordedBlobRef.current = new Blob(chunks, { type });
+      }
     };
 
-    recorder.start();
+    // Use timeslice to get data during recording for reliability
+    recorder.start(1000);
     setIsRecording(true);
     setRecordingSeconds(0);
 
@@ -308,14 +318,11 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
   function cancelRecording() {
     stopRecording();
     audioChunksRef.current = [];
+    recordedBlobRef.current = null;
     setRecordingSeconds(0);
   }
 
   async function sendVoiceMessage() {
-    if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
-      // Already stopped — build from chunks
-    }
-
     // Stop recording first (but keep chunks)
     stopRecordingTimer();
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
@@ -327,17 +334,27 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     }
     setIsRecording(false);
 
-    // Wait a tick for ondataavailable to fire after stop
-    await new Promise(r => setTimeout(r, 200));
+    // Wait for onstop to complete and populate recordedBlobRef
+    await new Promise(r => setTimeout(r, 100));
 
-    if (audioChunksRef.current.length === 0) {
+    // Use the blob from onstop if available
+    let blob = recordedBlobRef.current;
+
+    // Fallback: build from chunks if onstop didn't set the ref
+    if (!blob && audioChunksRef.current.length > 0) {
+      const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
+      blob = new Blob(audioChunksRef.current, { type: mimeType });
+    }
+
+    if (!blob || blob.size === 0) {
       setVoiceError('Recording was empty. Please try again.');
       setRecordingSeconds(0);
+      audioChunksRef.current = [];
+      recordedBlobRef.current = null;
       return;
     }
 
-    const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
-    const blob = new Blob(audioChunksRef.current, { type: mimeType });
+    const mimeType = blob.type || mediaRecorderRef.current?.mimeType || 'audio/webm';
     const ext = mimeType.includes('webm') ? 'webm' : mimeType.includes('mp4') ? 'm4a' : 'ogg';
     const fileName = `voice-${Date.now()}.${ext}`;
     const file = new File([blob], fileName, { type: mimeType });
@@ -347,6 +364,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
       setVoiceError('Voice message is too large. Please record a shorter message.');
       setRecordingSeconds(0);
       audioChunksRef.current = [];
+      recordedBlobRef.current = null;
       return;
     }
 
@@ -360,6 +378,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
 
     if (result.ok) {
       audioChunksRef.current = [];
+      recordedBlobRef.current = null;
       setRecordingSeconds(0);
     } else {
       setVoiceError(result.error || 'Failed to send voice message.');

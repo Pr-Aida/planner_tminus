@@ -69,16 +69,26 @@ const MIME_TO_TYPE: Record<string, FileType> = {
   'audio/aac': 'audio',
   'audio/mp4': 'audio',
   'audio/x-m4a': 'audio',
+  // Codec-specific variants (common from MediaRecorder)
+  'audio/webm;codecs=opus': 'audio',
+  'audio/webm;codecs=vp9,opus': 'audio',
+  'audio/ogg;codecs=opus': 'audio',
+  'audio/mp4;codecs=mp4a.40.2': 'audio',
 };
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 export function detectFileType(file: File): FileType {
   const mime = file.type.toLowerCase();
+  // Check exact match first
   if (MIME_TO_TYPE[mime]) return MIME_TO_TYPE[mime];
+  // Check for codec-specific MIME types (e.g., "audio/webm;codecs=opus")
+  if (mime.startsWith('audio/')) return 'audio';
+  if (mime.startsWith('image/')) return 'image';
+  // Fallback to extension-based detection
   const ext = file.name.toLowerCase().split('.').pop() || '';
   if (['png', 'jpg', 'jpeg', 'webp'].includes(ext)) return 'image';
   if (ext === 'pdf') return 'pdf';
-  if (['mp3', 'wav', 'ogg', 'm4a', 'aac'].includes(ext)) return 'audio';
+  if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'webm'].includes(ext)) return 'audio';
   if (['docx'].includes(ext)) return 'file';
   if (['pptx'].includes(ext)) return 'file';
   return 'file';
@@ -91,19 +101,29 @@ export function isAllowedType(file: File): boolean {
 
 export function validateFile(file: File): { ok: boolean; type?: FileType; error?: string } {
   const type = detectFileType(file);
+  const mime = file.type.toLowerCase();
   // For images/pdf/audio we check MIME strictly; for generic files we allow docx/pptx
-  if (type === 'image' && !ALLOWED_MIME.image.includes(file.type.toLowerCase())) {
+  if (type === 'image' && !ALLOWED_MIME.image.includes(mime)) {
     return { ok: false, error: 'This file type is not supported.' };
   }
-  if (type === 'pdf' && file.type.toLowerCase() !== 'application/pdf') {
+  if (type === 'pdf' && mime !== 'application/pdf') {
     return { ok: false, error: 'This file type is not supported.' };
   }
-  if (type === 'audio' && !ALLOWED_MIME.audio.includes(file.type.toLowerCase())) {
-    return { ok: false, error: 'This file type is not supported.' };
+  // For audio, allow codec-specific MIME types like "audio/webm;codecs=opus"
+  if (type === 'audio') {
+    const isAllowed = ALLOWED_MIME.audio.includes(mime) ||
+      mime.startsWith('audio/webm') ||
+      mime.startsWith('audio/ogg') ||
+      mime.startsWith('audio/mp4') ||
+      mime.startsWith('audio/mpeg') ||
+      mime.startsWith('audio/wav');
+    if (!isAllowed) {
+      return { ok: false, error: 'This file type is not supported.' };
+    }
   }
   if (type === 'file') {
     const allowed = [...ALLOWED_MIME.file, 'application/msword', 'application/vnd.ms-powerpoint'];
-    if (!allowed.includes(file.type.toLowerCase())) {
+    if (!allowed.includes(mime)) {
       return { ok: false, error: 'This file type is not supported.' };
     }
   }
