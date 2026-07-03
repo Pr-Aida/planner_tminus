@@ -67,7 +67,13 @@ export default function App() {
     clock2_visible: false,
   });
 
-  const [themePref, setThemePref] = useState<ThemeMode>('light');
+  const [themePref, setThemePref] = useState<ThemeMode>(() => {
+    try {
+      const saved = localStorage.getItem('theme');
+      if (saved === 'dark' || saved === 'light') return saved;
+    } catch { /* ignore */ }
+    return 'light';
+  });
 
   // ─── Calendar & View State ──────────────────────────────────────────────
   const [calMode, setCalMode] = useState<CalendarMode>('shamsi');

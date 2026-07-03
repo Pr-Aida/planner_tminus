@@ -1,3 +1,212 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ─── Dark Mode Overrides ─────────────────────────────────────────────────── */
+/* Targets html[data-theme="dark"] to override hardcoded inline light colors.  */
+/* React renders inline styles as "background:#fff" (no space after colon).    */
+/* Uses !important to beat inline styles. Light mode is completely untouched.   */
+
+html[data-theme="dark"] body {
+  background: #0F172A !important;
+  color: #F1F5F9 !important;
+}
+
+/* Page-level backgrounds (auth screens, join room) */
+html[data-theme="dark"] [style*="background:#EDEDEE"] {
+  background: #0F172A !important;
+}
+
+/* White card backgrounds — the main offender */
+html[data-theme="dark"] [style*="background:#fff"],
+html[data-theme="dark"] [style*="background:#FFFFFF"],
+html[data-theme="dark"] [style*="background:#FFF"],
+html[data-theme="dark"] [style*="background: #fff"],
+html[data-theme="dark"] [style*="background: #FFFFFF"] {
+  background: #1E293B !important;
+  color: #F1F5F9 !important;
+}
+
+/* Light-gray input/secondary backgrounds */
+html[data-theme="dark"] [style*="background:#F2F2F2"],
+html[data-theme="dark"] [style*="background:#F8F8F8"],
+html[data-theme="dark"] [style*="background: #F2F2F2"],
+html[data-theme="dark"] [style*="background: #F8F8F8"] {
+  background: #1A2538 !important;
+  color: #F1F5F9 !important;
+}
+
+/* Dark navy text (#1B2A4A) becomes near-white in dark mode */
+html[data-theme="dark"] [style*="color:#1B2A4A"],
+html[data-theme="dark"] [style*="color: #1B2A4A"] {
+  color: #F1F5F9 !important;
+}
+
+/* Near-black input text (#111, #111111) becomes near-white */
+html[data-theme="dark"] [style*="color:#111"],
+html[data-theme="dark"] [style*="color: #111"],
+html[data-theme="dark"] [style*="color:#111111"] {
+  color: #F1F5F9 !important;
+}
+
+/* Secondary gray text (#6B6B6B) becomes lighter for readability */
+html[data-theme="dark"] [style*="color:#6B6B6B"],
+html[data-theme="dark"] [style*="color: #6B6B6B"] {
+  color: #94A3B8 !important;
+}
+
+/* Muted gray text (#9CA3AF) stays readable */
+html[data-theme="dark"] [style*="color:#9CA3AF"],
+html[data-theme="dark"] [style*="color: #9CA3AF"] {
+  color: #64748B !important;
+}
+
+/* Accent burgundy (#7B1C3E) is too dark to read on dark backgrounds — use pink */
+html[data-theme="dark"] [style*="color:#7B1C3E"],
+html[data-theme="dark"] [style*="color: #7B1C3E"] {
+  color: #EC4899 !important;
+}
+
+/* Accent burgundy backgrounds become pink in dark mode */
+html[data-theme="dark"] [style*="background:#7B1C3E"],
+html[data-theme="dark"] [style*="background: #7B1C3E"] {
+  background: #EC4899 !important;
+}
+
+/* Light pink accent backgrounds (#F5E6EC) become dark pink */
+html[data-theme="dark"] [style*="background:#F5E6EC"],
+html[data-theme="dark"] [style*="background: #F5E6EC"] {
+  background: #4C1D2F !important;
+  color: #EC4899 !important;
+}
+
+/* Error tint backgrounds (#FEE2E2, #FEF2F2) become dark red */
+html[data-theme="dark"] [style*="background:#FEE2E2"],
+html[data-theme="dark"] [style*="background: #FEE2E2"],
+html[data-theme="dark"] [style*="background:#FEF2F2"],
+html[data-theme="dark"] [style*="background: #FEF2F2"] {
+  background: #450A0A !important;
+}
+
+/* Warning tint backgrounds (#FEF3C7) become dark amber */
+html[data-theme="dark"] [style*="background:#FEF3C7"],
+html[data-theme="dark"] [style*="background: #FEF3C7"] {
+  background: #451A03 !important;
+}
+
+/* Success tint backgrounds (#E6F6EF) become dark green */
+html[data-theme="dark"] [style*="background:#E6F6EF"],
+html[data-theme="dark"] [style*="background: #E6F6EF"] {
+  background: #064E3B !important;
+}
+
+/* Light gray (#F3F4F6) progress bar track */
+html[data-theme="dark"] [style*="background:#F3F4F6"],
+html[data-theme="dark"] [style*="background: #F3F4F6"] {
+  background: #334155 !important;
+}
+
+/* Error text (#B91C1C) becomes lighter red in dark mode */
+html[data-theme="dark"] [style*="color:#B91C1C"],
+html[data-theme="dark"] [style*="color: #B91C1C"] {
+  color: #F87171 !important;
+}
+
+/* Warning text (#B45309) becomes lighter amber in dark mode */
+html[data-theme="dark"] [style*="color:#B45309"],
+html[data-theme="dark"] [style*="color: #B45309"] {
+  color: #FBBF24 !important;
+}
+
+/* Success text (#059669) becomes lighter green in dark mode */
+html[data-theme="dark"] [style*="color:#059669"],
+html[data-theme="dark"] [style*="color: #059669"] {
+  color: #34D399 !important;
+}
+
+/* Light borders become dark slate */
+html[data-theme="dark"] [style*="border:1.5px solid #C8C8C8"],
+html[data-theme="dark"] [style*="border: 1.5px solid #C8C8C8"],
+html[data-theme="dark"] [style*="border:1.5px solid #E8EBF4"],
+html[data-theme="dark"] [style*="border: 1.5px solid #E8EBF4"],
+html[data-theme="dark"] [style*="border:1px solid #E8E8E8"],
+html[data-theme="dark"] [style*="border: 1px solid #E8E8E8"],
+html[data-theme="dark"] [style*="border:1.5px solid #F2F2F2"],
+html[data-theme="dark"] [style*="border:1px solid #F2F2F2"] {
+  border-color: #334155 !important;
+}
+
+/* Light red borders (#FECACA, #FCA5A5) become dark red in dark mode */
+html[data-theme="dark"] [style*="border:1.5px solid #FECACA"],
+html[data-theme="dark"] [style*="border: 1.5px solid #FECACA"],
+html[data-theme="dark"] [style*="border:1.5px solid #FCA5A5"],
+html[data-theme="dark"] [style*="border: 1.5px solid #FCA5A5"] {
+  border-color: #7F1D1D !important;
+}
+
+/* Warning border (#FEF3C7) becomes dark amber */
+html[data-theme="dark"] [style*="border:1.5px solid #FEF3C7"],
+html[data-theme="dark"] [style*="border: 1.5px solid #FEF3C7"] {
+  border-color: #78350F !important;
+}
+
+/* Warning text (#92400E, #92400E) becomes amber */
+html[data-theme="dark"] [style*="color:#92400E"],
+html[data-theme="dark"] [style*="color: #92400E"] {
+  color: #FBBF24 !important;
+}
+
+/* Light border colors via borderColor property */
+html[data-theme="dark"] [style*="borderColor:#C8C8C8"],
+html[data-theme="dark"] [style*="borderColor: #C8C8C8"],
+html[data-theme="dark"] [style*="borderColor:#E8EBF4"],
+html[data-theme="dark"] [style*="borderColor: #E8EBF4"],
+html[data-theme="dark"] [style*="borderColor:#E8E8E8"],
+html[data-theme="dark"] [style*="borderColor: #E8E8E8"] {
+  border-color: #334155 !important;
+}
+
+/* Placeholder text in inputs */
+html[data-theme="dark"] textarea::placeholder,
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] select::placeholder {
+  color: #64748B !important;
+  opacity: 1 !important;
+}
+
+/* Select dropdowns and options render with OS styling — force dark */
+html[data-theme="dark"] select option {
+  background: #1E293B !important;
+  color: #F1F5F9 !important;
+}
+
+/* Inputs, textareas, selects: ensure dark background + light text */
+html[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] select {
+  background-color: #1A2538 !important;
+  color: #F1F5F9 !important;
+  border-color: #334155 !important;
+}
+
+/* ─── Scrollbar styling for dark mode ───────────────────────────────────────── */
+html[data-theme="dark"] ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+html[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: #0F172A;
+}
+html[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* ─── Selection color ───────────────────────────────────────────────────────── */
+html[data-theme="dark"] ::selection {
+  background: rgba(236, 72, 153, 0.3);
+  color: #F1F5F9;
+}

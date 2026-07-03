@@ -97,10 +97,19 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children, initialTheme }: { children: ReactNode; initialTheme?: ThemeMode }) {
-  const [theme, setThemeState] = useState<ThemeMode>(initialTheme || 'light');
+  const [theme, setThemeState] = useState<ThemeMode>(() => {
+    // Prefer explicit initialTheme (from Supabase profile), fall back to localStorage
+    if (initialTheme) return initialTheme;
+    try {
+      const saved = localStorage.getItem('theme');
+      if (saved === 'dark' || saved === 'light') return saved;
+    } catch { /* ignore */ }
+    return 'light';
+  });
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
+    try { localStorage.setItem('theme', theme); } catch { /* ignore */ }
   }, [theme]);
 
   const setTheme = useCallback((t: ThemeMode) => {

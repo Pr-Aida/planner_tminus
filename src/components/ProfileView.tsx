@@ -364,13 +364,13 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
               </Field>
 
               <Field label="Appearance">
-                <div className="flex rounded-lg overflow-hidden" style={{ border: '1.5px solid #E8EBF4' }}>
+                <div className="flex rounded-lg overflow-hidden" style={{ border: `1.5px solid ${colors.borderLight}` }}>
                   <button
                     onClick={() => { setThemePref('light'); setTheme('light'); }}
                     className="flex-1 py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all"
                     style={{
-                      background: themePref === 'light' ? '#7B1C3E' : '#fff',
-                      color: themePref === 'light' ? '#fff' : '#6B6B6B',
+                      background: themePref === 'light' ? colors.accent : colors.bgInput,
+                      color: themePref === 'light' ? '#fff' : colors.textSecondary,
                       border: 'none', cursor: 'pointer',
                     }}
                   >
@@ -380,8 +380,8 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                     onClick={() => { setThemePref('dark'); setTheme('dark'); }}
                     className="flex-1 py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all"
                     style={{
-                      background: themePref === 'dark' ? '#7B1C3E' : '#fff',
-                      color: themePref === 'dark' ? '#fff' : '#6B6B6B',
+                      background: themePref === 'dark' ? colors.accent : colors.bgInput,
+                      color: themePref === 'dark' ? '#fff' : colors.textSecondary,
                       border: 'none', cursor: 'pointer',
                     }}
                   >
