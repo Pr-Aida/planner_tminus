@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Send, Trash2, Paperclip, Smile, Download, Eye, FileText, ImageIcon, Music, File,
-  Loader2, X, Mic, Square,
+  Loader2, X, Mic, Square, AlertTriangle,
 } from 'lucide-react';
 import {
   fetchChatMessages, sendChatMessage, sendChatMessageWithAttachment, deleteChatMessage,
@@ -50,6 +50,9 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recordedBlobRef = useRef<Blob | null>(null);
+
+  // Delete confirmation state
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const msgs = await fetchChatMessages(roomId);
@@ -143,8 +146,17 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
   }
 
   async function handleDelete(messageId: string) {
-    const result = await deleteChatMessage(messageId);
-    if (!result.ok) {
+    setDeleteConfirmId(messageId);
+  }
+
+  async function confirmDelete() {
+    if (!deleteConfirmId) return;
+    const result = await deleteChatMessage(deleteConfirmId);
+    setDeleteConfirmId(null);
+    if (result.ok) {
+      // Reload messages to reflect the deletion for everyone
+      await load();
+    } else {
       setError(result.error || 'Failed to delete message.');
     }
   }
@@ -164,39 +176,32 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
 
   async function handleDownloadAttachment(msg: ChatMessage) {
     if (!msg.attachment) return;
-    // Try cached URL first, then refresh if expired
-    let downloadUrl = msg.attachment_url;
-    if (!downloadUrl) {
-      downloadUrl = await getAttachmentDownloadUrl(msg.attachment.id);
-    }
-    if (!downloadUrl) {
-      // Fallback: fetch file metadata and get signed URL directly
+
+    setError(null);
+    console.log('[Download] Starting download for attachment:', msg.attachment.id);
+
+    try {
+      // Try to get file metadata from the attachment or fetch it
       const { fetchFileById } = await import('../lib/files');
-      const file = await fetchFileById(msg.attachment.id);
-      if (file) {
-        const result = await downloadFile(file.storage_bucket, file.storage_path, file.original_file_name);
-        if (!result.ok) {
-          setError(result.error || 'Could not download file. Please try again.');
-        }
+      const fileMeta = await fetchFileById(msg.attachment.id);
+
+      if (!fileMeta) {
+        console.error('[Download] Could not fetch file metadata');
+        setError('Could not find file. It may have been deleted.');
         return;
       }
-      setError('Could not download file. Please try again.');
-      return;
-    }
-    // Use the reliable download helper
-    const { fetchFileById } = await import('../lib/files');
-    const fileMeta = await fetchFileById(msg.attachment.id);
-    const fileName = fileMeta?.original_file_name || msg.attachment.original_file_name;
-    const bucket = fileMeta?.storage_bucket || 'room-chat-files';
-    const path = fileMeta?.storage_path || '';
-    if (path) {
-      const result = await downloadFile(bucket, path, fileName);
+
+      console.log('[Download] Got file metadata:', fileMeta.storage_bucket, fileMeta.storage_path);
+
+      // Use the download helper
+      const result = await downloadFile(fileMeta.storage_bucket, fileMeta.storage_path, fileMeta.original_file_name);
+
       if (!result.ok) {
         setError(result.error || 'Could not download file. Please try again.');
       }
-    } else {
-      // Fallback to window open
-      window.open(downloadUrl, '_blank');
+    } catch (err) {
+      console.error('[Download] error:', err);
+      setError('Download failed. Please try again.');
     }
   }
 
@@ -304,15 +309,15 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
       const recorder = mediaRecorderRef.current;
       const stream = streamRef.current;
 
-      if (!recorder || recorder.state === 'inactive') {
+      if (!recorder) {
         if (stream) {
           stream.getTracks().forEach(t => t.stop());
           streamRef.current = null;
         }
         setIsRecording(false);
-        // Return any already-collected chunks
+        // Try to build from existing chunks
         if (audioChunksRef.current.length > 0) {
-          const mimeType = recorder?.mimeType || 'audio/webm';
+          const mimeType = 'audio/webm';
           const blob = new Blob(audioChunksRef.current, { type: mimeType });
           recordedBlobRef.current = blob;
           resolve(blob);
@@ -322,18 +327,43 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         return;
       }
 
+      // Capture the current chunks immediately
+      const currentChunks = [...audioChunksRef.current];
+      const mimeType = recorder.mimeType || 'audio/webm';
+
+      // If recorder is already inactive, resolve with existing chunks
+      if (recorder.state === 'inactive') {
+        if (stream) {
+          stream.getTracks().forEach(t => t.stop());
+          streamRef.current = null;
+        }
+        setIsRecording(false);
+        if (currentChunks.length > 0) {
+          const blob = new Blob(currentChunks, { type: mimeType });
+          recordedBlobRef.current = blob;
+          resolve(blob);
+        } else {
+          resolve(null);
+        }
+        return;
+      }
+
       // Set up one-time handler for the final data
-      const handleStop = () => {
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          currentChunks.push(e.data);
+        }
+      };
+
+      recorder.onstop = () => {
         if (stream) {
           stream.getTracks().forEach(t => t.stop());
           streamRef.current = null;
         }
         setIsRecording(false);
 
-        // Build blob from all collected chunks
-        if (audioChunksRef.current.length > 0) {
-          const mimeType = recorder.mimeType || 'audio/webm';
-          const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        if (currentChunks.length > 0) {
+          const blob = new Blob(currentChunks, { type: mimeType });
           recordedBlobRef.current = blob;
           resolve(blob);
         } else {
@@ -341,13 +371,24 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         }
       };
 
-      recorder.onstop = handleStop;
-
       try {
+        // Request final data then stop
         recorder.stop();
       } catch (err) {
         console.error('[Voice] stop error:', err);
-        handleStop();
+        // Still try to resolve with any chunks we have
+        if (stream) {
+          stream.getTracks().forEach(t => t.stop());
+          streamRef.current = null;
+        }
+        setIsRecording(false);
+        if (currentChunks.length > 0) {
+          const blob = new Blob(currentChunks, { type: mimeType });
+          recordedBlobRef.current = blob;
+          resolve(blob);
+        } else {
+          resolve(null);
+        }
       }
     });
   }
@@ -371,6 +412,8 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     // Stop recording and get the blob
     const blob = await stopRecording();
 
+    console.log('[Voice] Got blob:', blob ? `size=${blob.size}, type=${blob.type}` : 'null');
+
     if (!blob || blob.size === 0) {
       setVoiceError('Recording was empty. Please try again.');
       setRecordingSeconds(0);
@@ -379,10 +422,19 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
       return;
     }
 
-    const mimeType = blob.type || 'audio/webm';
-    const ext = mimeType.includes('webm') ? 'webm' : mimeType.includes('mp4') ? 'm4a' : 'ogg';
+    // Get the MIME type from the blob or recorder
+    let mimeType = blob.type;
+    if (!mimeType || mimeType === '') {
+      mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
+    }
+    console.log('[Voice] Using MIME type:', mimeType);
+
+    // Determine file extension
+    const ext = mimeType.includes('webm') ? 'webm' : mimeType.includes('mp4') || mimeType.includes('m4a') ? 'm4a' : 'ogg';
     const fileName = `voice-${Date.now()}.${ext}`;
     const file = new File([blob], fileName, { type: mimeType });
+
+    console.log('[Voice] Created file:', file.name, file.size, file.type);
 
     // Validate size (5 MB max)
     if (file.size > 5 * 1024 * 1024) {
@@ -400,6 +452,8 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
 
     try {
       const result = await sendChatMessageWithAttachment(roomId, '', file, userId, 'audio');
+
+      console.log('[Voice] Send result:', result);
 
       setSending(false);
       setUploadProgress(false);
@@ -499,10 +553,10 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
                     </div>
                   )}
 
-                  {/* Delete button for owner/admin */}
-                  {!m.is_deleted && isOwnerOrAdmin && (
+                  {/* Delete button - show for message sender OR owner/admin */}
+                  {!m.is_deleted && (isOwn || isOwnerOrAdmin) && (
                     <button
-                      onClick={() => handleDelete(m.id)}
+                      onClick={() => setDeleteConfirmId(m.id)}
                       className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center align-middle"
                       title="Delete message"
                       style={{ color: '#D97706', background: 'none', border: 'none', cursor: 'pointer', padding: '2px' }}
@@ -735,6 +789,47 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation dialog */}
+      {deleteConfirmId && (
+        <div
+          className="fixed inset-0 z-[400] flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.5)' }}
+          onClick={() => setDeleteConfirmId(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl p-5"
+            style={{ background: colors.bgCard }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <AlertTriangle size={20} color={colors.error} style={{ flexShrink: 0, marginTop: 2 }} />
+              <div>
+                <p className="text-sm font-bold mb-1" style={{ color: colors.textPrimary }}>Delete this message?</p>
+                <p className="text-xs" style={{ color: colors.textSecondary }}>
+                  This will remove the message for everyone in this room. If the message has an attachment, the file will also be deleted.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold"
+                style={{ background: colors.bgInput, color: colors.textSecondary, border: 'none', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="flex-1 py-2.5 rounded-lg text-sm font-bold text-white"
+                style={{ background: colors.error, border: 'none', cursor: 'pointer' }}
+              >
+                Delete
+              </button>
             </div>
           </div>
         </div>
