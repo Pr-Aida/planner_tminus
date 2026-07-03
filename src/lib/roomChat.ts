@@ -179,6 +179,9 @@ export async function sendChatMessageWithAttachment(
   const { uploadRoomChatFile } = await import('./files');
   const result = await uploadRoomChatFile(file, userId, roomId, messageId);
   if (!result.ok || !result.file) {
+    // Upload failed — delete the orphaned message row so we don't leave
+    // a broken message with no attachment in the chat.
+    await supabase.from('room_chat_messages').delete().eq('id', messageId);
     return { ok: false, error: result.error || 'File upload failed.' };
   }
 

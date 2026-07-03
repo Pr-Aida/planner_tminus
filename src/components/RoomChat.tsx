@@ -755,7 +755,7 @@ function AttachmentContent({
           className="rounded-lg max-w-full max-h-48 object-cover"
           style={{ display: 'block' }}
         />
-        <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="absolute top-1 right-1">
           <FileMenu fileName={original_file_name} onDownload={onDownload} colors={colors} />
         </div>
       </div>
@@ -769,7 +769,7 @@ function AttachmentContent({
         <div className="flex items-center gap-2 mb-1 rounded-lg p-2 relative group" style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)' }}>
           <Music size={16} color={accent} />
           <span className="text-xs truncate flex-1" style={{ color: 'inherit' }}>{original_file_name}</span>
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+          <div>
             <FileMenu fileName={original_file_name} onDownload={onDownload} colors={colors} />
           </div>
         </div>
@@ -780,7 +780,7 @@ function AttachmentContent({
         <div className="flex items-center gap-2 mb-1">
           <Music size={16} color={accent} />
           <span className="text-xs truncate flex-1" style={{ color: 'inherit' }}>{original_file_name}</span>
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+          <div>
             <FileMenu fileName={original_file_name} onDownload={onDownload} colors={colors} />
           </div>
         </div>
@@ -800,7 +800,7 @@ function AttachmentContent({
         <p className="text-xs font-semibold truncate" style={{ color: 'inherit' }}>{original_file_name}</p>
         <p className="text-[10px]" style={{ color: 'inherit', opacity: 0.7 }}>{formatFileSize(file_size)}</p>
       </div>
-      <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+      <div>
         <FileMenu fileName={original_file_name} onDownload={onDownload} colors={colors} />
       </div>
     </div>
@@ -808,6 +808,8 @@ function AttachmentContent({
 }
 
 // ─── File menu (three-dot) ─────────────────────────────────────────────────────
+const BURGUNDY = '#800020';
+
 function FileMenu({
   fileName, onDownload, colors,
 }: {
@@ -821,17 +823,18 @@ function FileMenu({
     <div className="relative">
       <button
         onClick={(e) => { e.stopPropagation(); setOpen(v => !v); }}
-        className="p-1 rounded transition-colors"
-        style={{ background: open ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer' }}
-        title="Menu"
+        className="p-1 rounded transition-colors flex items-center justify-center"
+        style={{ background: open ? 'rgba(128,0,32,0.15)' : 'transparent', border: 'none', cursor: 'pointer' }}
+        title="Download"
+        aria-label="File menu"
       >
-        <MoreVertical size={14} color="inherit" />
+        <MoreVertical size={16} color={BURGUNDY} strokeWidth={2.5} />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-[10]" onClick={() => setOpen(false)} />
           <div
-            className="absolute right-0 top-full mt-1 z-[20] rounded-lg shadow-lg py-1 min-w-[120px]"
+            className="absolute right-0 top-full mt-1 z-[20] rounded-lg shadow-lg py-1 min-w-[130px]"
             style={{ background: colors.bgCard, border: `1px solid ${colors.borderLight}` }}
             onClick={e => e.stopPropagation()}
           >
@@ -840,7 +843,7 @@ function FileMenu({
               className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-left hover:opacity-80 transition-colors"
               style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: colors.textPrimary }}
             >
-              <Download size={14} />
+              <Download size={14} color={BURGUNDY} />
               Download
             </button>
           </div>

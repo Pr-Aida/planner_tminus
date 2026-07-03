@@ -239,13 +239,19 @@ export async function uploadRoomChatFile(
   const bucket = 'room-chat-files';
   const storagePath = buildStoragePath('room_chat', userId, roomId, messageId, fileId, file.name);
 
+  // Strip codec parameters from the content type for storage upload
+  // (e.g. "audio/webm;codecs=opus" -> "audio/webm") — Supabase Storage
+  // rejects content types with parameters in some configurations.
+  const baseMime = file.type.split(';')[0].trim() || 'application/octet-stream';
+
   // Upload to storage first
   const { error: upErr } = await supabase.storage
     .from(bucket)
-    .upload(storagePath, file, { contentType: file.type });
+    .upload(storagePath, file, { contentType: baseMime });
 
   if (upErr) {
-    return { ok: false, error: 'Upload failed. Please try again.' };
+    console.error('[files] storage upload failed:', upErr);
+    return { ok: false, error: `Upload failed: ${upErr.message}` };
   }
 
   // Insert metadata
@@ -260,7 +266,7 @@ export async function uploadRoomChatFile(
       storage_path: storagePath,
       original_file_name: file.name.slice(0, 200),
       file_type: validation.type,
-      mime_type: file.type,
+      mime_type: baseMime,
       file_size: file.size,
       upload_context: 'room_chat',
     })
@@ -269,8 +275,9 @@ export async function uploadRoomChatFile(
 
   if (dbErr || !data) {
     // DB failed — clean up orphaned storage file
+    console.error('[files] metadata insert failed:', dbErr);
     await supabase.storage.from(bucket).remove([storagePath]);
-    return { ok: false, error: 'Could not save file metadata. Please try again.' };
+    return { ok: false, error: `Could not save file metadata: ${dbErr?.message || 'Unknown error'}` };
   }
 
   return { ok: true, file: data as unknown as UploadedFile };
