@@ -227,6 +227,128 @@ export async function deleteChatMessage(messageId: string): Promise<{ ok: boolea
   return { ok: true };
 }
 
+// ─── Read receipts (persistent unread tracking) ──────────────────────────────
+
+/**
+ * Mark all messages in a room as read by updating (or creating) the user's
+ * read receipt to the current time. Called when the user opens the Chat tab.
+ */
+export async function markRoomChatRead(roomId: string): Promise<void> {
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from('room_chat_read_receipts')
+    .upsert(
+      { room_id: roomId, user_id: undefined as never, last_read_at: now, updated_at: now },
+      { onConflict: 'room_id,user_id' },
+    );
+
+  // user_id has DEFAULT auth.uid() so we omit it; upsert needs the column though.
+  // If the above fails due to the undefined, try a manual insert-or-update.
+  if (error) {
+    // Try insert first
+    const { error: insErr } = await supabase
+      .from('room_chat_read_receipts')
+      .insert({ room_id: roomId, last_read_at: now, updated_at: now });
+    if (insErr) {
+      // Row exists — update it
+      await supabase
+        .from('room_chat_read_receipts')
+        .update({ last_read_at: now, updated_at: now })
+        .eq('room_id', roomId);
+    }
+  }
+}
+
+/**
+ * Get the number of unread chat messages for a user in a room.
+ * Counts messages from other users with created_at > last_read_at.
+ * If no read receipt exists, all messages from other users are unread.
+ */
+export async function getUnreadCount(roomId: string, userId: string): Promise<number> {
+  // Fetch the user's read receipt
+  const { data: receipt } = await supabase
+    .from('room_chat_read_receipts')
+    .select('last_read_at')
+    .eq('room_id', roomId)
+    .maybeSingle();
+
+  const lastReadAt = (receipt as unknown as { last_read_at: string } | null)?.last_read_at;
+
+  // Count messages from other users newer than last_read_at (and not deleted)
+  let query = supabase
+    .from('room_chat_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('room_id', roomId)
+    .neq('user_id', userId)
+    .eq('is_deleted', false);
+
+  if (lastReadAt) {
+    query = query.gt('created_at', lastReadAt);
+  }
+
+  const { count, error } = await query;
+
+  if (error) {
+    console.error('[Chat] unread count failed:', error);
+    return 0;
+  }
+
+  return count || 0;
+}
+
+/**
+ * Subscribe to chat message changes and read receipt changes for a room.
+ * Calls onUnreadChange whenever messages or receipts change so the caller
+ * can re-fetch the unread count.
+ */
+export function subscribeToChatUnread(
+  roomId: string,
+  userId: string,
+  onUnreadChange: () => void,
+): { unsubscribe: () => void } {
+  const channel = supabase
+    .channel(`chat_unread:${roomId}:${userId}`)
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'room_chat_messages',
+      filter: `room_id=eq.${roomId}`,
+    }, () => { onUnreadChange(); })
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'room_chat_read_receipts',
+      filter: `room_id=eq.${roomId}`,
+    }, () => { onUnreadChange(); })
+    .subscribe();
+
+  return {
+    unsubscribe: () => {
+      supabase.removeChannel(channel);
+    },
+  };
+}
+
+/**
+ * Get a fresh signed download URL for a chat attachment.
+ * Used when the cached attachment_url has expired (5-min TTL).
+ * Does NOT create a duplicate file — just generates a temporary URL.
+ */
+export async function refreshAttachmentUrl(attachmentId: string): Promise<string | null> {
+  const file = await fetchFileById(attachmentId);
+  if (!file) return null;
+  return getSignedUrl(file.storage_bucket, file.storage_path);
+}
+
+/**
+ * Get a fresh signed download URL with download=true (forces browser download).
+ */
+export async function getAttachmentDownloadUrl(attachmentId: string): Promise<string | null> {
+  const file = await fetchFileById(attachmentId);
+  if (!file) return null;
+  return getSignedUrl(file.storage_bucket, file.storage_path, true);
+}
+
 export function subscribeToChat(
   roomId: string,
   onNewMessage: () => void

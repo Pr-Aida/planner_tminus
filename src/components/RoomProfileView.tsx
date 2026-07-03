@@ -19,6 +19,7 @@ import {
 } from '../lib/studyRooms';
 import { supabase } from '../lib/supabase';
 import { useTheme, type ThemeColors } from '../lib/theme';
+import { getUnreadCount, subscribeToChatUnread, markRoomChatRead } from '../lib/roomChat';
 
 // Resolve a room's theme color for the current mode. In dark mode, dark navy
 // theme colors (like the default #1B2A4A) are nearly invisible on dark cards,
@@ -144,33 +145,30 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
       }, () => { load(); })
       .subscribe();
 
-    // Chat messages channel — track unread when not viewing Chat tab
-    const chatChannel = supabase.channel(`room_chat_unread:${roomId}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'room_chat_messages',
-        filter: `room_id=eq.${roomId}`,
-      }, (payload) => {
-        const newRow = payload.new as { user_id: string };
-        if (newRow.user_id !== userId && tab !== 'chat') {
-          setUnreadChat(c => c + 1);
-        }
-      })
-      .subscribe();
+    // Persistent unread count — fetch on mount and subscribe to changes
+    const refreshUnread = () => {
+      if (tab !== 'chat') {
+        getUnreadCount(roomId, userId).then(n => setUnreadChat(n));
+      }
+    };
+    refreshUnread();
+    const unreadSub = subscribeToChatUnread(roomId, userId, refreshUnread);
 
     return () => {
       supabase.removeChannel(membersChannel);
       supabase.removeChannel(sessionsChannel);
       supabase.removeChannel(requestsChannel);
-      supabase.removeChannel(chatChannel);
+      unreadSub.unsubscribe();
     };
-  }, [roomId, load, userId]);
+  }, [roomId, load, userId, tab]);
 
-  // Clear unread when opening Chat tab
+  // Clear unread when opening Chat tab — update read receipt persistently
   useEffect(() => {
-    if (tab === 'chat') setUnreadChat(0);
-  }, [tab]);
+    if (tab === 'chat') {
+      setUnreadChat(0);
+      markRoomChatRead(roomId);
+    }
+  }, [tab, roomId]);
 
   // Loading state
   if (loading) {

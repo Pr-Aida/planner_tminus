@@ -363,6 +363,37 @@ export async function deleteRoomFiles(roomId: string): Promise<void> {
   }
 }
 
+// ─── Download helper (triggers browser download, no duplication) ──────────────
+/**
+ * Triggers a browser download of a file via a temporary signed URL.
+ * Creates a hidden <a> element with the download attribute and clicks it.
+ * Does NOT create a duplicate file in Storage or the database — it only
+ * generates a temporary signed URL and lets the browser save the file locally.
+ */
+export async function downloadFile(
+  bucket: string,
+  path: string,
+  fileName: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const url = await getSignedUrl(bucket, path, true);
+  if (!url) {
+    return { ok: false, error: 'Could not generate download link. Please try again.' };
+  }
+
+  // Use a hidden anchor element with download attribute for reliable cross-browser download
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.rel = 'noopener';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  // Clean up after a short delay
+  setTimeout(() => { document.body.removeChild(a); }, 1000);
+
+  return { ok: true };
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
