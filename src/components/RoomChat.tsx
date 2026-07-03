@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Send, Trash2, Paperclip, Smile, Download, Eye, FileText, ImageIcon, Music, File,
-  Loader2, X, Mic, Square, AlertTriangle,
+  Send, Trash2, Paperclip, Smile, Download, FileText, ImageIcon, Music, File,
+  Loader2, X, Mic, Square, AlertTriangle, MoreVertical,
 } from 'lucide-react';
 import {
   fetchChatMessages, sendChatMessage, sendChatMessageWithAttachment, deleteChatMessage,
   subscribeToChat, markRoomChatRead,
-  refreshAttachmentUrl, getAttachmentDownloadUrl,
   type ChatMessage, type MessageType,
 } from '../lib/roomChat';
 import {
@@ -37,7 +36,6 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingFileType, setPendingFileType] = useState<FileType | null>(null);
   const [uploadProgress, setUploadProgress] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<{ url: string; name: string; type: FileType } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -45,6 +43,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [readyToSend, setReadyToSend] = useState(false); // Show Send bar after recording stops
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -159,19 +158,6 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     } else {
       setError(result.error || 'Failed to delete message.');
     }
-  }
-
-  async function handlePreviewAttachment(url: string | null, name: string, type: FileType, attachmentId?: string) {
-    let useUrl = url;
-    if (!useUrl && attachmentId) {
-      // Signed URL expired — refresh it
-      useUrl = await refreshAttachmentUrl(attachmentId);
-    }
-    if (!useUrl) {
-      setError('Preview not available. You can download this file.');
-      return;
-    }
-    setPreviewUrl({ url: useUrl, name, type });
   }
 
   async function handleDownloadAttachment(msg: ChatMessage) {
@@ -302,95 +288,84 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     }, 1000);
   }
 
-  function stopRecording(): Promise<Blob | null> {
-    return new Promise((resolve) => {
-      stopRecordingTimer();
+  function stopRecording() {
+    stopRecordingTimer();
 
-      const recorder = mediaRecorderRef.current;
-      const stream = streamRef.current;
+    const recorder = mediaRecorderRef.current;
+    const stream = streamRef.current;
 
-      if (!recorder) {
-        if (stream) {
-          stream.getTracks().forEach(t => t.stop());
-          streamRef.current = null;
-        }
-        setIsRecording(false);
-        // Try to build from existing chunks
-        if (audioChunksRef.current.length > 0) {
-          const mimeType = 'audio/webm';
-          const blob = new Blob(audioChunksRef.current, { type: mimeType });
-          recordedBlobRef.current = blob;
-          resolve(blob);
-        } else {
-          resolve(null);
-        }
-        return;
+    if (!recorder) {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
       }
-
-      // Capture the current chunks immediately
-      const currentChunks = [...audioChunksRef.current];
-      const mimeType = recorder.mimeType || 'audio/webm';
-
-      // If recorder is already inactive, resolve with existing chunks
-      if (recorder.state === 'inactive') {
-        if (stream) {
-          stream.getTracks().forEach(t => t.stop());
-          streamRef.current = null;
-        }
-        setIsRecording(false);
-        if (currentChunks.length > 0) {
-          const blob = new Blob(currentChunks, { type: mimeType });
-          recordedBlobRef.current = blob;
-          resolve(blob);
-        } else {
-          resolve(null);
-        }
-        return;
+      // Try to build from existing chunks
+      if (audioChunksRef.current.length > 0) {
+        const mimeType = 'audio/webm';
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        recordedBlobRef.current = blob;
+        setReadyToSend(true);
       }
+      setIsRecording(false);
+      return;
+    }
 
-      // Set up one-time handler for the final data
-      recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) {
-          currentChunks.push(e.data);
-        }
-      };
+    // Capture the current chunks immediately
+    const currentChunks = [...audioChunksRef.current];
+    const mimeType = recorder.mimeType || 'audio/webm';
 
-      recorder.onstop = () => {
-        if (stream) {
-          stream.getTracks().forEach(t => t.stop());
-          streamRef.current = null;
-        }
-        setIsRecording(false);
-
-        if (currentChunks.length > 0) {
-          const blob = new Blob(currentChunks, { type: mimeType });
-          recordedBlobRef.current = blob;
-          resolve(blob);
-        } else {
-          resolve(null);
-        }
-      };
-
-      try {
-        // Request final data then stop
-        recorder.stop();
-      } catch (err) {
-        console.error('[Voice] stop error:', err);
-        // Still try to resolve with any chunks we have
-        if (stream) {
-          stream.getTracks().forEach(t => t.stop());
-          streamRef.current = null;
-        }
-        setIsRecording(false);
-        if (currentChunks.length > 0) {
-          const blob = new Blob(currentChunks, { type: mimeType });
-          recordedBlobRef.current = blob;
-          resolve(blob);
-        } else {
-          resolve(null);
-        }
+    // If recorder is already inactive, use existing chunks
+    if (recorder.state === 'inactive') {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
       }
-    });
+      setIsRecording(false);
+      if (currentChunks.length > 0) {
+        const blob = new Blob(currentChunks, { type: mimeType });
+        recordedBlobRef.current = blob;
+        setReadyToSend(true);
+      }
+      return;
+    }
+
+    // Set up one-time handler for the final data
+    recorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) {
+        currentChunks.push(e.data);
+      }
+    };
+
+    recorder.onstop = () => {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      }
+      setIsRecording(false);
+
+      if (currentChunks.length > 0) {
+        const blob = new Blob(currentChunks, { type: mimeType });
+        recordedBlobRef.current = blob;
+        setReadyToSend(true);
+      }
+    };
+
+    try {
+      // Request final data then stop
+      recorder.stop();
+    } catch (err) {
+      console.error('[Voice] stop error:', err);
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      }
+      setIsRecording(false);
+      if (currentChunks.length > 0) {
+        const blob = new Blob(currentChunks, { type: mimeType });
+        recordedBlobRef.current = blob;
+        setReadyToSend(true);
+      }
+    }
   }
 
   function cancelRecording() {
@@ -403,20 +378,22 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
       streamRef.current = null;
     }
     setIsRecording(false);
+    setReadyToSend(false);
     audioChunksRef.current = [];
     recordedBlobRef.current = null;
     setRecordingSeconds(0);
   }
 
   async function sendVoiceMessage() {
-    // Stop recording and get the blob
-    const blob = await stopRecording();
+    // Use the already-stopped blob
+    const blob = recordedBlobRef.current;
 
     console.log('[Voice] Got blob:', blob ? `size=${blob.size}, type=${blob.type}` : 'null');
 
     if (!blob || blob.size === 0) {
       setVoiceError('Recording was empty. Please try again.');
       setRecordingSeconds(0);
+      setReadyToSend(false);
       audioChunksRef.current = [];
       recordedBlobRef.current = null;
       return;
@@ -440,6 +417,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     if (file.size > 5 * 1024 * 1024) {
       setVoiceError('Voice message is too large. Please record a shorter message.');
       setRecordingSeconds(0);
+      setReadyToSend(false);
       audioChunksRef.current = [];
       recordedBlobRef.current = null;
       return;
@@ -462,6 +440,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         audioChunksRef.current = [];
         recordedBlobRef.current = null;
         setRecordingSeconds(0);
+        setReadyToSend(false);
         // Reload messages to show the new voice message
         await load();
       } else {
@@ -520,14 +499,6 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
                     </span>
                   </div>
 
-                  {m.is_deleted ? (
-                    <div
-                      className="inline-block rounded-lg px-3 py-1.5 text-sm break-words"
-                      style={{ background: colors.bgSubtle, color: colors.textSecondary, fontStyle: 'italic', textAlign: 'left' }}
-                    >
-                      Message deleted
-                    </div>
-                  ) : (
                     <div
                       className="inline-block rounded-lg px-3 py-1.5 text-sm break-words"
                       style={{
@@ -542,7 +513,6 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
                           msg={m}
                           accent={accent}
                           colors={colors}
-                          onPreview={() => handlePreviewAttachment(m.attachment_url, m.attachment!.original_file_name, m.attachment!.file_type, m.attachment!.id)}
                           onDownload={() => handleDownloadAttachment(m)}
                         />
                       )}
@@ -551,19 +521,18 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
                         <span>{m.message}</span>
                       )}
                     </div>
-                  )}
 
-                  {/* Delete button - show for message sender OR owner/admin */}
-                  {!m.is_deleted && (isOwn || isOwnerOrAdmin) && (
-                    <button
-                      onClick={() => setDeleteConfirmId(m.id)}
-                      className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center align-middle"
-                      title="Delete message"
-                      style={{ color: '#D97706', background: 'none', border: 'none', cursor: 'pointer', padding: '2px' }}
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  )}
+                    {/* Delete button - show for message sender OR owner/admin */}
+                    {(isOwn || isOwnerOrAdmin) && (
+                      <button
+                        onClick={() => setDeleteConfirmId(m.id)}
+                        className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center align-middle"
+                        title="Delete message"
+                        style={{ color: '#D97706', background: 'none', border: 'none', cursor: 'pointer', padding: '2px' }}
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
                 </div>
               </div>
             );
@@ -591,12 +560,31 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
           >
             Cancel
           </button>
+        </div>
+      )}
+
+      {/* Ready to send indicator (after recording stops) */}
+      {readyToSend && !isRecording && (
+        <div className="flex items-center gap-2 px-3 py-2 mb-1 rounded-lg" style={{ background: colors.bgInput, border: `1px solid ${accent}` }}>
+          <Music size={16} color={accent} />
+          <span className="text-xs font-semibold" style={{ color: colors.textPrimary }}>Voice message ready</span>
+          <span className="text-xs font-mono" style={{ color: colors.textSecondary }}>{formatDuration(recordingSeconds)}</span>
+          <div className="flex-1" />
+          <button
+            onClick={cancelRecording}
+            className="px-2 py-1 rounded-lg text-xs font-semibold"
+            style={{ background: colors.bgSubtle, color: colors.textSecondary, border: 'none', cursor: 'pointer' }}
+          >
+            Cancel
+          </button>
           <button
             onClick={sendVoiceMessage}
-            className="px-2 py-1 rounded-lg text-xs font-bold text-white"
-            style={{ background: colors.error, border: 'none', cursor: 'pointer' }}
+            disabled={sending}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold text-white"
+            style={{ background: accent, border: 'none', cursor: sending ? 'not-allowed' : 'pointer', opacity: sending ? 0.6 : 1 }}
           >
-            <Send size={12} className="inline" /> Send
+            {sending ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+            Send
           </button>
         </div>
       )}
@@ -699,101 +687,6 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         </button>
       </div>
 
-      {/* Image/preview modal */}
-      {previewUrl && (
-        <div
-          className="fixed inset-0 z-[400] flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.75)' }}
-          onClick={() => setPreviewUrl(null)}
-        >
-          <div
-            className="relative max-w-3xl w-full max-h-[90vh] rounded-xl overflow-hidden flex flex-col"
-            style={{ background: colors.bgCard }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
-              <p className="text-sm font-bold truncate" style={{ color: colors.textPrimary }}>{previewUrl.name}</p>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={async () => {
-                    // Fetch as blob and download (required for cross-origin URLs)
-                    try {
-                      const response = await fetch(previewUrl.url);
-                      if (response.ok) {
-                        const blob = await response.blob();
-                        const blobUrl = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = blobUrl;
-                        a.download = previewUrl.name;
-                        a.rel = 'noopener';
-                        a.style.display = 'none';
-                        document.body.appendChild(a);
-                        a.click();
-                        setTimeout(() => {
-                          URL.revokeObjectURL(blobUrl);
-                          document.body.removeChild(a);
-                        }, 1000);
-                      }
-                    } catch (err) {
-                      console.error('[Preview] download failed:', err);
-                    }
-                  }}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold"
-                  style={{ background: colors.bgInput, color: colors.textPrimary, border: 'none', cursor: 'pointer' }}
-                >
-                  <Download size={13} /> Download
-                </button>
-                <button onClick={() => setPreviewUrl(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-                  <X size={18} color={colors.textSecondary} />
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-auto flex items-center justify-center p-4" style={{ minHeight: '250px' }}>
-              {previewUrl.type === 'image' ? (
-                <img src={previewUrl.url} alt={previewUrl.name} className="max-w-full max-h-[70vh] rounded-lg" />
-              ) : previewUrl.type === 'pdf' ? (
-                <iframe src={previewUrl.url} title={previewUrl.name} className="w-full" style={{ height: '70vh', border: 'none' }} />
-              ) : previewUrl.type === 'audio' ? (
-                <audio controls src={previewUrl.url} className="w-full" />
-              ) : (
-                <div className="text-center py-12">
-                  <File size={36} color={colors.textTertiary} className="mx-auto mb-3" />
-                  <p className="text-sm mb-3" style={{ color: colors.textSecondary }}>Preview not available. You can download this file.</p>
-                  <button
-                    onClick={async () => {
-                      try {
-                        const response = await fetch(previewUrl.url);
-                        if (response.ok) {
-                          const blob = await response.blob();
-                          const blobUrl = URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = blobUrl;
-                          a.download = previewUrl.name;
-                          a.rel = 'noopener';
-                          a.style.display = 'none';
-                          document.body.appendChild(a);
-                          a.click();
-                          setTimeout(() => {
-                            URL.revokeObjectURL(blobUrl);
-                            document.body.removeChild(a);
-                          }, 1000);
-                        }
-                      } catch (err) {
-                        console.error('[Preview] download failed:', err);
-                      }
-                    }}
-                    className="inline-flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-bold text-white"
-                    style={{ background: colors.accent, border: 'none', cursor: 'pointer' }}
-                  >
-                    <Download size={14} /> Download
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Delete confirmation dialog */}
       {deleteConfirmId && (
         <div
@@ -840,88 +733,119 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
 
 // ─── Attachment content renderer ──────────────────────────────────────────────
 function AttachmentContent({
-  msg, accent, colors, onPreview, onDownload,
+  msg, accent, colors, onDownload,
 }: {
   msg: ChatMessage;
   accent: string;
   colors: ReturnType<typeof useTheme>['colors'];
-  onPreview: () => void;
   onDownload: () => void;
 }) {
   if (!msg.attachment) return null;
   const { file_type, original_file_name, file_size } = msg.attachment;
 
-  // Image: inline preview
-  if (file_type === 'image' && msg.attachment_url) {
+  const urlExpired = !msg.attachment_url;
+
+  // Image: inline display with three-dot menu
+  if (file_type === 'image' && !urlExpired) {
     return (
-      <div className="mb-1">
+      <div className="mb-1 relative group">
         <img
           src={msg.attachment_url}
           alt={original_file_name}
-          className="rounded-lg max-w-full max-h-48 object-cover cursor-pointer"
-          onClick={onPreview}
+          className="rounded-lg max-w-full max-h-48 object-cover"
           style={{ display: 'block' }}
         />
+        <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <FileMenu fileName={original_file_name} onDownload={onDownload} colors={colors} />
+        </div>
       </div>
     );
   }
 
-  // If URL expired, show a reload prompt via onPreview/onDownload which will refresh
-  const urlExpired = !msg.attachment_url;
-
-  // Audio: inline player
+  // Audio: inline player with three-dot menu
   if (file_type === 'audio') {
     if (urlExpired) {
       return (
-        <div className="flex items-center gap-2 mb-1 rounded-lg p-2" style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)' }}>
-          <Music size={20} color={accent} />
+        <div className="flex items-center gap-2 mb-1 rounded-lg p-2 relative group" style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)' }}>
+          <Music size={16} color={accent} />
           <span className="text-xs truncate flex-1" style={{ color: 'inherit' }}>{original_file_name}</span>
-          <button onClick={onDownload} className="p-1 rounded flex-shrink-0" style={{ background: 'transparent', border: 'none', cursor: 'pointer' }} title="Play/Download">
-            <Download size={15} color="inherit" />
-          </button>
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+            <FileMenu fileName={original_file_name} onDownload={onDownload} colors={colors} />
+          </div>
         </div>
       );
     }
     return (
-      <div className="mb-1">
+      <div className="mb-1 relative group">
         <div className="flex items-center gap-2 mb-1">
           <Music size={16} color={accent} />
-          <span className="text-xs truncate" style={{ color: 'inherit' }}>{original_file_name}</span>
+          <span className="text-xs truncate flex-1" style={{ color: 'inherit' }}>{original_file_name}</span>
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+            <FileMenu fileName={original_file_name} onDownload={onDownload} colors={colors} />
+          </div>
         </div>
         <audio controls src={msg.attachment_url} className="w-full" style={{ height: '32px' }} />
       </div>
     );
   }
 
-  // PDF / generic file: file card
+  // PDF / generic file: file card with three-dot menu
   return (
     <div
-      className="flex items-center gap-2 mb-1 rounded-lg p-2"
+      className="flex items-center gap-2 mb-1 rounded-lg p-2 relative group"
       style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)' }}
     >
-      {file_type === 'pdf' ? <FileText size={20} color={accent} /> : <File size={20} color={accent} />}
+      {file_type === 'pdf' ? <FileText size={18} color={accent} /> : <File size={18} color={accent} />}
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold truncate" style={{ color: 'inherit' }}>{original_file_name}</p>
         <p className="text-[10px]" style={{ color: 'inherit', opacity: 0.7 }}>{formatFileSize(file_size)}</p>
       </div>
-      {file_type === 'pdf' && (
-        <button
-          onClick={onPreview}
-          className="p-1 rounded transition-colors flex-shrink-0"
-          style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
-          title="Open"
-        >
-          <Eye size={15} color="inherit" />
-        </button>
-      )}
+      <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+        <FileMenu fileName={original_file_name} onDownload={onDownload} colors={colors} />
+      </div>
+    </div>
+  );
+}
+
+// ─── File menu (three-dot) ─────────────────────────────────────────────────────
+function FileMenu({
+  fileName, onDownload, colors,
+}: {
+  fileName: string;
+  onDownload: () => void;
+  colors: ReturnType<typeof useTheme>['colors'];
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative">
       <button
-        onClick={onDownload}
-        className="p-1 rounded transition-colors flex-shrink-0"
-        style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
-        title="Download"
+        onClick={(e) => { e.stopPropagation(); setOpen(v => !v); }}
+        className="p-1 rounded transition-colors"
+        style={{ background: open ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer' }}
+        title="Menu"
       >
-        <Download size={15} color="inherit" />
+        <MoreVertical size={14} color="inherit" />
       </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-[10]" onClick={() => setOpen(false)} />
+          <div
+            className="absolute right-0 top-full mt-1 z-[20] rounded-lg shadow-lg py-1 min-w-[120px]"
+            style={{ background: colors.bgCard, border: `1px solid ${colors.borderLight}` }}
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              onClick={() => { setOpen(false); onDownload(); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-left hover:opacity-80 transition-colors"
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: colors.textPrimary }}
+            >
+              <Download size={14} />
+              Download
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

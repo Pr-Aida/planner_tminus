@@ -53,6 +53,7 @@ export async function fetchChatMessages(roomId: string): Promise<ChatMessage[]> 
     .from('room_chat_messages')
     .select('*')
     .eq('room_id', roomId)
+    .eq('is_deleted', false)
     .order('created_at', { ascending: true })
     .limit(200);
 
