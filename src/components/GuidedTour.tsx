@@ -6,7 +6,7 @@ import { useTheme } from '../lib/theme';
 // Bump APP_VERSION and add a new entry to WHATS_NEW_UPDATES whenever you ship
 // a meaningful change. Users whose last_seen_version is older than APP_VERSION
 // will automatically see the What's New tour on next login.
-export const APP_VERSION = '1.6';
+export const APP_VERSION = '1.7';
 
 export interface WhatsNewUpdate {
   version: string;
@@ -83,6 +83,19 @@ export const WHATS_NEW_UPDATES: WhatsNewUpdate[] = [
         target: 'tour-study-rooms',
         title: "New: Study Room Chat Attachments",
         body: "You can now share images, PDFs, files, and emojis inside Study Room chat. Files can be downloaded securely by approved room members only.",
+        badge: 'New',
+      },
+    ],
+  },
+  {
+    version: '1.7',
+    title: 'Feedback & Support',
+    summary: "You can now send feedback, bug reports, and suggestions directly from your Profile, and replies will appear inside the app.",
+    steps: [
+      {
+        target: 'tour-profile',
+        title: "New: Feedback & Support",
+        body: "You can now send feedback, bug reports, and suggestions directly from your Profile, and replies will appear inside the app.",
         badge: 'New',
       },
     ],

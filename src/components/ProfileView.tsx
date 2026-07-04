@@ -5,6 +5,7 @@ import { updateOwnUsername, validateUsername } from '../lib/auth';
 import { useTheme, type ThemeMode } from '../lib/theme';
 import type { UserProfile, CalendarMode } from '../types';
 import { TIMEZONES } from '../types';
+import FeedbackSection from './FeedbackSection';
 
 interface Props {
   profile: UserProfile;
@@ -16,7 +17,7 @@ interface Props {
   userId?: string | null;
 }
 
-type Tab = 'profile' | 'preferences';
+type Tab = 'profile' | 'preferences' | 'feedback';
 
 export default function ProfileView({ profile, onClose, onSaved, onAccountDeleted, onRestartTour, onOpenWhatsNew, userId }: Props) {
   const [tab, setTab] = useState<Tab>('profile');
@@ -198,6 +199,7 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
         <div className="flex px-6 pt-4 gap-1">
           <TabBtn active={tab === 'profile'} onClick={() => setTab('profile')}>Profile</TabBtn>
           <TabBtn active={tab === 'preferences'} onClick={() => setTab('preferences')}>Preferences</TabBtn>
+          <TabBtn active={tab === 'feedback'} onClick={() => setTab('feedback')}>Feedback</TabBtn>
         </div>
 
         {/* Body */}
@@ -480,6 +482,12 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {tab === 'feedback' && (
+            <div className="space-y-5">
+              <FeedbackSection pageRoute={window.location.pathname + window.location.hash} />
             </div>
           )}
 
