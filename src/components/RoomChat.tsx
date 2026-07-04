@@ -667,8 +667,8 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
                       {m.attachment && m.message_type !== 'text' && (
                         <AttachmentContent
                           msg={m}
-                          accent={accent}
                           colors={colors}
+                          bubbleBg={isOwn ? accent : colors.bgSubtle}
                           onDownload={() => handleDownloadAttachment(m)}
                         />
                       )}
@@ -941,17 +941,20 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
 
 // ─── Attachment content renderer ──────────────────────────────────────────────
 function AttachmentContent({
-  msg, accent, colors, onDownload,
+  msg, colors, onDownload, bubbleBg,
 }: {
   msg: ChatMessage;
-  accent: string;
   colors: ReturnType<typeof useTheme>['colors'];
   onDownload: () => void;
+  bubbleBg: string;
 }) {
   if (!msg.attachment) return null;
   const { file_type, original_file_name, file_size } = msg.attachment;
 
   const urlExpired = !msg.attachment_url;
+  // High-contrast color for small icons/details inside the colored bubble:
+  // navy details on a burgundy/pink bubble, burgundy on a navy/light bubble.
+  const detail = detailColorForBubble(bubbleBg);
 
   // Image: inline display with three-dot menu
   if (file_type === 'image' && !urlExpired) {
@@ -964,7 +967,7 @@ function AttachmentContent({
           style={{ display: 'block' }}
         />
         <div className="absolute top-1 right-1">
-          <FileMenu fileName={original_file_name} onDownload={onDownload} colors={colors} />
+          <FileMenu fileName={original_file_name} onDownload={onDownload} colors={colors} iconColor={detail} />
         </div>
       </div>
     );
@@ -975,10 +978,10 @@ function AttachmentContent({
     if (urlExpired) {
       return (
         <div className="flex items-center gap-2 mb-1 rounded-lg p-2 relative group" style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)' }}>
-          <Music size={16} color={accent} />
+          <Music size={16} color={detail} />
           <span className="text-xs truncate flex-1" style={{ color: 'inherit' }}>Voice message</span>
           <div>
-            <FileMenu fileName={original_file_name} onDownload={onDownload} colors={colors} />
+            <FileMenu fileName={original_file_name} onDownload={onDownload} colors={colors} iconColor={detail} />
           </div>
         </div>
       );
@@ -986,10 +989,10 @@ function AttachmentContent({
     return (
       <div className="mb-1 relative group">
         <div className="flex items-center gap-2 mb-1">
-          <Music size={16} color={accent} />
+          <Music size={16} color={detail} />
           <span className="text-xs truncate flex-1" style={{ color: 'inherit' }}>Voice message</span>
           <div>
-            <FileMenu fileName={original_file_name} onDownload={onDownload} colors={colors} />
+            <FileMenu fileName={original_file_name} onDownload={onDownload} colors={colors} iconColor={detail} />
           </div>
         </div>
         <audio controls src={msg.attachment_url} className="w-full" style={{ height: '32px' }} />
@@ -1003,13 +1006,13 @@ function AttachmentContent({
       className="flex items-center gap-2 mb-1 rounded-lg p-2 relative group"
       style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)' }}
     >
-      {file_type === 'pdf' ? <FileText size={18} color={accent} /> : <FileIcon size={18} color={accent} />}
+      {file_type === 'pdf' ? <FileText size={18} color={detail} /> : <FileIcon size={18} color={detail} />}
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold truncate" style={{ color: 'inherit' }}>{original_file_name}</p>
         <p className="text-[10px]" style={{ color: 'inherit', opacity: 0.7 }}>{formatFileSize(file_size)}</p>
       </div>
       <div>
-        <FileMenu fileName={original_file_name} onDownload={onDownload} colors={colors} />
+        <FileMenu fileName={original_file_name} onDownload={onDownload} colors={colors} iconColor={detail} />
       </div>
     </div>
   );
@@ -1017,13 +1020,27 @@ function AttachmentContent({
 
 // ─── File menu (three-dot) ─────────────────────────────────────────────────────
 const BURGUNDY = '#800020';
+const NAVY = '#1B2A4A';
+
+// Decide a high-contrast detail color for icons inside a colored chat bubble.
+// On a navy/dark-blue bubble the burgundy/pink accent reads well; on a
+// burgundy/pink bubble the accent disappears, so we switch to navy instead.
+function detailColorForBubble(bubbleBg: string): string {
+  const hex = bubbleBg.replace('#', '').toLowerCase();
+  if (hex.length < 6) return BURGUNDY;
+  const r = parseInt(hex.slice(0, 2), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  // Warm (red-dominant) backgrounds -> navy details. Cool (blue-dominant) -> burgundy.
+  return r > b + 20 ? NAVY : BURGUNDY;
+}
 
 function FileMenu({
-  fileName, onDownload, colors,
+  fileName, onDownload, colors, iconColor,
 }: {
   fileName: string;
   onDownload: () => void;
   colors: ReturnType<typeof useTheme>['colors'];
+  iconColor: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -1036,7 +1053,7 @@ function FileMenu({
         title="Download"
         aria-label="File menu"
       >
-        <MoreVertical size={16} color={BURGUNDY} strokeWidth={2.5} />
+        <MoreVertical size={16} color={iconColor} strokeWidth={2.5} />
       </button>
       {open && (
         <>
@@ -1051,7 +1068,7 @@ function FileMenu({
               className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-left hover:opacity-80 transition-colors"
               style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: colors.textPrimary }}
             >
-              <Download size={14} color={BURGUNDY} />
+              <Download size={14} color={iconColor} />
               Download
             </button>
           </div>
