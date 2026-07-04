@@ -159,6 +159,7 @@ export default function DailyView({ data, habits, isToday, reminders, onDataChan
       {/* Activities */}
       <ActivitySection
         activities={data.activities}
+        dateKey={dateKey}
         onAdd={handleAddActivity}
         onDelete={handleDeleteActivity}
       />

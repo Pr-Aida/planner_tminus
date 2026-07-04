@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { MessageSquare, Send, Check, AlertTriangle, Loader2, Reply, Shield, MoreVertical, Trash2 } from 'lucide-react';
+import { MessageSquare, Send, Check, AlertTriangle, Loader2, Reply, Shield, MoreVertical, Trash2, User } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../lib/theme';
 
@@ -37,6 +37,8 @@ interface FeedbackItem {
 
 interface AdminFeedbackItem extends FeedbackItem {
   user_id: string | null;
+  username: string | null;
+  display_name: string | null;
   optional_contact_email: string | null;
   page_route: string | null;
 }
@@ -69,10 +71,11 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
   const [replyStatus, setReplyStatus] = useState<'idle' | 'sending' | 'ok' | 'error'>('idle');
   const [replyError, setReplyError] = useState<string | null>(null);
 
-  // User-side delete state
+  // Dismissal state
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [dismissingId, setDismissingId] = useState<string | null>(null);
+  const [confirmDismissId, setConfirmDismissId] = useState<string | null>(null);
+  const [confirmDismissIsAdmin, setConfirmDismissIsAdmin] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const remaining = MAX_LEN - message.length;
@@ -80,17 +83,30 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
 
   const loadItems = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return; // anonymous users don't have a feedback history
+    if (!session) return;
     setLoadingItems(true);
+
+    // Get user's feedback, excluding dismissed ones
+    const { data: dismissals } = await supabase
+      .from('feedback_dismissals')
+      .select('feedback_id')
+      .eq('user_id', session.user.id);
+
+    const dismissedIds = new Set(dismissals?.map(d => d.feedback_id) || []);
+
     const { data, error: qErr } = await supabase
       .from('feedback')
       .select('id, feedback_type, message, status, admin_reply, admin_reply_created_at, created_at')
       .eq('user_id', session.user.id)
       .order('created_at', { ascending: false })
       .limit(20);
+
     setLoadingItems(false);
     if (qErr) return;
-    if (data) setItems(data as unknown as FeedbackItem[]);
+    if (data) {
+      const filteredData = data.filter(f => !dismissedIds.has(f.id));
+      setItems(filteredData as unknown as FeedbackItem[]);
+    }
   }, []);
 
   const loadAdminItems = useCallback(async () => {
@@ -106,11 +122,10 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
       const list = (body as { items?: AdminFeedbackItem[] }).items;
       if (list) setAdminItems(list);
     } catch {
-      // ignore — admin list is best-effort
+      // ignore
     }
   }, []);
 
-  // Check admin status on mount, then load the appropriate data.
   useEffect(() => {
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -128,19 +143,14 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
     })();
   }, [loadAdminItems]);
 
-  // Load the user's own feedback on mount, and poll for new admin replies.
   useEffect(() => {
     loadItems();
     const interval = setInterval(loadItems, 15000);
     return () => clearInterval(interval);
   }, [loadItems]);
 
-  // Clear all state immediately when the authenticated user changes
-  // (sign-out, sign-in as different user, token refresh with different uid).
-  // This prevents stale feedback from a previous account being visible.
   useEffect(() => {
     let prevUid: string | null = null;
-    // Capture initial uid synchronously to avoid clearing on first mount.
     supabase.auth.getSession().then(({ data: { session } }) => {
       prevUid = session?.user?.id ?? null;
     });
@@ -148,7 +158,6 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       const newUid = session?.user?.id ?? null;
       if (newUid !== prevUid) {
-        // User switched accounts or signed out — clear all stale state immediately.
         prevUid = newUid;
         setItems([]);
         setAdminItems([]);
@@ -158,16 +167,14 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
         setReplyStatus('idle');
         setReplyError(null);
         setMenuOpenFor(null);
-        setConfirmDeleteId(null);
+        setConfirmDismissId(null);
         setStatus(null);
         setError(null);
         setMessage('');
         setContactEmail('');
 
         if (newUid) {
-          // Refetch for the new user.
           loadItems();
-          // Re-check admin status for the new user.
           (async () => {
             const { data: prof } = await supabase
               .from('profiles')
@@ -272,13 +279,13 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
     }
   }
 
-  async function handleDelete(feedbackId: string) {
-    setConfirmDeleteId(null);
+  async function handleDismiss(feedbackId: string, isAdminContext: boolean) {
+    setConfirmDismissId(null);
     setMenuOpenFor(null);
-    setDeletingId(feedbackId);
+    setDismissingId(feedbackId);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-feedback/delete`;
+      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-feedback/dismiss`;
       const res = await fetch(fnUrl, {
         method: 'POST',
         headers: {
@@ -289,41 +296,33 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error((body as { error?: string }).error || 'Could not delete feedback.');
+        throw new Error((body as { error?: string }).error || 'Could not remove feedback.');
       }
-      setItems(prev => prev.filter(i => i.id !== feedbackId));
-    } catch {
-      // If the edge function fails, try direct delete via RLS (owner can delete own).
-      try {
-        await supabase.from('feedback').delete().eq('id', feedbackId);
+      if (isAdminContext) {
+        setAdminItems(prev => prev.filter(i => i.id !== feedbackId));
+      } else {
         setItems(prev => prev.filter(i => i.id !== feedbackId));
+      }
+    } catch {
+      // Fallback: try direct insert into dismissals
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          await supabase.from('feedback_dismissals').upsert({
+            feedback_id: feedbackId,
+            user_id: session.user.id,
+          });
+          if (isAdminContext) {
+            setAdminItems(prev => prev.filter(i => i.id !== feedbackId));
+          } else {
+            setItems(prev => prev.filter(i => i.id !== feedbackId));
+          }
+        }
       } catch {
         // give up silently
       }
     } finally {
-      setDeletingId(null);
-    }
-  }
-
-  async function handleAdminDelete(feedbackId: string) {
-    setDeletingId(feedbackId);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-feedback/delete`;
-      const res = await fetch(fnUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ feedback_id: feedbackId }),
-      });
-      if (!res.ok) throw new Error('Could not delete feedback.');
-      setAdminItems(prev => prev.filter(i => i.id !== feedbackId));
-    } catch {
-      // ignore
-    } finally {
-      setDeletingId(null);
+      setDismissingId(null);
     }
   }
 
@@ -345,6 +344,23 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
     color: colors.textPrimary,
     fontFamily: 'inherit',
   };
+
+  // Helper to display user info for admin
+  function formatUserDisplay(item: AdminFeedbackItem): string {
+    if (item.display_name && item.username) {
+      return `${item.display_name} (@${item.username})`;
+    }
+    if (item.username) {
+      return `@${item.username}`;
+    }
+    if (item.display_name) {
+      return item.display_name;
+    }
+    if (item.user_id) {
+      return `User ${item.user_id.slice(0, 8)}…`;
+    }
+    return 'Anonymous';
+  }
 
   return (
     <div
@@ -435,7 +451,7 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
         {status === 'saved_only' && (
           <div className="rounded-lg px-3 py-2.5 text-xs flex items-start gap-2" style={{ background: colors.warningBg, color: colors.warning }}>
             <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-            <span>Your feedback was saved, but email delivery failed. I will still receive it through the system.</span>
+            <span>Your feedback was saved, but email delivery failed. We will still receive it through the system.</span>
           </div>
         )}
         {error && status === 'error' && (
@@ -475,22 +491,22 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
                           style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: colors.textTertiary }}
                           aria-label="Feedback options"
                         >
-                          {deletingId === item.id ? <Loader2 size={12} className="animate-spin" /> : <MoreVertical size={12} />}
+                          {dismissingId === item.id ? <Loader2 size={12} className="animate-spin" /> : <MoreVertical size={12} />}
                         </button>
                         {menuOpenFor === item.id && (
                           <div
                             className="absolute right-0 top-full mt-1 rounded-lg shadow-lg z-10"
-                            style={{ background: colors.bgCard, border: `1px solid ${colors.border}`, minWidth: '160px' }}
+                            style={{ background: colors.bgCard, border: `1px solid ${colors.border}`, minWidth: '180px' }}
                           >
                             <button
-                              onClick={() => { setMenuOpenFor(null); setConfirmDeleteId(item.id); }}
+                              onClick={() => { setMenuOpenFor(null); setConfirmDismissId(item.id); setConfirmDismissIsAdmin(false); }}
                               className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left rounded-lg transition-colors"
-                              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: colors.error }}
-                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = colors.errorBg; }}
+                              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: colors.textSecondary }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = colors.bgHover; }}
                               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                             >
                               <Trash2 size={12} />
-                              Delete feedback
+                              Remove from my list
                             </button>
                           </div>
                         )}
@@ -503,7 +519,7 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
                       <div className="flex items-center gap-1.5 mb-1">
                         <Reply size={11} color={colors.accent} />
                         <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: colors.accent }}>
-                          Reply
+                          T Minus Support
                         </span>
                         {item.admin_reply_created_at && (
                           <span className="text-[10px] ml-auto" style={{ color: colors.textTertiary }}>
@@ -544,7 +560,7 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
                 >
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: colors.accent }}>
-                      {TYPE_LABEL[item.feedback_type] || item.feedback_type}
+                      {TYPE_LABEL[item.feedback_type as FeedbackType] || item.feedback_type}
                     </span>
                     <div className="flex items-center gap-2">
                       <span
@@ -559,14 +575,60 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
                       <span className="text-[10px]" style={{ color: colors.textTertiary }}>
                         {formatDate(item.created_at)}
                       </span>
+                      <div ref={menuOpenFor === item.id ? menuRef : undefined} style={{ position: 'relative' }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setMenuOpenFor(menuOpenFor === item.id ? null : item.id); }}
+                          className="p-1 rounded transition-colors"
+                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: colors.textTertiary }}
+                          aria-label="Feedback options"
+                        >
+                          {dismissingId === item.id ? <Loader2 size={12} className="animate-spin" /> : <MoreVertical size={12} />}
+                        </button>
+                        {menuOpenFor === item.id && (
+                          <div
+                            className="absolute right-0 top-full mt-1 rounded-lg shadow-lg z-10"
+                            style={{ background: colors.bgCard, border: `1px solid ${colors.border}`, minWidth: '200px' }}
+                            onClick={e => e.stopPropagation()}
+                          >
+                            <button
+                              onClick={() => { setMenuOpenFor(null); setConfirmDismissId(item.id); setConfirmDismissIsAdmin(true); }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left rounded-lg transition-colors"
+                              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: colors.textSecondary }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = colors.bgHover; }}
+                              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                            >
+                              <Trash2 size={12} />
+                              Remove from my admin list
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
-                  <p className="text-xs mb-1.5 whitespace-pre-wrap" style={{ color: colors.textPrimary }}>{item.message}</p>
-                  <div className="text-[10px] space-y-0.5 mb-2" style={{ color: colors.textTertiary }}>
-                    {item.user_id && <div>user: {item.user_id.slice(0, 8)}…</div>}
-                    {item.optional_contact_email && <div>contact: {item.optional_contact_email}</div>}
-                    {item.page_route && <div>page: {item.page_route}</div>}
+
+                  {/* User info - show display name and username */}
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <User size={10} color={colors.textTertiary} />
+                    <span className="text-[10px] font-semibold" style={{ color: colors.textSecondary }}>
+                      From: {formatUserDisplay(item)}
+                    </span>
                   </div>
+
+                  <p className="text-xs mb-1.5 whitespace-pre-wrap" style={{ color: colors.textPrimary }}>{item.message}</p>
+
+                  {/* Contact info if available */}
+                  <div className="text-[10px] space-y-0.5 mb-2" style={{ color: colors.textTertiary }}>
+                    {item.optional_contact_email && (
+                      <div className="flex items-center gap-1">
+                        <span>Contact:</span>
+                        <a href={`mailto:${item.optional_contact_email}`} className="underline" style={{ color: colors.accent }}>
+                          {item.optional_contact_email}
+                        </a>
+                      </div>
+                    )}
+                    {item.page_route && <div>Page: {item.page_route}</div>}
+                  </div>
+
                   {item.admin_reply && (
                     <div className="rounded-lg p-2 mb-2" style={{ background: colors.bgSubtle, border: `1px solid ${colors.accent}33` }}>
                       <div className="flex items-center gap-1.5 mb-0.5">
@@ -576,6 +638,7 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
                       <p className="text-xs whitespace-pre-wrap" style={{ color: colors.textPrimary }}>{item.admin_reply}</p>
                     </div>
                   )}
+
                   {replyingTo === item.id ? (
                     <div className="space-y-2">
                       <textarea
@@ -586,7 +649,7 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
                         style={{ ...inputStyle, minHeight: '60px' }}
                         placeholder="Write a reply…"
                       />
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <button
                           onClick={() => handleAdminReply(item.id)}
                           disabled={replyStatus === 'sending' || !replyText.trim()}
@@ -602,7 +665,7 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
                         >
                           Cancel
                         </button>
-                        <div className="ml-auto flex gap-1">
+                        <div className="flex gap-1">
                           <button
                             onClick={() => handleAdminReply(item.id, 'reviewed')}
                             className="px-2 py-1 rounded text-[10px] font-semibold"
@@ -632,14 +695,6 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
                       >
                         <Reply size={12} /> {item.admin_reply ? 'Edit reply' : 'Reply'}
                       </button>
-                      <button
-                        onClick={() => handleAdminDelete(item.id)}
-                        disabled={deletingId === item.id}
-                        className="text-xs font-semibold flex items-center gap-1"
-                        style={{ color: colors.error, background: 'transparent', border: 'none', cursor: deletingId === item.id ? 'not-allowed' : 'pointer', opacity: deletingId === item.id ? 0.5 : 1 }}
-                      >
-                        {deletingId === item.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />} Delete
-                      </button>
                     </div>
                   )}
                 </div>
@@ -647,11 +702,13 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
             </div>
           </div>
         )}
-        {confirmDeleteId && (
+
+        {/* Dismissal confirmation modal */}
+        {confirmDismissId && (
           <div
             className="fixed inset-0 flex items-center justify-center z-50"
             style={{ background: 'rgba(0,0,0,0.5)' }}
-            onClick={() => setConfirmDeleteId(null)}
+            onClick={() => setConfirmDismissId(null)}
           >
             <div
               className="rounded-xl p-5 max-w-xs mx-4"
@@ -659,27 +716,27 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
               onClick={e => e.stopPropagation()}
             >
               <div className="flex items-center gap-2 mb-3">
-                <AlertTriangle size={18} style={{ color: colors.error }} />
-                <h3 className="text-sm font-bold" style={{ color: colors.textPrimary }}>Delete feedback?</h3>
+                <AlertTriangle size={18} style={{ color: colors.warning }} />
+                <h3 className="text-sm font-bold" style={{ color: colors.textPrimary }}>Remove from your list?</h3>
               </div>
               <p className="text-xs mb-4" style={{ color: colors.textSecondary }}>
-                Delete this feedback? This cannot be undone.
+                This will hide the feedback from your view. It will not delete it for the {confirmDismissIsAdmin ? 'user who submitted it' : 'admin'}.
               </p>
               <div className="flex gap-2 justify-end">
                 <button
-                  onClick={() => setConfirmDeleteId(null)}
+                  onClick={() => setConfirmDismissId(null)}
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold"
                   style={{ background: colors.bgSubtle, color: colors.textPrimary, border: 'none', cursor: 'pointer' }}
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={() => handleDelete(confirmDeleteId)}
-                  disabled={deletingId === confirmDeleteId}
+                  onClick={() => handleDismiss(confirmDismissId, confirmDismissIsAdmin)}
+                  disabled={dismissingId === confirmDismissId}
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1"
-                  style={{ background: colors.error, color: '#fff', border: 'none', cursor: deletingId === confirmDeleteId ? 'not-allowed' : 'pointer', opacity: deletingId === confirmDeleteId ? 0.5 : 1 }}
+                  style={{ background: colors.warning, color: '#fff', border: 'none', cursor: dismissingId === confirmDismissId ? 'not-allowed' : 'pointer', opacity: dismissingId === confirmDismissId ? 0.5 : 1 }}
                 >
-                  {deletingId === confirmDeleteId ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />} Delete
+                  {dismissingId === confirmDismissId ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />} Remove
                 </button>
               </div>
             </div>

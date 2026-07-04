@@ -16,7 +16,8 @@ const DAILY_LIMIT = 5;
 const typeLabel: Record<string, string> = {
   bug: "Bug Report",
   feature: "Feature Request",
-  question: "Question",
+  design: "Design Feedback",
+  suggestion: "Suggestion",
   other: "Other",
 };
 
@@ -74,6 +75,7 @@ Deno.serve(async (req: Request) => {
     }
     if (req.method === "POST" && action === "reply") return await handleReply(req);
     if (req.method === "GET" && action === "list") return await handleList(req);
+    if (req.method === "POST" && action === "dismiss") return await handleDismiss(req);
     if (req.method === "POST" && action === "delete") return await handleDelete(req);
     if (req.method === "POST" && action === "cleanup") return await handleCleanup(req);
     return json({ error: "Not found." }, 404);
@@ -162,24 +164,75 @@ async function handleSubmit(req: Request) {
     console.log("[feedback-email] RESEND_API_KEY is not set in edge function secrets");
   }
 
+  // Note: Admin in-app notification is created automatically via database trigger
+
   console.log("[feedback-email] result=" + (emailOk ? "sent" : "failed"));
   return json({ ok: true, status: emailOk ? "sent" : "saved_only", id: (inserted as { id: string }).id }, 200);
 }
 
-// ── Admin: list all feedback ──
+// ── Admin: list all feedback with user info ──
 async function handleList(req: Request) {
   const user = await getUser(req);
   if (!user) return json({ error: "Unauthorized." }, 401);
   if (!(await isAdmin(user.id))) return json({ error: "Admin only." }, 403);
 
   const admin = adminClient();
-  const { data, error } = await admin
+
+  // Get all feedback with user profile info (username, display_name)
+  const { data: feedbackItems, error } = await admin
     .from("feedback")
-    .select("id, user_id, feedback_type, message, optional_contact_email, page_route, status, admin_reply, admin_reply_created_at, created_at")
+    .select(`
+      id,
+      user_id,
+      feedback_type,
+      message,
+      optional_contact_email,
+      page_route,
+      status,
+      admin_reply,
+      admin_reply_created_at,
+      created_at
+    `)
     .order("created_at", { ascending: false })
     .limit(100);
+
   if (error) return json({ error: "Could not load feedback." }, 500);
-  return json({ items: data || [] }, 200);
+
+  // Get user profiles for the feedback items
+  const userIds = [...new Set(feedbackItems?.map(f => f.user_id).filter(Boolean) || [])];
+  let profiles: Record<string, { username: string | null; display_name: string | null }> = {};
+
+  if (userIds.length > 0) {
+    const { data: profileData } = await admin
+      .from("profiles")
+      .select("id, username, display_name")
+      .in("id", userIds);
+
+    if (profileData) {
+      for (const p of profileData) {
+        profiles[p.id] = { username: p.username, display_name: p.display_name };
+      }
+    }
+  }
+
+  // Get admin's dismissals
+  const { data: dismissals } = await admin
+    .from("feedback_dismissals")
+    .select("feedback_id")
+    .eq("user_id", user.id);
+
+  const dismissedIds = new Set(dismissals?.map(d => d.feedback_id) || []);
+
+  // Combine feedback with user info, filter out dismissed for this admin
+  const itemsWithUserInfo = feedbackItems
+    ?.filter(f => !dismissedIds.has(f.id))
+    .map(f => ({
+      ...f,
+      username: profiles[f.user_id]?.username || null,
+      display_name: profiles[f.user_id]?.display_name || null,
+    })) || [];
+
+  return json({ items: itemsWithUserInfo }, 200);
 }
 
 // ── Admin: reply to feedback + create in-app notification ──
@@ -212,6 +265,7 @@ async function handleReply(req: Request) {
   if (reply) {
     update.admin_reply = reply;
     update.admin_reply_created_at = new Date().toISOString();
+    update.admin_reply_sender_id = user.id; // Internal tracking, not exposed to users
   }
   if (newStatus) update.status = newStatus;
   else if (reply) update.status = "reviewed";
@@ -227,7 +281,7 @@ async function handleReply(req: Request) {
         user_id: targetUserId,
         feedback_id: feedbackId,
         type: "feedback_reply",
-        message: "You have a new reply to your feedback.",
+        message: "T Minus Support replied to your feedback.",
         read: false,
       });
       console.log("[feedback-reply] notification created for user=" + targetUserId.slice(0, 8) + "...");
@@ -249,8 +303,8 @@ async function handleReply(req: Request) {
               from: FEEDBACK_FROM,
               to: contactEmail,
               subject: `[T Minus] Reply to your feedback`,
-              text: `Hi,\n\nYou received a reply to your feedback:\n\n"${reply}"\n\n— T Minus`,
-              html: `<p>Hi,</p><p>You received a reply to your feedback:</p><blockquote>${reply.replace(/</g, "&lt;")}</blockquote><p>— T Minus</p>`,
+              text: `Hi,\n\nYou received a reply to your feedback:\n\n"${reply}"\n\n— T Minus Support`,
+              html: `<p>Hi,</p><p>You received a reply to your feedback:</p><blockquote>${reply.replace(/</g, "&lt;")}</blockquote><p>— T Minus Support</p>`,
             }),
           });
         } catch {
@@ -263,8 +317,8 @@ async function handleReply(req: Request) {
   return json({ ok: true }, 200);
 }
 
-// ── Delete feedback (user deletes own, or admin deletes any) ──
-async function handleDelete(req: Request) {
+// ── Dismiss feedback from personal view ──
+async function handleDismiss(req: Request) {
   const user = await getUser(req);
   if (!user) return json({ error: "Unauthorized." }, 401);
 
@@ -274,26 +328,45 @@ async function handleDelete(req: Request) {
 
   const admin = adminClient();
 
-  // Fetch the feedback to check ownership.
+  // Verify the feedback exists
   const { data: fb } = await admin
     .from("feedback")
     .select("id, user_id")
     .eq("id", feedbackId)
     .maybeSingle();
+
   if (!fb) return json({ error: "Feedback not found." }, 404);
 
+  const isAdminUser = await isAdmin(user.id);
   const isOwner = (fb as { user_id: string }).user_id === user.id;
-  const adminAccess = await isAdmin(user.id);
-  if (!isOwner && !adminAccess) return json({ error: "Not allowed." }, 403);
 
-  // Delete related feedback notifications first, then the feedback row.
-  await admin.from("feedback_notifications").delete().eq("feedback_id", feedbackId);
-  await admin.from("feedback").delete().eq("id", feedbackId);
+  if (!isOwner && !isAdminUser) {
+    return json({ error: "Not allowed." }, 403);
+  }
+
+  // Create a dismissal for this user
+  const { error: dismissErr } = await admin
+    .from("feedback_dismissals")
+    .upsert({
+      feedback_id: feedbackId,
+      user_id: user.id,
+      dismissed_at: new Date().toISOString(),
+    }, { onConflict: "feedback_id,user_id" });
+
+  if (dismissErr) {
+    return json({ error: "Could not dismiss feedback." }, 500);
+  }
 
   return json({ ok: true }, 200);
 }
 
-// ── Cleanup: delete feedback older than 30 days + related notifications ──
+// ── Delete feedback (legacy - now just calls dismiss) ──
+async function handleDelete(req: Request) {
+  // For backward compatibility, redirect to dismiss
+  return await handleDismiss(req);
+}
+
+// ── Cleanup: delete feedback older than 30 days + related data ──
 async function handleCleanup(req: Request) {
   const user = await getUser(req);
   if (!user) return json({ error: "Unauthorized." }, 401);
@@ -302,15 +375,23 @@ async function handleCleanup(req: Request) {
   const admin = adminClient();
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Get IDs of old feedback to delete their notifications.
+  // Get IDs of old feedback to delete related data
   const { data: old } = await admin
     .from("feedback")
     .select("id")
     .lt("created_at", cutoff);
+
   if (old && old.length > 0) {
     const ids = (old as { id: string }[]).map(r => r.id);
+
+    // Delete dismissals for these feedback items
+    await admin.from("feedback_dismissals").delete().in("feedback_id", ids);
+
+    // Delete notifications for these feedback items
     await admin.from("feedback_notifications").delete().in("feedback_id", ids);
   }
+
+  // Delete old feedback
   await admin.from("feedback").delete().lt("created_at", cutoff);
 
   return json({ ok: true, deleted: old?.length || 0 }, 200);
