@@ -176,6 +176,36 @@ export async function fetchNewChatMessages(roomId: string, sinceIso: string): Pr
 }
 
 /**
+ * Re-fetch specific messages by ID (with attachments resolved).
+ * Used by realtime handlers when a message's attachment_id is updated
+ * after the initial insert — the message already exists in state but
+ * needs its attachment data refreshed.
+ */
+export async function refreshMessagesByIds(roomId: string, messageIds: string[]): Promise<ChatMessage[]> {
+  if (messageIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('room_chat_messages')
+    .select('*')
+    .eq('room_id', roomId)
+    .in('id', messageIds)
+    .eq('is_deleted', false);
+
+  if (error) {
+    console.error('[Chat] refresh by id failed:', error);
+    return [];
+  }
+
+  const rows = (data || []) as unknown as ChatRow[];
+  if (rows.length === 0) return [];
+
+  const profileMap = await getRoomProfileMap(roomId);
+  const messages = rows.map(r => rowToMessage(r, profileMap));
+  await resolveAttachments(messages);
+  return messages;
+}
+
+/**
  * Fetch older messages for pagination (load more history).
  * Returns messages older than the given ISO timestamp, in ascending order.
  */

@@ -4,7 +4,7 @@ import {
   Loader2, X, Mic, Square, AlertTriangle, MoreVertical,
 } from 'lucide-react';
 import {
-  fetchChatMessages, fetchNewChatMessages, sendChatMessage, sendChatMessageWithAttachment, deleteChatMessage,
+  fetchChatMessages, fetchNewChatMessages, refreshMessagesByIds, sendChatMessage, sendChatMessageWithAttachment, deleteChatMessage,
   subscribeToChat, markRoomChatRead, clearChatCache,
   type ChatMessage, type MessageType,
 } from '../lib/roomChat';
@@ -61,27 +61,52 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     setLoading(false);
   }, [roomId]);
 
-  // Incremental refresh: only fetch messages newer than the newest known message.
-  // Avoids refetching the entire history on every realtime event.
+  // Incremental refresh: fetch new messages AND re-fetch messages whose
+  // attachment_id was set after the message was already loaded (e.g. voice
+  // messages where the file upload + attachment link happens after insert).
   const refreshNew = useCallback(async () => {
     setMessages(prev => {
       const newest = prev.length > 0 ? prev[prev.length - 1].created_at : null;
-      // Fire async fetch without blocking render
+      // Collect messages that have an attachment_id but no resolved attachment
+      // data — these need to be re-fetched to get the attachment + signed URL.
+      const pendingAttachmentIds = prev
+        .filter(m => m.attachment_id && !m.attachment)
+        .map(m => m.id);
+
       (async () => {
+        if (!newest && pendingAttachmentIds.length === 0) {
+          // No known messages — full load
+          const all = await fetchChatMessages(roomId);
+          setMessages(all);
+          return;
+        }
+
+        // 1. Fetch new messages (newer than the newest known)
         if (newest) {
           const fresh = await fetchNewChatMessages(roomId, newest);
           if (fresh.length > 0) {
             setMessages(cur => {
-              // Merge: append only messages not already present (dedupe by id)
               const existing = new Set(cur.map(m => m.id));
               const toAdd = fresh.filter(m => !existing.has(m.id));
               return toAdd.length > 0 ? [...cur, ...toAdd] : cur;
             });
           }
-        } else {
-          // No known messages — full load
-          const all = await fetchChatMessages(roomId);
-          setMessages(all);
+        }
+
+        // 2. Re-fetch messages with pending attachments (attachment_id set
+        //    but attachment data not yet resolved). This handles the case
+        //    where a message was inserted, then the file was uploaded and
+        //    the attachment_id was updated — the realtime UPDATE event
+        //    triggers this refresh.
+        if (pendingAttachmentIds.length > 0) {
+          const refreshed = await refreshMessagesByIds(roomId, pendingAttachmentIds);
+          if (refreshed.length > 0) {
+            const refreshMap = new Map(refreshed.map(m => [m.id, m]));
+            setMessages(cur => cur.map(m => {
+              const updated = refreshMap.get(m.id);
+              return updated && updated.attachment ? updated : m;
+            }));
+          }
         }
       })();
       return prev;
@@ -155,6 +180,8 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         setInput('');
         setPendingFile(null);
         setPendingFileType(null);
+        // Trigger a refresh to pick up the new message + attachment.
+        refreshNew();
       } else {
         setError(result.error || 'Failed to send attachment.');
       }
@@ -170,6 +197,8 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
 
     if (result.ok) {
       setInput('');
+      // Realtime will deliver the message, but trigger refresh as a safety net.
+      refreshNew();
     } else {
       setError(result.error || 'Failed to send message.');
     }
@@ -444,7 +473,9 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         recordedBlobRef.current = null;
         setRecordingSeconds(0);
         setReadyToSend(false);
-        // Realtime subscription will deliver the new message — no refetch needed.
+        // Trigger a refresh to pick up the new message + attachment.
+        // Realtime may also fire, but this ensures the sender sees it immediately.
+        refreshNew();
       } else {
         setVoiceError(result.error || 'Failed to send voice message.');
       }
