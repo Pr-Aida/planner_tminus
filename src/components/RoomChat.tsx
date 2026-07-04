@@ -52,6 +52,10 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
   const recordedBlobRef = useRef<Blob | null>(null);
   const cancelRef = useRef(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  // Optimistic local voice bubble shown immediately on Send, while the
+  // upload + attachment link is still in flight. Replaced by the real
+  // server message once it arrives via realtime/refresh.
+  const [sendingVoice, setSendingVoice] = useState<{ url: string; duration: number } | null>(null);
 
   // Delete confirmation state
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -478,6 +482,12 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     setUploadProgress(true);
     setVoiceError(null);
 
+    // Optimistic: show an immediate audio bubble using the local preview URL
+    // so the user sees a voice bubble (not a filename) while upload is in flight.
+    // The real server message replaces it once it arrives via refresh/realtime.
+    const optimisticUrl = previewUrl || URL.createObjectURL(blob);
+    setSendingVoice({ url: optimisticUrl, duration: recordingSeconds });
+
     try {
       const result = await sendChatMessageWithAttachment(roomId, '', file, userId, 'audio');
 
@@ -493,12 +503,19 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         // Trigger a refresh to pick up the new message + attachment.
         // Realtime may also fire, but this ensures the sender sees it immediately.
         refreshNew();
+        // Drop the optimistic bubble once the real message is on its way in.
+        // Slight delay so refresh/realtime has a chance to deliver the real row.
+        setTimeout(() => setSendingVoice(null), 1500);
       } else {
+        setSendingVoice(null);
+        if (optimisticUrl !== previewUrl) URL.revokeObjectURL(optimisticUrl);
         setVoiceError(result.error || 'Failed to send voice message.');
       }
     } catch (err) {
       setSending(false);
       setUploadProgress(false);
+      setSendingVoice(null);
+      if (optimisticUrl !== previewUrl) URL.revokeObjectURL(optimisticUrl);
       const errMsg = err instanceof Error ? err.message : String(err);
       setVoiceError(`Failed to send voice message: ${errMsg}`);
       console.error('[Voice] send error:', err);
@@ -567,8 +584,18 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
                           onDownload={() => handleDownloadAttachment(m)}
                         />
                       )}
-                      {/* Text message (may accompany an attachment) */}
-                      {m.message && (
+                      {/* Audio message whose attachment is still resolving
+                          (insert fired before upload/link completed). Show a
+                          loading audio bubble instead of the raw file name. */}
+                      {m.message_type === 'audio' && !m.attachment && (
+                        <div className="flex items-center gap-2 py-1">
+                          <Loader2 size={14} className="animate-spin" style={{ color: isOwn ? '#FFFFFF' : colors.textSecondary }} />
+                          <span className="text-xs" style={{ color: isOwn ? '#FFFFFF' : colors.textSecondary }}>Voice message…</span>
+                        </div>
+                      )}
+                      {/* Text message — suppressed for audio messages so the
+                          file name / label never shows as plain text. */}
+                      {m.message && m.message_type !== 'audio' && (
                         <span>{m.message}</span>
                       )}
                     </div>
@@ -588,6 +615,29 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
               </div>
             );
           })
+        )}
+        {/* Optimistic voice bubble — shown immediately on Send while the
+            upload/attachment-link is in flight. Replaced by the real server
+            message once it arrives. Rendered as an audio player, never as
+            plain file-name text. */}
+        {sendingVoice && (
+          <div className="flex gap-2 flex-row-reverse">
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5" style={{ background: accent }}>
+              {'M'}
+            </div>
+            <div className="flex-1 min-w-0 max-w-[75%] text-right">
+              <div className="inline-block text-left rounded-2xl px-3 py-2" style={{ background: accent, color: '#FFFFFF' }}>
+                <div className="flex items-center gap-2 mb-1">
+                  <Music size={14} color="#FFFFFF" />
+                  <span className="text-xs font-semibold" style={{ opacity: 0.9 }}>Voice message</span>
+                  <span className="text-xs font-mono" style={{ opacity: 0.75 }}>{formatDuration(sendingVoice.duration)}</span>
+                  <Loader2 size={12} className="animate-spin" color="#FFFFFF" />
+                  <span className="text-[10px]" style={{ opacity: 0.75 }}>Sending…</span>
+                </div>
+                <audio controls src={sendingVoice.url} className="w-full" style={{ height: 32 }} />
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
@@ -824,7 +874,7 @@ function AttachmentContent({
       return (
         <div className="flex items-center gap-2 mb-1 rounded-lg p-2 relative group" style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)' }}>
           <Music size={16} color={accent} />
-          <span className="text-xs truncate flex-1" style={{ color: 'inherit' }}>{original_file_name}</span>
+          <span className="text-xs truncate flex-1" style={{ color: 'inherit' }}>Voice message</span>
           <div>
             <FileMenu fileName={original_file_name} onDownload={onDownload} colors={colors} />
           </div>
@@ -835,7 +885,7 @@ function AttachmentContent({
       <div className="mb-1 relative group">
         <div className="flex items-center gap-2 mb-1">
           <Music size={16} color={accent} />
-          <span className="text-xs truncate flex-1" style={{ color: 'inherit' }}>{original_file_name}</span>
+          <span className="text-xs truncate flex-1" style={{ color: 'inherit' }}>Voice message</span>
           <div>
             <FileMenu fileName={original_file_name} onDownload={onDownload} colors={colors} />
           </div>

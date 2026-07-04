@@ -266,11 +266,15 @@ export async function sendChatMessageWithAttachment(
   messageType: MessageType,
 ): Promise<{ ok: boolean; error?: string }> {
   // 1. Insert the message with the correct message_type
+  // For audio/voice messages, use a clean label instead of the raw file name —
+  // the attachment (audio player) is the real content, and the text only shows
+  // briefly before the attachment_id is linked.
+  const labelText = message.trim() || (messageType === 'audio' ? 'Voice message' : file.name);
   const { data: msgData, error: msgErr } = await supabase
     .from('room_chat_messages')
     .insert({
       room_id: roomId,
-      message: message.trim() || file.name,
+      message: labelText,
       message_type: messageType,
     })
     .select('id')
