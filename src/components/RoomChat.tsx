@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Send, Trash2, Paperclip, Smile, Download, FileText, ImageIcon, Music, File,
+  Send, Trash2, Paperclip, Smile, Download, FileText, ImageIcon, Music, File as FileIcon,
   Loader2, X, Mic, Square, AlertTriangle, MoreVertical,
 } from 'lucide-react';
 import {
@@ -51,6 +51,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
   const streamRef = useRef<MediaStream | null>(null);
   const recordedBlobRef = useRef<Blob | null>(null);
   const cancelRef = useRef(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   // Delete confirmation state
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -143,6 +144,11 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
       }
       audioChunksRef.current = [];
       recordedBlobRef.current = null;
+      // Revoke any leftover preview object URL so we don't leak memory.
+      setPreviewUrl(prev => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
     };
   }, []);
 
@@ -262,7 +268,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
       case 'image': return <ImageIcon size={18} color={accent} />;
       case 'pdf': return <FileText size={18} color={accent} />;
       case 'audio': return <Music size={18} color={accent} />;
-      default: return <File size={18} color={accent} />;
+      default: return <FileIcon size={18} color={accent} />;
     }
   }
 
@@ -352,6 +358,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         const blob = new Blob(audioChunksRef.current, { type: mimeType });
         if (blob.size > 0) {
           recordedBlobRef.current = blob;
+          setPreviewUrl(URL.createObjectURL(blob));
           setReadyToSend(true);
         }
       }
@@ -378,6 +385,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         const blob = new Blob(audioChunksRef.current, { type: mimeType });
         if (blob.size > 0) {
           recordedBlobRef.current = blob;
+          setPreviewUrl(URL.createObjectURL(blob));
           setReadyToSend(true);
         } else {
           setVoiceError('Recording was empty. Please try again.');
@@ -408,6 +416,13 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     }
   }
 
+  function clearPreviewUrl() {
+    setPreviewUrl(prev => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+  }
+
   function cancelRecording() {
     stopRecordingTimer();
     cancelRef.current = true;
@@ -423,6 +438,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     setRecordingSeconds(0);
     audioChunksRef.current = [];
     recordedBlobRef.current = null;
+    clearPreviewUrl();
   }
 
   async function sendVoiceMessage() {
@@ -473,6 +489,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         recordedBlobRef.current = null;
         setRecordingSeconds(0);
         setReadyToSend(false);
+        clearPreviewUrl();
         // Trigger a refresh to pick up the new message + attachment.
         // Realtime may also fire, but this ensures the sender sees it immediately.
         refreshNew();
@@ -597,29 +614,34 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         </div>
       )}
 
-      {/* Ready to send indicator (after recording stops) */}
+      {/* Ready to send indicator (after recording stops) — includes audio preview */}
       {readyToSend && !isRecording && (
-        <div className="flex items-center gap-2 px-3 py-2 mb-1 rounded-lg" style={{ background: colors.bgInput, border: `1px solid ${accent}` }}>
-          <Music size={16} color={accent} />
-          <span className="text-xs font-semibold" style={{ color: colors.textPrimary }}>Voice message ready</span>
-          <span className="text-xs font-mono" style={{ color: colors.textSecondary }}>{formatDuration(recordingSeconds)}</span>
-          <div className="flex-1" />
-          <button
-            onClick={cancelRecording}
-            className="px-2 py-1 rounded-lg text-xs font-semibold flex-shrink-0"
-            style={{ background: colors.bgSubtle, color: colors.textSecondary, border: 'none', cursor: 'pointer' }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={sendVoiceMessage}
-            disabled={sending}
-            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold text-white flex-shrink-0"
-            style={{ background: accent, border: 'none', cursor: sending ? 'not-allowed' : 'pointer', opacity: sending ? 0.6 : 1 }}
-          >
-            {sending ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-            Send
-          </button>
+        <div className="px-3 py-2 mb-1 rounded-lg" style={{ background: colors.bgInput, border: `1px solid ${accent}` }}>
+          <div className="flex items-center gap-2">
+            <Music size={16} color={accent} />
+            <span className="text-xs font-semibold" style={{ color: colors.textPrimary }}>Voice message ready</span>
+            <span className="text-xs font-mono" style={{ color: colors.textSecondary }}>{formatDuration(recordingSeconds)}</span>
+            <div className="flex-1" />
+            <button
+              onClick={cancelRecording}
+              className="px-2 py-1 rounded-lg text-xs font-semibold flex-shrink-0"
+              style={{ background: colors.bgSubtle, color: colors.textSecondary, border: 'none', cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={sendVoiceMessage}
+              disabled={sending}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold text-white flex-shrink-0"
+              style={{ background: accent, border: 'none', cursor: sending ? 'not-allowed' : 'pointer', opacity: sending ? 0.6 : 1 }}
+            >
+              {sending ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+              Send
+            </button>
+          </div>
+          {previewUrl && (
+            <audio controls src={previewUrl} className="w-full mt-2" style={{ height: 32 }} />
+          )}
         </div>
       )}
 
@@ -829,7 +851,7 @@ function AttachmentContent({
       className="flex items-center gap-2 mb-1 rounded-lg p-2 relative group"
       style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)' }}
     >
-      {file_type === 'pdf' ? <FileText size={18} color={accent} /> : <File size={18} color={accent} />}
+      {file_type === 'pdf' ? <FileText size={18} color={accent} /> : <FileIcon size={18} color={accent} />}
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold truncate" style={{ color: 'inherit' }}>{original_file_name}</p>
         <p className="text-[10px]" style={{ color: 'inherit', opacity: 0.7 }}>{formatFileSize(file_size)}</p>
