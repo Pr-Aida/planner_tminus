@@ -619,7 +619,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
   }
 
   return (
-    <div className="flex flex-col" style={{ height: 'calc(100vh - 280px)', minHeight: '300px' }}>
+    <div className="flex flex-col" style={{ height: 'calc(100vh - 280px)', minHeight: '250px' }}>
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-3 px-1 py-2">
         {messages.length === 0 ? (
@@ -826,11 +826,11 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
       )}
 
       {/* Input */}
-      <div className="flex gap-1.5 pt-2" style={{ borderTop: `1px solid ${colors.borderLight}` }}>
+      <div className="flex gap-1 sm:gap-1.5 pt-2" style={{ borderTop: `1px solid ${colors.borderLight}` }}>
         {/* Emoji button */}
         <button
           onClick={() => setShowEmoji(s => !s)}
-          className="flex items-center justify-center rounded-lg px-2 py-2 transition-colors flex-shrink-0"
+          className="flex items-center justify-center rounded-lg px-1.5 sm:px-2 py-2 transition-colors flex-shrink-0"
           style={{ background: showEmoji ? colors.bgInput : 'transparent', border: 'none', cursor: 'pointer' }}
           title="Emoji"
         >
@@ -841,7 +841,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         <button
           onClick={() => fileRef.current?.click()}
           disabled={uploadProgress || isRecording}
-          className="flex items-center justify-center rounded-lg px-2 py-2 transition-colors flex-shrink-0"
+          className="flex items-center justify-center rounded-lg px-1.5 sm:px-2 py-2 transition-colors flex-shrink-0"
           style={{ background: 'transparent', border: 'none', cursor: (uploadProgress || isRecording) ? 'not-allowed' : 'pointer' }}
           title="Attach file"
         >
@@ -859,7 +859,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         <button
           onClick={isRecording ? stopRecording : startRecording}
           disabled={uploadProgress || sending || readyToSend}
-          className="flex items-center justify-center rounded-lg px-2 py-2 transition-colors flex-shrink-0"
+          className="flex items-center justify-center rounded-lg px-1.5 sm:px-2 py-2 transition-colors flex-shrink-0"
           style={{ background: isRecording ? colors.errorBg : 'transparent', border: 'none', cursor: (uploadProgress || sending || readyToSend) ? 'not-allowed' : 'pointer' }}
           title={isRecording ? 'Stop recording' : 'Record voice message'}
         >
@@ -883,7 +883,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         <button
           onClick={handleSend}
           disabled={sending || (!input.trim() && !pendingFile) || isRecording}
-          className="flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-semibold transition-opacity flex-shrink-0"
+          className="flex items-center gap-1 rounded-lg px-2.5 sm:px-3 py-2 text-sm font-semibold transition-opacity flex-shrink-0"
           style={{
             background: (input.trim() || pendingFile) && !isRecording ? accent : colors.bgHover,
             color: (input.trim() || pendingFile) && !isRecording ? '#FFFFFF' : colors.textSecondary,

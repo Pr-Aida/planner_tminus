@@ -153,7 +153,7 @@ function ClockEditor({ initial, profileTz, isFirst, onSave, onClose }: ClockEdit
       className="absolute z-[200] rounded-xl p-4"
       style={{
         top: '110%', left: '50%', transform: 'translateX(-50%)',
-        width: 280, background: colors.bgCard,
+        width: 'min(280px, calc(100vw - 2rem))', background: colors.bgCard,
         boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
       }}
     >
@@ -477,7 +477,7 @@ export default function TopNav({
             <div
               ref={menuRef}
               data-tour="tour-settings-help"
-              className="absolute top-12 right-4 md:right-8 w-60 rounded-lg py-2"
+              className="absolute top-12 right-4 md:right-8 w-56 max-w-[calc(100vw-2rem)] rounded-lg py-2"
               style={{ background: colors.bgCard, boxShadow: '0 4px 20px rgba(0,0,0,0.25)' }}
             >
               <MenuButton onClick={() => { setShowUserMenu(false); onOpenProfile(); }} color={colors.textPrimary}>

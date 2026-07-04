@@ -140,7 +140,7 @@ export default function DailyView({ data, habits, dateKey, isToday, reminders, o
 
       {/* Daily Summary */}
       <div
-        className="rounded-xl px-6 py-4 mb-4 flex flex-wrap items-center gap-8"
+        className="rounded-xl px-4 md:px-6 py-4 mb-4 flex flex-wrap items-center gap-4 md:gap-8"
         data-tour="tour-summary"
         style={{
           background: 'linear-gradient(135deg, #1B2A4A 0%, #7B1C3E 100%)',

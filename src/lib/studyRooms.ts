@@ -473,11 +473,15 @@ export async function fetchRoomActivity(
 
 // ─── Username invitations ──────────────────────────────────────────────────────
 
-/** Search user by username (exact, case-insensitive). Returns limited profile info. */
+/** Search user by username (exact, case-insensitive). Returns limited profile info.
+ *  Handles both "@username" and "username" input. */
 export async function searchUserByUsername(username: string): Promise<{
   id: string; username: string; display_name: string; avatar_url: string | null;
 } | null> {
-  const normalized = username.trim();
+  let normalized = username.trim();
+  if (!normalized) return null;
+  // Strip leading @ if present
+  if (normalized.startsWith('@')) normalized = normalized.slice(1).trim();
   if (!normalized) return null;
   if (normalized.length > 24) return null;
   if (!/^[A-Za-z0-9_.]+$/.test(normalized)) return null;

@@ -222,7 +222,7 @@ function ShMonthly({
             <div key={wd} className="text-center text-xs font-bold uppercase py-1" style={{ color: colors.accent, letterSpacing: 1 }}>{wd}</div>
           ))}
           {cells.map((day, idx) => {
-            if (day === null) return <div key={idx} className="rounded-lg" style={{ minHeight: 70, background: colors.bgSubtle }} />;
+            if (day === null) return <div key={idx} className="rounded-lg" style={{ minHeight: 60, background: colors.bgSubtle }} />;
             const key = shDateKey(viewYear, viewMonth, day);
             const data = getDayData(key);
             const note = getDayNote(key);
@@ -237,7 +237,7 @@ function ShMonthly({
                 key={idx}
                 onClick={() => onDayClick(key, `${SH_MONTHS[viewMonth - 1].name} ${day}, ${viewYear} — Notes & Reminders`)}
                 className="rounded-lg p-1.5 cursor-pointer transition-all"
-                style={{ minHeight: 70, border: `1px solid ${isToday ? colors.accent : isSelected ? colors.burgundy : colors.bgSubtle}`, background: isToday ? colors.accentLight : isSelected ? colors.selectedBg : colors.bgCard }}
+                style={{ minHeight: 60, border: `1px solid ${isToday ? colors.accent : isSelected ? colors.burgundy : colors.bgSubtle}`, background: isToday ? colors.accentLight : isSelected ? colors.selectedBg : colors.bgCard }}
                 onMouseEnter={e => { if (!isToday && !isSelected) (e.currentTarget as HTMLDivElement).style.borderColor = colors.accent; }}
                 onMouseLeave={e => { if (!isToday && !isSelected) (e.currentTarget as HTMLDivElement).style.borderColor = colors.bgSubtle; }}
               >
@@ -339,7 +339,7 @@ function GregMonthly({
             <div key={wd} className="text-center text-xs font-bold uppercase py-1" style={{ color: colors.accent, letterSpacing: 1 }}>{wd}</div>
           ))}
           {cells.map((day, idx) => {
-            if (day === null) return <div key={idx} className="rounded-lg" style={{ minHeight: 70, background: colors.bgSubtle }} />;
+            if (day === null) return <div key={idx} className="rounded-lg" style={{ minHeight: 60, background: colors.bgSubtle }} />;
             const key = dateKey({ year: viewYear, month: viewMonth, day });
             const data = getDayData(key);
             const note = getDayNote(key);
@@ -354,7 +354,7 @@ function GregMonthly({
                 key={idx}
                 onClick={() => onDayClick(key, `${GREG_MONTH_NAMES[viewMonth - 1]} ${day}, ${viewYear} — Notes & Reminders`)}
                 className="rounded-lg p-1.5 cursor-pointer transition-all"
-                style={{ minHeight: 70, border: `1px solid ${isToday ? colors.accent : isSelected ? colors.burgundy : colors.bgSubtle}`, background: isToday ? colors.accentLight : isSelected ? colors.selectedBg : colors.bgCard }}
+                style={{ minHeight: 60, border: `1px solid ${isToday ? colors.accent : isSelected ? colors.burgundy : colors.bgSubtle}`, background: isToday ? colors.accentLight : isSelected ? colors.selectedBg : colors.bgCard }}
                 onMouseEnter={e => { if (!isToday && !isSelected) (e.currentTarget as HTMLDivElement).style.borderColor = colors.accent; }}
                 onMouseLeave={e => { if (!isToday && !isSelected) (e.currentTarget as HTMLDivElement).style.borderColor = colors.bgSubtle; }}
               >

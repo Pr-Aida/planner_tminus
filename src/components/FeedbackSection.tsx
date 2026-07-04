@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { MessageSquare, Send, Check, AlertTriangle, Loader2, Reply, Shield, MoreVertical, Trash2, User } from 'lucide-react';
+import { MessageSquare, Send, Check, AlertTriangle, Loader2, Reply, Shield, MoreVertical, Trash2, User, Bell, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../lib/theme';
 
@@ -78,6 +78,11 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
   const [confirmDismissIsAdmin, setConfirmDismissIsAdmin] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
+  // Feedback notifications
+  const [notifCount, setNotifCount] = useState(0);
+  const [showNotifs, setShowNotifs] = useState(false);
+  const [notifs, setNotifs] = useState<{ id: string; message: string; read: boolean; created_at: string; type: string }[]>([]);
+
   const remaining = MAX_LEN - message.length;
   const trimmed = message.trim();
 
@@ -149,6 +154,50 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
     return () => clearInterval(interval);
   }, [loadItems]);
 
+  // Load feedback notifications count
+  const loadNotifCount = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    const { count } = await supabase
+      .from('feedback_notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', session.user.id)
+      .eq('read', false);
+    setNotifCount(count || 0);
+  }, []);
+
+  // Load feedback notifications list
+  const loadNotifs = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    const { data } = await supabase
+      .from('feedback_notifications')
+      .select('id, message, read, created_at, type')
+      .eq('user_id', session.user.id)
+      .order('created_at', { ascending: false })
+      .limit(10);
+    setNotifs((data || []) as { id: string; message: string; read: boolean; created_at: string; type: string }[]);
+  }, []);
+
+  // Mark all notifications as read
+  const markNotifsRead = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    await supabase
+      .from('feedback_notifications')
+      .update({ read: true })
+      .eq('user_id', session.user.id)
+      .eq('read', false);
+    setNotifCount(0);
+    setNotifs(prev => prev.map(n => ({ ...n, read: true })));
+  }, []);
+
+  useEffect(() => {
+    loadNotifCount();
+    const interval = setInterval(loadNotifCount, 15000);
+    return () => clearInterval(interval);
+  }, [loadNotifCount]);
+
   useEffect(() => {
     let prevUid: string | null = null;
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -172,9 +221,13 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
         setError(null);
         setMessage('');
         setContactEmail('');
+        setNotifCount(0);
+        setNotifs([]);
+        setShowNotifs(false);
 
         if (newUid) {
           loadItems();
+          loadNotifCount();
           (async () => {
             const { data: prof } = await supabase
               .from('profiles')
@@ -192,7 +245,7 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
     });
 
     return () => subscription.unsubscribe();
-  }, [loadItems, loadAdminItems]);
+  }, [loadItems, loadAdminItems, loadNotifCount]);
 
   async function handleSubmit() {
     setError(null);
@@ -370,9 +423,76 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
       <div className="flex items-center gap-2 mb-3">
         <MessageSquare size={16} color={colors.accent} />
         <p className="text-sm font-bold" style={{ color: colors.textPrimary }}>Feedback &amp; Support</p>
+        {notifCount > 0 && (
+          <div className="relative ml-auto">
+            <button
+              onClick={() => {
+                if (!showNotifs) { loadNotifs(); }
+                setShowNotifs(s => !s);
+                if (!showNotifs && notifCount > 0) { markNotifsRead(); }
+              }}
+              className="relative flex items-center justify-center rounded-full transition-opacity hover:opacity-80"
+              style={{ background: colors.accentLight, border: 'none', cursor: 'pointer', width: 28, height: 28 }}
+              aria-label="Feedback notifications"
+            >
+              <Bell size={14} color={colors.accent} />
+              <span
+                className="absolute -top-1 -right-1 flex items-center justify-center text-[9px] font-bold text-white rounded-full"
+                style={{ background: colors.accent, minWidth: 16, height: 16, padding: '0 4px' }}
+              >
+                {notifCount > 9 ? '9+' : notifCount}
+              </span>
+            </button>
+            {showNotifs && (
+              <div
+                className="absolute right-0 top-full mt-1 rounded-lg shadow-lg z-20"
+                style={{ background: colors.bgCard, border: `1px solid ${colors.border}`, minWidth: '260px', maxWidth: 'calc(100vw - 2rem)' }}
+              >
+                <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
+                  <span className="text-xs font-bold uppercase tracking-wide" style={{ color: colors.textSecondary }}>Notifications</span>
+                  <button onClick={() => setShowNotifs(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                    <X size={12} color={colors.textTertiary} />
+                  </button>
+                </div>
+                <div className="max-h-64 overflow-y-auto">
+                  {notifs.length === 0 ? (
+                    <p className="text-xs text-center py-4" style={{ color: colors.textTertiary }}>No notifications.</p>
+                  ) : notifs.map(n => (
+                    <div key={n.id} className="px-3 py-2.5" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
+                      <div className="flex items-start gap-2">
+                        {n.type === 'admin_notification' ? (
+                          <Shield size={12} color={colors.accent} style={{ flexShrink: 0, marginTop: 1 }} />
+                        ) : (
+                          <Reply size={12} color={colors.accent} style={{ flexShrink: 0, marginTop: 1 }} />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs" style={{ color: colors.textPrimary }}>{n.message}</p>
+                          <p className="text-[10px] mt-0.5" style={{ color: colors.textTertiary }}>
+                            {formatDate(n.created_at)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="space-y-3">
+        {/* Admin info banner — replaces submission form for admin accounts */}
+        {isAdmin && (
+          <div className="rounded-lg px-3 py-2.5 text-xs flex items-center gap-2" style={{ background: colors.accentLight, color: colors.textSecondary }}>
+            <Shield size={14} color={colors.accent} />
+            <span>You are signed in as an admin. Use the admin section below to manage user feedback.</span>
+          </div>
+        )}
+
+        {/* Submission form — hidden for admin accounts */}
+        {!isAdmin && (
+          <>
         {/* Type */}
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: colors.textPrimary }}>
@@ -459,6 +579,8 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
             {error}
           </div>
         )}
+        </>
+        )}
 
         {/* Your feedback history + admin replies */}
         {(loadingItems || items.length > 0) && (
@@ -496,7 +618,7 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
                         {menuOpenFor === item.id && (
                           <div
                             className="absolute right-0 top-full mt-1 rounded-lg shadow-lg z-10"
-                            style={{ background: colors.bgCard, border: `1px solid ${colors.border}`, minWidth: '180px' }}
+                            style={{ background: colors.bgCard, border: `1px solid ${colors.border}`, minWidth: '160px', maxWidth: 'calc(100vw - 2rem)' }}
                           >
                             <button
                               onClick={() => { setMenuOpenFor(null); setConfirmDismissId(item.id); setConfirmDismissIsAdmin(false); }}
@@ -587,7 +709,7 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
                         {menuOpenFor === item.id && (
                           <div
                             className="absolute right-0 top-full mt-1 rounded-lg shadow-lg z-10"
-                            style={{ background: colors.bgCard, border: `1px solid ${colors.border}`, minWidth: '200px' }}
+                            style={{ background: colors.bgCard, border: `1px solid ${colors.border}`, minWidth: '180px', maxWidth: 'calc(100vw - 2rem)' }}
                             onClick={e => e.stopPropagation()}
                           >
                             <button

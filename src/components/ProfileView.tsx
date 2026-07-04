@@ -180,7 +180,7 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
       tabIndex={-1}
     >
       <div
-        className="w-full max-w-lg rounded-2xl overflow-hidden flex flex-col"
+        className="w-full max-w-lg rounded-2xl overflow-hidden flex flex-col mx-4"
         style={{ background: colors.bgCard, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', maxHeight: '90vh' }}
       >
         {/* Header */}

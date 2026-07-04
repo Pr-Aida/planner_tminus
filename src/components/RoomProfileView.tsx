@@ -350,6 +350,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
 
       {/* Invite / code bar */}
       <div className="flex flex-wrap items-center gap-2 my-4">
+        {/* Invite / code bar */}
         <button
           onClick={() => copyToClipboard(inviteLink, 'link')}
           disabled={!room.invite_enabled}
@@ -376,7 +377,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold justify-center transition-colors relative flex-shrink-0"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold justify-center transition-colors relative flex-shrink-0 whitespace-nowrap"
             style={{
               background: tab === t.key ? themeColor : 'transparent',
               color: tab === t.key ? '#fff' : colors.textSecondary,
@@ -1084,7 +1085,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
               value={inviteQuery}
               onChange={e => setInviteQuery(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSearch()}
-              placeholder="Search username…"
+              placeholder="Search by @username…"
               className="flex-1 min-w-0 rounded-lg px-3 py-2 text-xs outline-none"
               style={getInputStyle(colors)}
             />

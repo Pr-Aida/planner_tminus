@@ -163,7 +163,7 @@ export default function DateBar({
                   onClick={() => selectDay(d)}
                   className="flex items-center justify-center rounded-md text-xs font-semibold transition-colors"
                   style={{
-                    width: 30, height: 30,
+                    width: 34, height: 34,
                     background: d === day ? colors.accent : 'transparent',
                     color: d === day ? '#fff' : colors.textPrimary,
                     border: 'none',
