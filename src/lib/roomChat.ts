@@ -57,10 +57,18 @@ const profileCache = new Map<string, Map<string, ProfileRow>>();
 async function getRoomProfileMap(roomId: string): Promise<Map<string, ProfileRow>> {
   const cached = profileCache.get(roomId);
   if (cached && cached.size > 0) return cached;
-  const { data: profiles } = await supabase.rpc('get_room_member_profiles', { p_room_id: roomId });
+  const { data: profiles, error } = await supabase.rpc('get_room_member_profiles', { p_room_id: roomId });
   const map = new Map<string, ProfileRow>();
+  if (error) {
+    console.error('[Chat] getRoomProfileMap RPC error:', error.message);
+    // Don't cache an empty map on error — allow retry on next call.
+    return map;
+  }
   ((profiles || []) as unknown as ProfileRow[]).forEach(p => map.set(p.id, p));
-  profileCache.set(roomId, map);
+  // Only cache if we got at least one profile — avoids caching a failed result.
+  if (map.size > 0) {
+    profileCache.set(roomId, map);
+  }
   return map;
 }
 
@@ -76,7 +84,11 @@ async function ensureProfiles(roomId: string, userIds: string[]): Promise<void> 
   if (missing.length === 0) return;
   // Re-fetch the full member profile set (RPC returns all current members).
   // This picks up newly joined members and fills any gaps.
-  const { data: profiles } = await supabase.rpc('get_room_member_profiles', { p_room_id: roomId });
+  const { data: profiles, error } = await supabase.rpc('get_room_member_profiles', { p_room_id: roomId });
+  if (error) {
+    console.error('[Chat] ensureProfiles RPC error:', error.message);
+    return;
+  }
   ((profiles || []) as unknown as ProfileRow[]).forEach(p => map.set(p.id, p));
 }
 

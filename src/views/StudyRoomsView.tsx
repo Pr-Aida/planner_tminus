@@ -559,7 +559,7 @@ function RoomCard({
                   <option value="">Select a member…</option>
                   {approvedOthers.map(m => (
                     <option key={m.user_id} value={m.user_id}>
-                      {m.username || m.user_id.slice(0, 8)}{m.role === 'admin' ? ' (admin)' : ''}
+                      {m.display_name || m.username || 'Unknown user'}{m.role === 'admin' ? ' (admin)' : ''}
                     </option>
                   ))}
                 </select>

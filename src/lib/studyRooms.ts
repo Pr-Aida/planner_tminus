@@ -443,6 +443,7 @@ export async function fetchMembers(roomId: string): Promise<RoomMember[]> {
   if (e2) {
     logSupabaseError('fetchMembers profiles RPC', e2);
     // Don't fail entirely on profile error — return members with empty profiles
+    // so the UI still shows the member list (with "Unknown user" fallbacks).
   }
 
   const profById = new Map<string, { id: string; display_name: string; username: string; avatar_url: string | null }>(
