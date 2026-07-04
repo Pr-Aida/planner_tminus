@@ -533,13 +533,17 @@ export function broadcastChatActivity(
     timestamp: Date.now(),
   };
   // Use a dedicated broadcast channel per room so activity doesn't mix with
-  // the message postgres_changes subscription.
+  // the message postgres_changes subscription. The channel MUST be subscribed
+  // before sending, otherwise broadcasts are queued and never transmitted.
   const name = `chat_activity:${roomId}`;
   const existing = activityChannels.get(name);
   const channel = existing?.channel ?? supabase.channel(name, {
     config: { broadcast: { self: false } },
   });
-  if (!existing) activityChannels.set(name, { channel });
+  if (!existing) {
+    activityChannels.set(name, { channel });
+    channel.subscribe();
+  }
   channel.send({ type: 'broadcast', event: 'activity', payload });
 }
 

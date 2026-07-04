@@ -80,10 +80,18 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
   const refreshNew = useCallback(async () => {
     setMessages(prev => {
       const newest = prev.length > 0 ? prev[prev.length - 1].created_at : null;
-      // Collect messages that have an attachment_id but no resolved attachment
-      // data — these need to be re-fetched to get the attachment + signed URL.
+      // Collect messages that need an attachment re-fetch. Two cases:
+      //  (a) attachment_id is set but attachment data not yet resolved.
+      //  (b) non-text messages (audio/image/file) with no resolved attachment —
+      //      covers voice messages inserted with attachment_id=null, then
+      //      UPDATE'd with the id after upload completes. Without this, the
+      //      UPDATE realtime event never re-fetches the attachment and the
+      //      audio player only appears after a full page refresh.
       const pendingAttachmentIds = prev
-        .filter(m => m.attachment_id && !m.attachment)
+        .filter(m =>
+          (m.attachment_id && !m.attachment) ||
+          (m.message_type !== 'text' && !m.attachment)
+        )
         .map(m => m.id);
 
       (async () => {
