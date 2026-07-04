@@ -510,71 +510,18 @@ export interface ChatActivityState {
 
 type ActivityListener = (states: ChatActivityState[]) => void;
 
-const activityChannels = new Map<string, { channel: ReturnType<typeof supabase['channel']> }>();
-
 /**
- * Broadcast the current user's chat activity to other approved room members.
- * Ephemeral — nothing is persisted. Other clients receive it via
- * subscribeToChatActivity and show an iMessage-style indicator.
+ * Join the room's chat-activity broadcast channel. Creates a SINGLE realtime
+ * channel used for both sending and receiving ephemeral activity indicators
+ * (typing, recording, uploading). `self: false` ensures a user never sees
+ * their own activity. Nothing is persisted — this is temporary broadcast state
+ * only, so no database rows are ever created.
  */
-export function broadcastChatActivity(
-  roomId: string,
-  userId: string,
-  activityType: ChatActivityType | null,
-): void {
-  if (!activityType) {
-    broadcastChatActivityClear(roomId, userId);
-    return;
-  }
-  const payload: ChatActivityState = {
-    user_id: userId,
-    room_id: roomId,
-    activity_type: activityType,
-    timestamp: Date.now(),
-  };
-  // Use a dedicated broadcast channel per room so activity doesn't mix with
-  // the message postgres_changes subscription. The channel MUST be subscribed
-  // before sending, otherwise broadcasts are queued and never transmitted.
-  const name = `chat_activity:${roomId}`;
-  const existing = activityChannels.get(name);
-  const channel = existing?.channel ?? supabase.channel(name, {
-    config: { broadcast: { self: false } },
-  });
-  if (!existing) {
-    activityChannels.set(name, { channel });
-    channel.subscribe();
-  }
-  channel.send({ type: 'broadcast', event: 'activity', payload });
-}
-
-/**
- * Broadcast a "clear" so other clients remove the indicator immediately when
- * the user sends their message or stops interacting.
- */
-function broadcastChatActivityClear(roomId: string, userId: string): void {
-  const name = `chat_activity:${roomId}`;
-  const existing = activityChannels.get(name);
-  if (!existing) return;
-  existing.channel.send({
-    type: 'broadcast',
-    event: 'activity_clear',
-    payload: { user_id: userId, room_id: roomId, timestamp: Date.now() },
-  });
-}
-
-/**
- * Subscribe to other members' chat activity in a room. The listener receives
- * an array of currently-active states (excluding the current user). The caller
- * is responsible for expiry timeouts (typically 4s of no updates).
- */
-export function subscribeToChatActivity(
+export function joinChatActivity(
   roomId: string,
   currentUserId: string,
   listener: ActivityListener,
-): { unsubscribe: () => void } {
-  // All room members subscribe to the SAME channel name so broadcasts reach
-  // everyone. `broadcast: { self: false }` prevents the sender from seeing
-  // their own activity.
+): { broadcast: (activityType: ChatActivityType | null) => void; unsubscribe: () => void } {
   const name = `chat_activity:${roomId}`;
   const channel = supabase.channel(name, {
     config: { broadcast: { self: false } },
@@ -599,7 +546,29 @@ export function subscribeToChatActivity(
     })
     .subscribe();
 
+  function broadcast(activityType: ChatActivityType | null) {
+    if (activityType === null) {
+      channel.send({
+        type: 'broadcast',
+        event: 'activity_clear',
+        payload: { user_id: currentUserId, room_id: roomId, timestamp: Date.now() },
+      });
+      return;
+    }
+    channel.send({
+      type: 'broadcast',
+      event: 'activity',
+      payload: {
+        user_id: currentUserId,
+        room_id: roomId,
+        activity_type: activityType,
+        timestamp: Date.now(),
+      } as ChatActivityState,
+    });
+  }
+
   return {
+    broadcast,
     unsubscribe: () => {
       supabase.removeChannel(channel);
     },

@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import {
   fetchChatMessages, fetchNewChatMessages, refreshMessagesByIds, sendChatMessage, sendChatMessageWithAttachment, deleteChatMessage,
-  subscribeToChat, subscribeToChatActivity, broadcastChatActivity, markRoomChatRead, clearChatCache,
+  subscribeToChat, joinChatActivity, markRoomChatRead, clearChatCache,
   type ChatMessage, type MessageType, type ChatActivityState, type ChatActivityType,
 } from '../lib/roomChat';
 import {
@@ -64,6 +64,9 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
   const lastBroadcastRef = useRef<number>(0);
   const activityTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentActivityRef = useRef<ChatActivityType | null>(null);
+  // Single joined channel for both sending + receiving. Held in a ref so it
+  // persists across renders and is cleaned up on room switch / unmount.
+  const activityChannelRef = useRef<{ broadcast: (t: ChatActivityType | null) => void; unsubscribe: () => void } | null>(null);
 
   // Delete confirmation state
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -139,21 +142,26 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     load();
     markRoomChatRead(roomId);
     const sub = subscribeToChat(roomId, () => { refreshNew(); });
-    const actSub = subscribeToChatActivity(roomId, userId, (states) => {
+    // Join the single activity channel for this room — used for both sending
+    // and receiving ephemeral typing/recording/uploading indicators.
+    activityChannelRef.current = joinChatActivity(roomId, userId, (states) => {
       // Prune states older than 5s (safety net for missed clear broadcasts).
       const cutoff = Date.now() - 5000;
       setOtherActivity(states.filter(s => s.timestamp > cutoff));
     });
     return () => {
       sub.unsubscribe();
-      actSub.unsubscribe();
-      clearChatCache(roomId);
-      // Clear our activity broadcast when leaving the room.
-      broadcastChatActivity(roomId, userId, null);
+      // Clear our activity and tear down the channel when leaving the room.
       if (activityTimeoutRef.current) {
         clearTimeout(activityTimeoutRef.current);
         activityTimeoutRef.current = null;
       }
+      if (activityChannelRef.current) {
+        activityChannelRef.current.broadcast(null);
+        activityChannelRef.current.unsubscribe();
+        activityChannelRef.current = null;
+      }
+      clearChatCache(roomId);
     };
   }, [roomId, userId, load, refreshNew]);
 
@@ -486,20 +494,20 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         clearTimeout(activityTimeoutRef.current);
         activityTimeoutRef.current = null;
       }
-      broadcastChatActivity(roomId, userId, null);
+      activityChannelRef.current?.broadcast(null);
       return;
     }
     currentActivityRef.current = type;
     const now = Date.now();
     if (now - lastBroadcastRef.current > 1500) {
       lastBroadcastRef.current = now;
-      broadcastChatActivity(roomId, userId, type);
+      activityChannelRef.current?.broadcast(type);
     }
     // Reset the auto-clear timer — every keystroke/recording tick refreshes it.
     if (activityTimeoutRef.current) clearTimeout(activityTimeoutRef.current);
     activityTimeoutRef.current = setTimeout(() => {
       currentActivityRef.current = null;
-      broadcastChatActivity(roomId, userId, null);
+      activityChannelRef.current?.broadcast(null);
     }, 4000);
   }
 
@@ -696,33 +704,17 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
             );
           })
         )}
-        {/* iMessage-style activity indicator — shows when another approved
-            room member is typing/recording/uploading. Ephemeral realtime
-            broadcast; no database rows. Only other users' activity is shown. */}
+        {/* iMessage-style activity indicator — shows ONLY three animated dots
+            when another approved room member is typing/recording/uploading.
+            Ephemeral realtime broadcast; no database rows. No text labels. */}
         {otherActivity.length > 0 && (
-          <div className="flex gap-2 flex-row-reverse" style={{ opacity: 0.85 }}>
-            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5" style={{ background: colors.textSecondary }}>
-              {'•'}
-            </div>
-            <div className="inline-block rounded-2xl px-3 py-2" style={{ background: colors.bgSubtle }}>
-              <div className="flex items-center gap-2">
-                <span className="typing-dots flex items-center gap-1">
-                  <span className="typing-dot" />
-                  <span className="typing-dot" />
-                  <span className="typing-dot" />
-                </span>
-                <span className="text-xs" style={{ color: colors.textSecondary }}>
-                  {(() => {
-                    const a = otherActivity[0];
-                    switch (a.activity_type) {
-                      case 'recording_voice': return 'recording voice…';
-                      case 'sending_voice': return 'sending…';
-                      case 'uploading_file': return 'uploading…';
-                      default: return 'typing…';
-                    }
-                  })()}
-                </span>
-              </div>
+          <div className="flex flex-row-reverse">
+            <div className="inline-block rounded-2xl px-3 py-2.5" style={{ background: colors.bgSubtle }}>
+              <span className="typing-dots flex items-center gap-1">
+                <span className="typing-dot" />
+                <span className="typing-dot" />
+                <span className="typing-dot" />
+              </span>
             </div>
           </div>
         )}
