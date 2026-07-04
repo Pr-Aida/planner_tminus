@@ -135,6 +135,58 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
     return () => clearInterval(interval);
   }, [loadItems]);
 
+  // Clear all state immediately when the authenticated user changes
+  // (sign-out, sign-in as different user, token refresh with different uid).
+  // This prevents stale feedback from a previous account being visible.
+  useEffect(() => {
+    let prevUid: string | null = null;
+    // Capture initial uid synchronously to avoid clearing on first mount.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      prevUid = session?.user?.id ?? null;
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const newUid = session?.user?.id ?? null;
+      if (newUid !== prevUid) {
+        // User switched accounts or signed out — clear all stale state immediately.
+        prevUid = newUid;
+        setItems([]);
+        setAdminItems([]);
+        setIsAdmin(false);
+        setReplyingTo(null);
+        setReplyText('');
+        setReplyStatus('idle');
+        setReplyError(null);
+        setMenuOpenFor(null);
+        setConfirmDeleteId(null);
+        setStatus(null);
+        setError(null);
+        setMessage('');
+        setContactEmail('');
+
+        if (newUid) {
+          // Refetch for the new user.
+          loadItems();
+          // Re-check admin status for the new user.
+          (async () => {
+            const { data: prof } = await supabase
+              .from('profiles')
+              .select('is_admin')
+              .maybeSingle();
+            if (prof?.is_admin) {
+              setIsAdmin(true);
+              setLoadingAdmin(true);
+              await loadAdminItems();
+              setLoadingAdmin(false);
+            }
+          })();
+        }
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [loadItems, loadAdminItems]);
+
   async function handleSubmit() {
     setError(null);
     setStatus(null);
