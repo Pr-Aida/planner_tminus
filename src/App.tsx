@@ -119,23 +119,56 @@ export default function App() {
 
   // ─── Auth Setup ────────────────────────────────────────────────────────────
   useEffect(() => {
+    let prevUserId: string | null = null;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
+      prevUserId = session?.user?.id ?? null;
       setSession(session);
       setUser(session?.user ?? null);
       setAuthLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const newUserId = session?.user?.id ?? null;
+
+      // Detect user switch (different user ID) and clear all cached data
+      // This prevents showing stale data from a previous account
+      if (prevUserId !== null && newUserId !== prevUserId) {
+        // Clear all user-specific cached data
+        setHabits([]);
+        setDayCache(new Map());
+        setDayNotes(new Map());
+        setMonthlyNotes(new Map());
+        setCountdown(null);
+        setReminders([]);
+        setCoverImage(null);
+        setCoverLoaded(false);
+        setProfile(null);
+        setShowTour(false);
+        setShowProfile(false);
+        setShowStudyRooms(false);
+        setInviteCodeFromUrl(null);
+      }
+
+      prevUserId = newUserId;
       setSession(session);
       setUser(session?.user ?? null);
       setAuthLoading(false);
+
       if (!session?.user) {
+        // Signed out - clear all user data
         setProfile(null);
         setShowTour(false);
         setShowProfile(false);
         setReminders([]);
         setCoverImage(null);
         setCoverLoaded(false);
+        setHabits([]);
+        setDayCache(new Map());
+        setDayNotes(new Map());
+        setMonthlyNotes(new Map());
+        setCountdown(null);
+        setShowStudyRooms(false);
       }
     });
 
