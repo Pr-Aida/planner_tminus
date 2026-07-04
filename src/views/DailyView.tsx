@@ -24,7 +24,7 @@ interface Props {
   onUpdateReminderStatus: (id: string, status: ReminderStatus) => void;
 }
 
-export default function DailyView({ data, habits, isToday, reminders, onDataChange, onAddHabitToTemplate, onAddHabitToDay, onDeleteHabit, onRenameHabit, onUpdateHabitUnit, onHideHabitForDay, onRemoveExtraHabit, onSaveTemplate, onUpdateReminderStatus }: Props) {
+export default function DailyView({ data, habits, dateKey, isToday, reminders, onDataChange, onAddHabitToTemplate, onAddHabitToDay, onDeleteHabit, onRenameHabit, onUpdateHabitUnit, onHideHabitForDay, onRemoveExtraHabit, onSaveTemplate, onUpdateReminderStatus }: Props) {
   const { colors } = useTheme();
   // Compute summary stats
   const { totalMinutes, namedActivities } = useMemo(() => {
