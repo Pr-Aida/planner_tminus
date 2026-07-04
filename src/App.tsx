@@ -56,6 +56,7 @@ export default function App() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [profileInitialTab, setProfileInitialTab] = useState<'profile' | 'preferences' | 'feedback'>('profile');
   const [showTour, setShowTour] = useState(false);
   const [tourMode, setTourMode] = useState<TourMode>('onboarding');
   const [showWelcomeOnboarding, setShowWelcomeOnboarding] = useState(false);
@@ -867,6 +868,7 @@ export default function App() {
       onProfileClose={() => setShowProfile(false)}
       onProfileSaved={handleProfileSaved}
       onAccountDeleted={() => { setShowProfile(false); }}
+      profileInitialTab={profileInitialTab}
       calMode={calMode}
       onCalModeChange={handleCalModeChange}
       viewMode={viewMode}
@@ -889,6 +891,7 @@ export default function App() {
           <RoomNotifications
             userId={user.id}
             onOpenRoom={(roomId) => { setShowStudyRooms(true); pendingOpenRoomId.current = roomId; }}
+            onOpenFeedback={() => { setProfileInitialTab('feedback'); setShowProfile(true); }}
           />
         </div>
       ) : null}
@@ -986,6 +989,7 @@ interface MainAppContentProps {
   onProfileClose: () => void;
   onProfileSaved: (p: UserProfile) => void;
   onAccountDeleted: () => void;
+  profileInitialTab: 'profile' | 'preferences' | 'feedback';
   calMode: CalendarMode;
   onCalModeChange: (m: CalendarMode) => void;
   viewMode: ViewMode;
@@ -1084,6 +1088,7 @@ function MainAppContent(props: MainAppContentProps) {
           onClose={props.onProfileClose}
           onSaved={props.onProfileSaved}
           onAccountDeleted={props.onAccountDeleted}
+          initialTab={props.profileInitialTab}
         />
       )}
 

@@ -473,23 +473,28 @@ export async function fetchRoomActivity(
 
 // ─── Username invitations ──────────────────────────────────────────────────────
 
-/** Search user by username (exact, case-insensitive). Returns limited profile info.
- *  Handles both "@username" and "username" input. */
-export async function searchUserByUsername(username: string): Promise<{
-  id: string; username: string; display_name: string; avatar_url: string | null;
-} | null> {
-  let normalized = username.trim();
-  if (!normalized) return null;
+export interface ProfileSearchResult {
+  id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+}
+
+/** Search users by username or display name (partial, case-insensitive).
+ *  Handles both "@username" and "username" input. Returns up to 10 results.
+ *  Requires at least 2 characters. */
+export async function searchUserByUsername(query: string): Promise<ProfileSearchResult[]> {
+  let normalized = query.trim();
+  if (!normalized) return [];
   // Strip leading @ if present
   if (normalized.startsWith('@')) normalized = normalized.slice(1).trim();
-  if (!normalized) return null;
-  if (normalized.length > 24) return null;
-  if (!/^[A-Za-z0-9_.]+$/.test(normalized)) return null;
+  if (!normalized) return [];
+  if (normalized.length < 2) return [];
+  if (normalized.length > 48) return [];
   const { data, error } = await supabase
-    .rpc('search_profile_by_username', { p_username: normalized });
+    .rpc('search_profile_by_username', { p_query: normalized });
   if (error) throw error;
-  if (!data || data.length === 0) return null;
-  return data[0] as { id: string; username: string; display_name: string; avatar_url: string | null };
+  return (data || []) as ProfileSearchResult[];
 }
 
 /** Owner invites a user by username. Creates an 'invited' member row + invite record + notification. */
@@ -632,6 +637,55 @@ export async function deleteNotification(id: string): Promise<void> {
 export async function unreadNotificationCount(userId: string): Promise<number> {
   const { count, error } = await supabase
     .from('room_notifications')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('read', false);
+  if (error) throw error;
+  return count || 0;
+}
+
+// ─── Feedback Notifications ────────────────────────────────────────────────────
+
+export interface FeedbackNotification {
+  id: string;
+  user_id: string;
+  feedback_id: string;
+  type: 'feedback_reply' | 'admin_notification';
+  message: string;
+  read: boolean;
+  created_at: string;
+}
+
+export async function fetchFeedbackNotifications(userId: string): Promise<FeedbackNotification[]> {
+  const { data, error } = await supabase
+    .from('feedback_notifications')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error) throw error;
+  return (data || []) as FeedbackNotification[];
+}
+
+export async function markFeedbackNotificationRead(id: string): Promise<void> {
+  const { error } = await supabase.from('feedback_notifications').update({ read: true }).eq('id', id);
+  if (error) throw error;
+}
+
+export async function markAllFeedbackNotificationsRead(userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('feedback_notifications').update({ read: true }).eq('user_id', userId).eq('read', false);
+  if (error) throw error;
+}
+
+export async function deleteFeedbackNotification(id: string): Promise<void> {
+  const { error } = await supabase.from('feedback_notifications').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function unreadFeedbackNotificationCount(userId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('feedback_notifications')
     .select('*', { count: 'exact', head: true })
     .eq('user_id', userId)
     .eq('read', false);

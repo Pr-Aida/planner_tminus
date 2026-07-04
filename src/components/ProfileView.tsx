@@ -15,19 +15,19 @@ interface Props {
   onRestartTour: () => void;
   onOpenWhatsNew: () => void;
   userId?: string | null;
+  initialTab?: Tab;
 }
 
 type Tab = 'profile' | 'preferences' | 'feedback';
 
-export default function ProfileView({ profile, onClose, onSaved, onAccountDeleted, onRestartTour, onOpenWhatsNew, userId }: Props) {
-  const [tab, setTab] = useState<Tab>('profile');
+export default function ProfileView({ profile, onClose, onSaved, onAccountDeleted, onRestartTour, onOpenWhatsNew, userId, initialTab }: Props) {
+  const [tab, setTab] = useState<Tab>(initialTab || 'profile');
   const { theme, setTheme, colors } = useTheme();
 
   // Profile fields
   const [displayName, setDisplayName] = useState(profile.display_name);
   const [username, setUsername] = useState(profile.username);
   const [bio, setBio] = useState(profile.bio);
-  const [recoveryEmail, setRecoveryEmail] = useState(profile.recovery_email || '');
   const [avatarUrl, setAvatarUrl] = useState(profile.avatar_url);
 
   // Preferences
@@ -52,7 +52,6 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
     setDisplayName(profile.display_name);
     setUsername(profile.username);
     setBio(profile.bio);
-    setRecoveryEmail(profile.recovery_email || '');
     setAvatarUrl(profile.avatar_url);
     setCalendarPref(profile.calendar_pref);
     setTimezonePref(profile.timezone_pref);
@@ -129,7 +128,6 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
       const updates: Partial<UserProfile> = {
         display_name: displayName.trim(),
         bio: bio.trim(),
-        recovery_email: recoveryEmail.trim() || null,
         avatar_url: avatarUrl,
         calendar_pref: calendarPref,
         timezone_pref: timezonePref,
@@ -302,23 +300,6 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                   onBlur={e => { e.target.style.borderColor = 'var(--theme-border, #C8C8C8)'; e.target.style.background = 'var(--theme-bg-input, #F2F2F2)'; }}
                   placeholder="A short note about yourself"
                 />
-              </Field>
-
-              {/* Recovery email */}
-              <Field label="Recovery Email (optional)">
-                <input
-                  type="email"
-                  value={recoveryEmail}
-                  onChange={e => setRecoveryEmail(e.target.value)}
-                  className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-                  style={inputStyle}
-                  onFocus={onFocus}
-                  onBlur={onBlur}
-                  placeholder="used only to reset your password"
-                />
-                <p className="text-xs mt-1" style={{ color: colors.textTertiary }}>
-                  Not used for login. Needed only if you forget your password.
-                </p>
               </Field>
             </div>
           )}

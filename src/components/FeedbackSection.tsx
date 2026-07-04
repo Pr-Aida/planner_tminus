@@ -55,7 +55,6 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
   const { colors } = useTheme();
   const [type, setType] = useState<FeedbackType>('bug');
   const [message, setMessage] = useState('');
-  const [contactEmail, setContactEmail] = useState('');
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState<SendStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -220,7 +219,6 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
         setStatus(null);
         setError(null);
         setMessage('');
-        setContactEmail('');
         setNotifCount(0);
         setNotifs([]);
         setShowNotifs(false);
@@ -271,7 +269,6 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
         body: JSON.stringify({
           feedback_type: type,
           message: trimmed,
-          contact_email: contactEmail.trim() || undefined,
           page_route: pageRoute || undefined,
         }),
       });
@@ -286,7 +283,6 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
         setStatus('sent');
       }
       setMessage('');
-      setContactEmail('');
       loadItems();
     } catch (err) {
       setError((err as Error).message || 'Feedback could not be sent. Please try again.');
@@ -528,24 +524,6 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
           </p>
         </div>
 
-        {/* Optional contact email */}
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: colors.textPrimary }}>
-            Email (optional)
-          </label>
-          <input
-            type="email"
-            value={contactEmail}
-            onChange={e => { setContactEmail(e.target.value); setStatus(null); }}
-            className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-            style={inputStyle}
-            placeholder="only if you want a reply"
-          />
-          <p className="text-[10px] mt-1" style={{ color: colors.textTertiary }}>
-            Email optional — only if you want a reply.
-          </p>
-        </div>
-
         {/* Send */}
         <button
           onClick={handleSubmit}
@@ -571,7 +549,7 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
         {status === 'saved_only' && (
           <div className="rounded-lg px-3 py-2.5 text-xs flex items-start gap-2" style={{ background: colors.warningBg, color: colors.warning }}>
             <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-            <span>Your feedback was saved, but email delivery failed. We will still receive it through the system.</span>
+            <span>Your feedback was saved. We will review it shortly.</span>
           </div>
         )}
         {error && status === 'error' && (

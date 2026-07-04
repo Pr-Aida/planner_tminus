@@ -8,7 +8,8 @@ export type RoomMemberStatus =
 export type RoomInviteStatus = 'sent' | 'accepted' | 'declined' | 'revoked';
 export type RoomNotificationType =
   | 'join_request' | 'request_approved' | 'request_rejected'
-  | 'room_invited' | 'invite_accepted' | 'member_left' | 'member_removed';
+  | 'room_invited' | 'invite_accepted' | 'member_left' | 'member_removed'
+  | 'feedback_reply' | 'admin_notification';
 
 export interface StudyRoom {
   id: string;

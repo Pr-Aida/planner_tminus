@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Bell, Check, X, UserPlus, UserCheck, LogIn, LogOut, Ban } from 'lucide-react';
+import { Bell, Check, X, UserPlus, UserCheck, LogIn, LogOut, Ban, MessageSquare } from 'lucide-react';
 import type { RoomNotification, RoomNotificationType } from '../types';
 import {
   fetchNotifications, markNotificationRead, markAllNotificationsRead,
   deleteNotification, unreadNotificationCount, approveMember, rejectMember,
+  fetchFeedbackNotifications, markFeedbackNotificationRead, markAllFeedbackNotificationsRead,
+  deleteFeedbackNotification, unreadFeedbackNotificationCount,
+  type FeedbackNotification,
 } from '../lib/studyRooms';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../lib/theme';
@@ -11,12 +14,18 @@ import { useTheme } from '../lib/theme';
 interface Props {
   userId: string;
   onOpenRoom: (roomId: string) => void;
+  onOpenFeedback?: () => void;
 }
 
-export default function RoomNotifications({ userId, onOpenRoom }: Props) {
+type MergedNotification =
+  | { kind: 'room'; data: RoomNotification }
+  | { kind: 'feedback'; data: FeedbackNotification };
+
+export default function RoomNotifications({ userId, onOpenRoom, onOpenFeedback }: Props) {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
-  const [notifications, setNotifications] = useState<RoomNotification[]>([]);
+  const [roomNotifs, setRoomNotifs] = useState<RoomNotification[]>([]);
+  const [feedbackNotifs, setFeedbackNotifs] = useState<FeedbackNotification[]>([]);
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -24,20 +33,28 @@ export default function RoomNotifications({ userId, onOpenRoom }: Props) {
 
   const load = useCallback(async () => {
     try {
-      const [n, u] = await Promise.all([
+      const [n, fn, u, fu] = await Promise.all([
         fetchNotifications(userId),
+        fetchFeedbackNotifications(userId),
         unreadNotificationCount(userId),
+        unreadFeedbackNotificationCount(userId),
       ]);
-      setNotifications(n);
-      setUnread(u);
+      setRoomNotifs(n);
+      setFeedbackNotifs(fn);
+      setUnread(u + fu);
     } catch (e) {
       console.error(e);
     }
   }, [userId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    setRoomNotifs([]);
+    setFeedbackNotifs([]);
+    setUnread(0);
+    load();
+  }, [load]);
 
-  // Realtime subscription for notifications
+  // Realtime subscription for room notifications
   useEffect(() => {
     const channel = supabase.channel(`notifications:${userId}`)
       .on('postgres_changes', {
@@ -47,7 +64,7 @@ export default function RoomNotifications({ userId, onOpenRoom }: Props) {
         filter: `user_id=eq.${userId}`,
       }, (payload) => {
         const newRow = payload.new as RoomNotification;
-        setNotifications(prev => prev.some(n => n.id === newRow.id) ? prev : [newRow, ...prev]);
+        setRoomNotifs(prev => prev.some(n => n.id === newRow.id) ? prev : [newRow, ...prev]);
         setUnread(u => u + 1);
       })
       .on('postgres_changes', {
@@ -57,7 +74,7 @@ export default function RoomNotifications({ userId, onOpenRoom }: Props) {
         filter: `user_id=eq.${userId}`,
       }, (payload) => {
         const updated = payload.new as RoomNotification;
-        setNotifications(prev => prev.map(n => n.id === updated.id ? { ...n, ...updated } : n));
+        setRoomNotifs(prev => prev.map(n => n.id === updated.id ? { ...n, ...updated } : n));
         setUnread(u => updated.read ? Math.max(0, u - 1) : u);
       })
       .on('postgres_changes', {
@@ -67,7 +84,47 @@ export default function RoomNotifications({ userId, onOpenRoom }: Props) {
         filter: `user_id=eq.${userId}`,
       }, (payload) => {
         const oldRow = payload.old as { id: string };
-        setNotifications(prev => prev.filter(n => n.id !== oldRow.id));
+        setRoomNotifs(prev => prev.filter(n => n.id !== oldRow.id));
+        setUnread(u => Math.max(0, u - 1));
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId]);
+
+  // Realtime subscription for feedback notifications
+  useEffect(() => {
+    const channel = supabase.channel(`feedback-notifs:${userId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'feedback_notifications',
+        filter: `user_id=eq.${userId}`,
+      }, (payload) => {
+        const newRow = payload.new as FeedbackNotification;
+        setFeedbackNotifs(prev => prev.some(n => n.id === newRow.id) ? prev : [newRow, ...prev]);
+        setUnread(u => u + 1);
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'feedback_notifications',
+        filter: `user_id=eq.${userId}`,
+      }, (payload) => {
+        const updated = payload.new as FeedbackNotification;
+        setFeedbackNotifs(prev => prev.map(n => n.id === updated.id ? { ...n, ...updated } : n));
+        setUnread(u => updated.read ? Math.max(0, u - 1) : u);
+      })
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'feedback_notifications',
+        filter: `user_id=eq.${userId}`,
+      }, (payload) => {
+        const oldRow = payload.old as { id: string };
+        setFeedbackNotifs(prev => prev.filter(n => n.id !== oldRow.id));
         setUnread(u => Math.max(0, u - 1));
       })
       .subscribe();
@@ -91,7 +148,6 @@ export default function RoomNotifications({ userId, onOpenRoom }: Props) {
     const next = !open;
     setOpen(next);
     if (next && unread > 0) {
-      // Don't auto-mark all as read; let user interact. But refresh.
       setLoading(true);
       await load();
       setLoading(false);
@@ -99,9 +155,13 @@ export default function RoomNotifications({ userId, onOpenRoom }: Props) {
   }
 
   async function handleMarkAllRead() {
-    await markAllNotificationsRead(userId);
+    await Promise.all([
+      markAllNotificationsRead(userId),
+      markAllFeedbackNotificationsRead(userId),
+    ]);
     setUnread(0);
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    setRoomNotifs(prev => prev.map(n => ({ ...n, read: true })));
+    setFeedbackNotifs(prev => prev.map(n => ({ ...n, read: true })));
   }
 
   async function handleAction(n: RoomNotification, action: 'approve' | 'reject') {
@@ -110,15 +170,39 @@ export default function RoomNotifications({ userId, onOpenRoom }: Props) {
     if (action === 'approve') await approveMember(n.room_id, requesterId);
     else await rejectMember(n.room_id, requesterId);
     await markNotificationRead(n.id);
-    setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
+    setRoomNotifs(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
     setUnread(u => Math.max(0, u - 1));
   }
 
-  async function handleDismiss(n: RoomNotification) {
+  async function handleDismissRoom(n: RoomNotification) {
     await deleteNotification(n.id);
-    setNotifications(prev => prev.filter(x => x.id !== n.id));
+    setRoomNotifs(prev => prev.filter(x => x.id !== n.id));
     if (!n.read) setUnread(u => Math.max(0, u - 1));
   }
+
+  async function handleDismissFeedback(n: FeedbackNotification) {
+    await deleteFeedbackNotification(n.id);
+    setFeedbackNotifs(prev => prev.filter(x => x.id !== n.id));
+    if (!n.read) setUnread(u => Math.max(0, u - 1));
+  }
+
+  async function handleFeedbackClick(n: FeedbackNotification) {
+    if (!n.read) {
+      await markFeedbackNotificationRead(n.id);
+      setFeedbackNotifs(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
+      setUnread(u => Math.max(0, u - 1));
+    }
+    if (onOpenFeedback) {
+      onOpenFeedback();
+      setOpen(false);
+    }
+  }
+
+  // Merge and sort all notifications by created_at desc
+  const merged: MergedNotification[] = [
+    ...roomNotifs.map(n => ({ kind: 'room' as const, data: n })),
+    ...feedbackNotifs.map(n => ({ kind: 'feedback' as const, data: n })),
+  ].sort((a, b) => new Date(b.data.created_at).getTime() - new Date(a.data.created_at).getTime());
 
   return (
     <div className="relative flex-shrink-0">
@@ -127,7 +211,7 @@ export default function RoomNotifications({ userId, onOpenRoom }: Props) {
         onClick={handleOpen}
         className="relative flex items-center justify-center rounded-md transition-all"
         style={{ width: 32, height: 32, background: open ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', cursor: 'pointer' }}
-        title="Room notifications"
+        title="Notifications"
       >
         <Bell size={16} color="rgba(255,255,255,0.75)" />
         {unread > 0 && (
@@ -158,22 +242,37 @@ export default function RoomNotifications({ userId, onOpenRoom }: Props) {
 
           {loading ? (
             <div className="px-4 py-6 text-center text-xs" style={{ color: colors.textSecondary }}>Loading…</div>
-          ) : notifications.length === 0 ? (
+          ) : merged.length === 0 ? (
             <div className="px-4 py-6 text-center text-xs" style={{ color: colors.textSecondary }}>No notifications yet.</div>
           ) : (
             <div className="max-h-80 overflow-y-auto">
-              {/* Room notifications */}
-              {notifications.map(n => (
-                <NotificationRow
-                  key={n.id}
-                  n={n}
-                  colors={colors}
-                  onOpenRoom={() => { onOpenRoom(n.room_id); setOpen(false); }}
-                  onApprove={() => handleAction(n, 'approve')}
-                  onReject={() => handleAction(n, 'reject')}
-                  onDismiss={() => handleDismiss(n)}
-                />
-              ))}
+              {merged.map(item => {
+                if (item.kind === 'room') {
+                  const n = item.data;
+                  return (
+                    <RoomNotificationRow
+                      key={`r-${n.id}`}
+                      n={n}
+                      colors={colors}
+                      onOpenRoom={() => { onOpenRoom(n.room_id); setOpen(false); }}
+                      onApprove={() => handleAction(n, 'approve')}
+                      onReject={() => handleAction(n, 'reject')}
+                      onDismiss={() => handleDismissRoom(n)}
+                    />
+                  );
+                } else {
+                  const n = item.data;
+                  return (
+                    <FeedbackNotificationRow
+                      key={`f-${n.id}`}
+                      n={n}
+                      colors={colors}
+                      onClick={() => handleFeedbackClick(n)}
+                      onDismiss={() => handleDismissFeedback(n)}
+                    />
+                  );
+                }
+              })}
             </div>
           )}
         </div>
@@ -182,7 +281,7 @@ export default function RoomNotifications({ userId, onOpenRoom }: Props) {
   );
 }
 
-function NotificationRow({
+function RoomNotificationRow({
   n, colors, onOpenRoom, onApprove, onReject, onDismiss,
 }: {
   n: RoomNotification;
@@ -214,7 +313,6 @@ function NotificationRow({
           </p>
           <p className="text-[10px] mt-1" style={{ color: colors.textSecondary }}>{timeAgo(n.created_at)}</p>
 
-          {/* Inline actions for join_request */}
           {n.type === 'join_request' && !n.read && n.actor_user_id && (
             <div className="flex gap-1.5 mt-2">
               <button
@@ -234,7 +332,6 @@ function NotificationRow({
             </div>
           )}
 
-          {/* Open room button for approved/accepted */}
           {(n.type === 'request_approved' || n.type === 'invite_accepted') && (
             <button
               onClick={onOpenRoom}
@@ -258,6 +355,45 @@ function NotificationRow({
   );
 }
 
+function FeedbackNotificationRow({
+  n, colors, onClick, onDismiss,
+}: {
+  n: FeedbackNotification;
+  colors: ReturnType<typeof useTheme>['colors'];
+  onClick: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      className="px-4 py-3 transition-colors cursor-pointer"
+      style={{ background: n.read ? 'transparent' : colors.bgSubtle, borderBottom: `1px solid ${colors.bgInput}` }}
+      onClick={onClick}
+    >
+      <div className="flex items-start gap-2">
+        <span style={{ color: '#7B1C3E', marginTop: 2, width: 20, display: 'inline-flex', justifyContent: 'center' }}>
+          <MessageSquare size={14} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs leading-relaxed" style={{ color: colors.textPrimary }}>
+            <span className="font-semibold">T Minus Support</span>
+            <br />
+            {n.message}
+          </p>
+          <p className="text-[10px] mt-1" style={{ color: colors.textSecondary }}>{timeAgo(n.created_at)}</p>
+        </div>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDismiss(); }}
+          className="flex-shrink-0 p-0.5"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.border }}
+          title="Dismiss"
+        >
+          <X size={12} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function iconFor(type: RoomNotificationType): { icon: React.ReactNode; color: string } {
   switch (type) {
     case 'join_request': return { icon: <UserPlus size={14} />, color: '#B45309' };
@@ -267,6 +403,8 @@ function iconFor(type: RoomNotificationType): { icon: React.ReactNode; color: st
     case 'invite_accepted': return { icon: <UserCheck size={14} />, color: '#059669' };
     case 'member_left': return { icon: <LogOut size={14} />, color: '#9CA3AF' };
     case 'member_removed': return { icon: <LogIn size={14} />, color: '#B91C1C' };
+    case 'feedback_reply': return { icon: <MessageSquare size={14} />, color: '#7B1C3E' };
+    case 'admin_notification': return { icon: <MessageSquare size={14} />, color: '#7B1C3E' };
     default: return { icon: <Bell size={14} />, color: 'var(--theme-text, #1B2A4A)' };
   }
 }
@@ -284,6 +422,8 @@ function textFor(n: RoomNotification): string {
     case 'invite_accepted': return `Your invitation to "${roomName}" was accepted.`;
     case 'member_left': return `A member left "${roomName}".`;
     case 'member_removed': return `You were removed from "${roomName}".`;
+    case 'feedback_reply': return 'T Minus Support replied to your feedback.';
+    case 'admin_notification': return 'You have new feedback activity.';
     default: return 'New notification';
   }
 }

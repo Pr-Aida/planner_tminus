@@ -93,11 +93,6 @@ async function handleSubmit(req: Request) {
   const body = await req.json().catch(() => ({}));
   const feedbackType = typeof body.feedback_type === "string" ? body.feedback_type : "other";
   const message = typeof body.message === "string" ? sanitizeText(body.message) : "";
-  const contactEmail = (typeof body.optional_contact_email === "string" && body.optional_contact_email
-    ? String(body.optional_contact_email).trim().slice(0, 254)
-    : null) || (typeof body.contact_email === "string" && body.contact_email
-    ? String(body.contact_email).trim().slice(0, 254)
-    : null);
   const pageRoute = typeof body.page_route === "string" ? String(body.page_route).slice(0, 200) : null;
 
   if (!message) return json({ error: "Message cannot be empty." }, 400);
@@ -120,7 +115,6 @@ async function handleSubmit(req: Request) {
       user_id: user.id,
       feedback_type: feedbackType,
       message,
-      optional_contact_email: contactEmail,
       page_route: pageRoute,
       status: "new",
     })
@@ -136,15 +130,14 @@ async function handleSubmit(req: Request) {
     const senders = [FEEDBACK_FROM, "T Minus Feedback <onboarding@resend.dev>"];
     for (const from of senders) {
       try {
-        const emailText = `New ${typeLabel[feedbackType] || feedbackType} from ${user.email || "a user"}:\n\n${message}${contactEmail ? `\n\nContact email: ${contactEmail}` : ""}`;
-        const emailHtml = `<p>New <b>${typeLabel[feedbackType] || feedbackType}</b> from ${user.email || "a user"}:</p><blockquote>${message.replace(/</g, "&lt;")}</blockquote>${contactEmail ? `<p>Contact email: ${contactEmail.replace(/</g, "&lt;")}</p>` : ""}`;
+        const emailText = `New ${typeLabel[feedbackType] || feedbackType} from ${user.email || "a user"}:\n\n${message}`;
+        const emailHtml = `<p>New <b>${typeLabel[feedbackType] || feedbackType}</b> from ${user.email || "a user"}:</p><blockquote>${message.replace(/</g, "&lt;")}</blockquote>`;
         const r = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             from,
             to: FEEDBACK_TO,
-            reply_to: contactEmail || undefined,
             subject: `[T Minus Feedback] ${typeLabel[feedbackType] || feedbackType}`,
             text: emailText,
             html: emailHtml,
@@ -186,7 +179,6 @@ async function handleList(req: Request) {
       user_id,
       feedback_type,
       message,
-      optional_contact_email,
       page_route,
       status,
       admin_reply,
@@ -256,7 +248,7 @@ async function handleReply(req: Request) {
   // Fetch the feedback to get user_id for the notification.
   const { data: fb } = await admin
     .from("feedback")
-    .select("id, user_id, optional_contact_email, feedback_type")
+    .select("id, user_id, feedback_type")
     .eq("id", feedbackId)
     .maybeSingle();
   if (!fb) return json({ error: "Feedback not found." }, 404);
@@ -288,29 +280,6 @@ async function handleReply(req: Request) {
     } catch (err) {
       console.log("[feedback-reply] notification insert failed: " + (err as Error).message);
       // non-fatal — reply is saved
-    }
-
-    // Optional: email the reply to the user's contact email.
-    const contactEmail = (fb as { optional_contact_email: string | null }).optional_contact_email;
-    if (contactEmail) {
-      const resendKey = Deno.env.get("RESEND_API_KEY");
-      if (resendKey) {
-        try {
-          await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              from: FEEDBACK_FROM,
-              to: contactEmail,
-              subject: `[T Minus] Reply to your feedback`,
-              text: `Hi,\n\nYou received a reply to your feedback:\n\n"${reply}"\n\n— T Minus Support`,
-              html: `<p>Hi,</p><p>You received a reply to your feedback:</p><blockquote>${reply.replace(/</g, "&lt;")}</blockquote><p>— T Minus Support</p>`,
-            }),
-          });
-        } catch {
-          // email failure is non-fatal
-        }
-      }
     }
   }
 

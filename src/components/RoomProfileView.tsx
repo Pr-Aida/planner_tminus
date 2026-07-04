@@ -16,6 +16,7 @@ import {
   getMyActiveSession, getRoomTimerSummaries,
   uploadRoomProfileImage, removeRoomProfileImage,
   makeAdmin, removeAdmin,
+  type ProfileSearchResult,
 } from '../lib/studyRooms';
 import { supabase } from '../lib/supabase';
 import { useTheme, type ThemeColors } from '../lib/theme';
@@ -1009,11 +1010,11 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
   const approved = members.filter(m => m.status === 'approved');
   const pending = members.filter(m => m.status === 'pending');
   const [inviteQuery, setInviteQuery] = useState('');
-  const [inviteResult, setInviteResult] = useState<{ id: string; username: string; display_name: string; avatar_url: string | null } | null>(null);
+  const [inviteResults, setInviteResults] = useState<ProfileSearchResult[]>([]);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
-  const [inviting, setInviting] = useState(false);
+  const [invitingId, setInvitingId] = useState<string | null>(null);
   const [memberMenuOpen, setMemberMenuOpen] = useState<string | null>(null);
   const [roleAction, setRoleAction] = useState<{ type: 'transfer' | 'transferKeepAdmin' | 'makeAdmin'; member: RoomMember } | null>(null);
   const [transferring, setTransferring] = useState(false);
@@ -1021,32 +1022,32 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
 
   async function handleSearch() {
     if (!inviteQuery.trim()) return;
-    setSearching(true); setInviteError(null); setInviteResult(null); setInviteSuccess(null);
+    setSearching(true); setInviteError(null); setInviteResults([]); setInviteSuccess(null);
     try {
-      const r = await searchUserByUsername(inviteQuery.trim());
-      if (!r) { setInviteError('No user found with this username.'); return; }
-      // Check if already member
-      if (members.find(m => m.user_id === r.id && (m.status === 'approved' || m.status === 'pending' || m.status === 'invited'))) {
-        setInviteError(members.find(m => m.user_id === r.id)?.status === 'approved'
-          ? 'This user is already a member of this room.'
-          : 'This user already has a pending invitation.');
+      const results = await searchUserByUsername(inviteQuery.trim());
+      if (results.length === 0) { setInviteError('No users found matching your search.'); return; }
+      // Filter out existing members
+      const memberIds = new Set(members.filter(m => ['approved', 'pending', 'invited'].includes(m.status)).map(m => m.user_id));
+      const filtered = results.filter(r => !memberIds.has(r.id));
+      if (filtered.length === 0) {
+        setInviteError('All matching users are already members or have pending invitations.');
         return;
       }
-      setInviteResult(r);
+      setInviteResults(filtered);
     } catch (e) { setInviteError(e instanceof Error ? e.message : 'Search failed'); }
     finally { setSearching(false); }
   }
 
-  async function handleInvite() {
-    if (!inviteResult) return;
-    setInviting(true); setInviteError(null);
+  async function handleInvite(userId: string) {
+    setInvitingId(userId); setInviteError(null);
     try {
-      await inviteByUsername(room.id, inviteResult.id);
+      await inviteByUsername(room.id, userId);
       setInviteSuccess('Invitation sent successfully.');
-      setInviteResult(null); setInviteQuery('');
+      setInviteResults(prev => prev.filter(r => r.id !== userId));
+      setInviteQuery('');
       onReload();
     } catch (e) { setInviteError(e instanceof Error ? e.message : 'Invite failed'); }
-    finally { setInviting(false); }
+    finally { setInvitingId(null); }
   }
 
   async function handleMakeAdmin(targetUserId: string) {
@@ -1097,24 +1098,28 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
           </div>
           {inviteError && <p className="text-xs mb-2" style={{ color: colors.error }}>{inviteError}</p>}
           {inviteSuccess && <p className="text-xs mb-2" style={{ color: colors.success }}>{inviteSuccess}</p>}
-          {inviteResult && (
-            <div className="flex items-center gap-3 rounded-lg p-3 mb-2" style={{ background: colors.bgSubtle }}>
-              {inviteResult.avatar_url ? (
-                <img src={inviteResult.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover" />
-              ) : (
-                <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white" style={{ background: themeColor }}>
-                  {inviteResult.username.charAt(0).toUpperCase()}
+          {inviteResults.length > 0 && (
+            <div className="space-y-2 mb-2 max-h-64 overflow-y-auto">
+              {inviteResults.map(r => (
+                <div key={r.id} className="flex items-center gap-3 rounded-lg p-3" style={{ background: colors.bgSubtle }}>
+                  {r.avatar_url ? (
+                    <img src={r.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0" style={{ background: themeColor }}>
+                      {r.username.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold truncate" style={{ color: colors.textPrimary }}>{r.display_name || r.username}</p>
+                    <p className="text-xs truncate" style={{ color: colors.textTertiary }}>@{r.username}</p>
+                  </div>
+                  <button onClick={() => handleInvite(r.id)} disabled={invitingId === r.id}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold text-white flex-shrink-0"
+                    style={{ background: themeColor, border: 'none', cursor: invitingId === r.id ? 'not-allowed' : 'pointer' }}>
+                    {invitingId === r.id ? <Loader2 size={13} className="animate-spin" /> : 'Invite'}
+                  </button>
                 </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold" style={{ color: colors.textPrimary }}>{inviteResult.display_name || inviteResult.username}</p>
-                <p className="text-xs" style={{ color: colors.textTertiary }}>@{inviteResult.username}</p>
-              </div>
-              <button onClick={handleInvite} disabled={inviting}
-                className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
-                style={{ background: themeColor, border: 'none', cursor: inviting ? 'not-allowed' : 'pointer' }}>
-                {inviting ? <Loader2 size={13} className="animate-spin" /> : 'Invite'}
-              </button>
+              ))}
             </div>
           )}
         </div>
