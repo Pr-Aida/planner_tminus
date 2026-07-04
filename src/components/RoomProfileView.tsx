@@ -64,7 +64,7 @@ function MemberAvatar({ m, themeColor }: { m: RoomMember; themeColor?: string })
   return (
     <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
       style={{ background: bg }}>
-      {(m.username || m.display_name || '?').charAt(0).toUpperCase()}
+      {(m.display_name || m.username || 'U').charAt(0).toUpperCase()}
     </div>
   );
 }
@@ -620,15 +620,15 @@ function ActivityTab({ roomId, userId, themeColor }: { roomId: string; userId: s
                   <img src={a.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
                 ) : (
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ background: colors.textPrimary }}>
-                    {(a.username || a.display_name || '?').charAt(0).toUpperCase()}
+                    {(a.display_name || a.username || 'U').charAt(0).toUpperCase()}
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate" style={{ color: colors.textPrimary }}>
-                    {a.display_name || a.username || 'Member'}
+                    {a.display_name || a.username || 'Unknown user'}
                     {a.user_id === userId && <span className="ml-1.5 text-[10px] font-bold uppercase" style={{ color: colors.textTertiary }}>(you)</span>}
                   </p>
-                  <p className="text-xs" style={{ color: colors.textTertiary }}>@{a.username || ''}</p>
+                  <p className="text-xs" style={{ color: colors.textTertiary }}>@{a.username || '—'}</p>
                 </div>
                 {a.active_now && !a.hidden && (
                   <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: colors.successBg, color: colors.success }}>
@@ -967,13 +967,13 @@ function MemberTimerRow({ s, userId, themeColor }: { s: MemberTimerSummary; user
         <img src={s.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
       ) : (
         <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ background: themeColor }}>
-          {(s.username || '?').charAt(0).toUpperCase()}
+          {(s.display_name || s.username || 'U').charAt(0).toUpperCase()}
         </div>
       )}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <p className="text-xs font-semibold truncate" style={{ color: colors.textPrimary }}>
-            {s.display_name || s.username}
+            {s.display_name || s.username || 'Unknown user'}
             {s.user_id === userId && <span className="ml-1.5 text-[9px] font-bold uppercase" style={{ color: colors.textTertiary }}>(you)</span>}
           </p>
           {/* Timer between name and status badge — large, bold */}
@@ -1015,6 +1015,38 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const [invitingId, setInvitingId] = useState<string | null>(null);
+
+  // Debounced auto-search: fires 350ms after the user stops typing.
+  // Min 2 chars required by the RPC; shorter queries just clear results.
+  useEffect(() => {
+    const q = inviteQuery.trim();
+    if (q.length < 2) {
+      setInviteResults([]);
+      setInviteError(null);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    setInviteError(null);
+    const timer = setTimeout(async () => {
+      try {
+        const results = await searchUserByUsername(q);
+        const memberIds = new Set(members.filter(m => ['approved', 'pending', 'invited'].includes(m.status)).map(m => m.user_id));
+        const filtered = results.filter(r => !memberIds.has(r.id));
+        setInviteResults(filtered);
+        if (filtered.length === 0 && results.length > 0) {
+          setInviteError('All matching users are already members or have pending invitations.');
+        } else if (results.length === 0) {
+          setInviteError('No users found matching your search.');
+        }
+      } catch (e) {
+        setInviteError(e instanceof Error ? e.message : 'Search failed');
+      } finally {
+        setSearching(false);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [inviteQuery, members]);
   const [memberMenuOpen, setMemberMenuOpen] = useState<string | null>(null);
   const [roleAction, setRoleAction] = useState<{ type: 'transfer' | 'transferKeepAdmin' | 'makeAdmin'; member: RoomMember } | null>(null);
   const [transferring, setTransferring] = useState(false);
@@ -1086,7 +1118,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
               value={inviteQuery}
               onChange={e => setInviteQuery(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSearch()}
-              placeholder="Search by @username…"
+              placeholder="Search by @username or name…"
               className="flex-1 min-w-0 rounded-lg px-3 py-2 text-xs outline-none"
               style={getInputStyle(colors)}
             />
@@ -1106,12 +1138,12 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                     <img src={r.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
                   ) : (
                     <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0" style={{ background: themeColor }}>
-                      {r.username.charAt(0).toUpperCase()}
+                      {(r.username || r.display_name || 'U').charAt(0).toUpperCase()}
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold truncate" style={{ color: colors.textPrimary }}>{r.display_name || r.username}</p>
-                    <p className="text-xs truncate" style={{ color: colors.textTertiary }}>@{r.username}</p>
+                    <p className="text-sm font-semibold truncate" style={{ color: colors.textPrimary }}>{r.display_name || r.username || 'Unknown user'}</p>
+                    <p className="text-xs truncate" style={{ color: colors.textTertiary }}>@{r.username || '—'}</p>
                   </div>
                   <button onClick={() => handleInvite(r.id)} disabled={invitingId === r.id}
                     className="px-3 py-1.5 rounded-lg text-xs font-bold text-white flex-shrink-0"
@@ -1134,8 +1166,8 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
               <div key={m.id} className="flex items-center gap-2 flex-wrap">
                 <MemberAvatar m={m} themeColor={themeColor} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate" style={{ color: colors.textPrimary }}>{m.display_name || m.username || 'User'}</p>
-                  <p className="text-xs truncate" style={{ color: colors.textTertiary }}>@{m.username || m.user_id.slice(0, 8)}</p>
+                  <p className="text-sm font-medium truncate" style={{ color: colors.textPrimary }}>{m.display_name || m.username || 'Unknown user'}</p>
+                  <p className="text-xs truncate" style={{ color: colors.textTertiary }}>@{m.username || '—'}</p>
                 </div>
                 <button onClick={() => onApprove(m.user_id)} className="px-2 py-1 rounded-lg text-xs font-bold text-white flex-shrink-0" style={{ background: colors.success, border: 'none', cursor: 'pointer' }}>Approve</button>
                 <button onClick={() => onReject(m.user_id)} className="px-2 py-1 rounded-lg text-xs font-semibold flex-shrink-0" style={{ background: colors.errorBg, color: colors.error, border: 'none', cursor: 'pointer' }}>Reject</button>
@@ -1156,7 +1188,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-sm font-medium truncate" style={{ color: colors.textPrimary }}>
-                      {m.display_name || m.username || 'Member'}
+                      {m.display_name || m.username || 'Unknown user'}
                       {m.role === 'owner' && (
                         <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{ background: `${themeColor}15`, color: themeColor }}>Owner</span>
                       )}
@@ -1168,7 +1200,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                       )}
                     </p>
                   </div>
-                  <p className="text-xs" style={{ color: colors.textTertiary }}>@{m.username || m.user_id.slice(0, 8)}</p>
+                  <p className="text-xs" style={{ color: colors.textTertiary }}>@{m.username || '—'}</p>
                 </div>
 
                 {/* Member actions (owner only) */}
@@ -1516,7 +1548,7 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
                   <option value="">Select an approved member…</option>
                   {approvedOthers.map(m => (
                     <option key={m.user_id} value={m.user_id}>
-                      {m.username || m.user_id.slice(0, 8)}{m.role === 'admin' ? ' (admin)' : ''}
+                      {m.display_name || m.username || 'Unknown user'}{m.role === 'admin' ? ' (admin)' : ''}
                     </option>
                   ))}
                 </select>
@@ -1575,7 +1607,7 @@ function SettingsTab({ room, members, currentUserId, isOwner, onUpdated, onRegen
                   <option value="">Select an approved member…</option>
                   {approvedOthers.filter(m => m.role !== 'admin').map(m => (
                     <option key={m.user_id} value={m.user_id}>
-                      {m.username || m.user_id.slice(0, 8)}
+                      {m.display_name || m.username || 'Unknown user'}
                     </option>
                   ))}
                 </select>

@@ -637,7 +637,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
                   <img src={m.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0 mt-0.5" />
                 ) : (
                   <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5" style={{ background: isOwn ? accent : colors.textPrimary }}>
-                    {(m.display_name || m.username || 'M').charAt(0).toUpperCase()}
+                    {(m.display_name || m.username || 'U').charAt(0).toUpperCase()}
                   </div>
                 )}
 
@@ -645,9 +645,9 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
                 <div className={`group flex-1 min-w-0 max-w-[75%] ${isOwn ? 'text-right' : 'text-left'}`}>
                   <div className="flex items-center gap-1.5 mb-0.5" style={{ flexDirection: isOwn ? 'row-reverse' : 'row' }}>
                     <span className="text-xs font-semibold truncate" style={{ color: colors.textPrimary }}>
-                      {isOwn ? 'You' : (m.display_name || m.username || 'Member')}
+                      {isOwn ? 'You' : (m.display_name || m.username || 'Unknown user')}
                     </span>
-                    {!isOwn && m.username && m.display_name && (
+                    {!isOwn && m.username && (
                       <span className="text-[10px] flex-shrink-0" style={{ color: colors.textSecondary }}>@{m.username}</span>
                     )}
                     <span className="text-[10px] flex-shrink-0" style={{ color: colors.textSecondary }}>

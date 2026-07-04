@@ -56,12 +56,28 @@ const profileCache = new Map<string, Map<string, ProfileRow>>();
 
 async function getRoomProfileMap(roomId: string): Promise<Map<string, ProfileRow>> {
   const cached = profileCache.get(roomId);
-  if (cached) return cached;
+  if (cached && cached.size > 0) return cached;
   const { data: profiles } = await supabase.rpc('get_room_member_profiles', { p_room_id: roomId });
   const map = new Map<string, ProfileRow>();
   ((profiles || []) as unknown as ProfileRow[]).forEach(p => map.set(p.id, p));
   profileCache.set(roomId, map);
   return map;
+}
+
+/**
+ * Ensure profiles for the given user IDs exist in the cache.
+ * Fetches any missing ones via the RPC and adds them to the cached map.
+ * Safe to call with IDs already present — they are skipped.
+ */
+async function ensureProfiles(roomId: string, userIds: string[]): Promise<void> {
+  const map = profileCache.get(roomId);
+  if (!map || userIds.length === 0) return;
+  const missing = userIds.filter(uid => uid && !map.has(uid));
+  if (missing.length === 0) return;
+  // Re-fetch the full member profile set (RPC returns all current members).
+  // This picks up newly joined members and fills any gaps.
+  const { data: profiles } = await supabase.rpc('get_room_member_profiles', { p_room_id: roomId });
+  ((profiles || []) as unknown as ProfileRow[]).forEach(p => map.set(p.id, p));
 }
 
 /** Clear the profile cache for a room (call on room switch / unmount). */
@@ -87,7 +103,7 @@ function rowToMessage(r: ChatRow, profileMap: Map<string, ProfileRow>): ChatMess
     is_deleted: r.is_deleted,
     username: p?.username,
     display_name: p?.display_name,
-    avatar_url: p?.avatar_url,
+    avatar_url: p?.avatar_url ?? null,
     attachment: null as ChatMessage['attachment'],
     attachment_url: null as string | null,
   };
@@ -170,6 +186,9 @@ export async function fetchNewChatMessages(roomId: string, sinceIso: string): Pr
   if (rows.length === 0) return [];
 
   const profileMap = await getRoomProfileMap(roomId);
+  // Ensure profiles for any new senders are in the cache (e.g. a member
+  // who joined after the initial cache was built).
+  await ensureProfiles(roomId, rows.map(r => r.user_id));
   const messages = rows.map(r => rowToMessage(r, profileMap));
   await resolveAttachments(messages);
   return messages;

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Camera, X, Check, User as UserIcon, Trash2, AlertTriangle, Sun, Moon, Sparkles, Gift } from 'lucide-react';
+import { Camera, X, Check, Trash2, AlertTriangle, Sun, Moon, Sparkles, Gift } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { updateOwnUsername, validateUsername } from '../lib/auth';
 import { useTheme, type ThemeMode } from '../lib/theme';
@@ -58,64 +58,23 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
     setThemePref((profile.theme_pref as ThemeMode) || 'light');
   }, [profile]);
 
-  function esc(e: React.KeyboardEvent) {
-    if (e.key === 'Escape') onClose();
-  }
-
-  function checkUsername(value: string) {
-    if (value.trim().toLowerCase() === profile.username.toLowerCase()) {
-      setUsernameStatus('idle');
-      return;
-    }
-    const err = validateUsername(value.trim());
-    setUsernameStatus(err ? 'invalid' : 'ok');
-  }
-
-  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  async function handleAvatarUpload(file: File) {
+    if (!userId) return;
     setAvatarUploading(true);
     setError(null);
     try {
-      const path = `${profile.id}/avatar.png`;
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const path = `${userId}/avatar-${Date.now()}.${ext}`;
       const { error: upErr } = await supabase.storage
         .from('avatars')
-        .upload(path, file, { upsert: true, contentType: file.type });
+        .upload(path, file, { upsert: true });
       if (upErr) throw upErr;
-      const { data } = supabase.storage.from('avatars').getPublicUrl(path);
-      // Bust the cache by appending a timestamp query param
-      setAvatarUrl(data.publicUrl + '?v=' + Date.now());
-    } catch (err) {
-      setError((err as Error).message || 'Could not upload image.');
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
+      setAvatarUrl(publicUrl);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Avatar upload failed.');
     } finally {
       setAvatarUploading(false);
-      if (fileRef.current) fileRef.current.value = '';
-    }
-  }
-
-  async function handleDeleteAccount() {
-    if (deleteConfirmText.trim().toLowerCase() !== 'delete') return;
-    setDeleting(true);
-    setDeleteError(null);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Not signed in.');
-      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/account/delete-account`;
-      const res = await fetch(fnUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ confirm: true }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error((body as { error?: string }).error || 'Could not delete account.');
-      await supabase.auth.signOut();
-      onAccountDeleted();
-    } catch (err) {
-      setDeleteError((err as Error).message || 'Could not delete account. Please try again.');
-      setDeleting(false);
     }
   }
 
@@ -124,7 +83,23 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
     setSuccess(false);
     setSaving(true);
 
+    const usernameErr = validateUsername(username.trim());
+    if (usernameErr) {
+      setError(usernameErr);
+      setSaving(false);
+      return;
+    }
+
     try {
+      if (username.trim() !== profile.username) {
+        const { error: unameErr } = await updateOwnUsername(username.trim());
+        if (unameErr) {
+          setError(unameErr);
+          setSaving(false);
+          return;
+        }
+      }
+
       const updates: Partial<UserProfile> = {
         display_name: displayName.trim(),
         bio: bio.trim(),
@@ -134,116 +109,105 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
         theme_pref: themePref,
       };
 
-      // Username change goes through the edge function (server-side uniqueness).
-      if (username.trim().toLowerCase() !== profile.username.toLowerCase()) {
-        if (usernameStatus === 'invalid') {
-          setError('Please fix the username before saving.');
-          setSaving(false);
-          return;
-        }
-        const result = await updateOwnUsername(username.trim());
-        if (!result.success || !result.username) {
-          setError(result.error || 'Could not update username.');
-          setSaving(false);
-          return;
-        }
-        updates.username = result.username;
-      }
-
-      const { error: upErr } = await supabase
+      const { data, error: updErr } = await supabase
         .from('profiles')
         .update(updates)
-        .eq('id', profile.id);
+        .eq('id', userId || profile.id)
+        .select('*')
+        .maybeSingle();
 
-      if (upErr) throw upErr;
-
-      onSaved({ ...profile, ...updates } as UserProfile);
+      if (updErr) throw updErr;
+      if (data) {
+        onSaved(data as UserProfile);
+      }
       setSuccess(true);
-      setTimeout(() => setSuccess(false), 2500);
-    } catch (err) {
-      setError((err as Error).message || 'Could not save profile.');
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save profile.');
     } finally {
       setSaving(false);
     }
   }
 
-  const initial = (profile.display_name || profile.username).charAt(0).toUpperCase();
+  async function handleDeleteAccount() {
+    if (!userId) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const { error: delErr } = await supabase.auth.admin.deleteUser(userId);
+      if (delErr) {
+        await supabase.auth.signOut();
+      }
+      onAccountDeleted();
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : 'Failed to delete account.');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function onFocus(e: React.FocusEvent<HTMLInputElement>) {
+    e.target.style.borderColor = 'var(--theme-accent, #7B1C3E)';
+    e.target.style.background = 'var(--theme-bg-card, #fff)';
+  }
+  function onBlur(e: React.FocusEvent<HTMLInputElement>) {
+    e.target.style.borderColor = 'var(--theme-border, #C8C8C8)';
+    e.target.style.background = 'var(--theme-bg-input, #F2F2F2)';
+  }
+
+  const inputStyle: React.CSSProperties = {
+    border: `1.5px solid ${colors.border}`,
+    background: colors.bgInput,
+    color: colors.textPrimary,
+  };
 
   return (
-    <div
-      className="fixed inset-0 z-[200] flex items-center justify-center p-4"
-      style={{ background: colors.overlay }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-      onKeyDown={esc}
-      tabIndex={-1}
-    >
-      <div
-        className="w-full max-w-lg rounded-2xl overflow-hidden flex flex-col mx-4"
-        style={{ background: colors.bgCard, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', maxHeight: '90vh' }}
-      >
+    <div className="fixed inset-0 z-[300] flex items-start justify-center p-4 overflow-y-auto" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={onClose}>
+      <div className="w-full max-w-lg rounded-2xl my-8" style={{ background: colors.bgCard, boxShadow: '0 8px 32px rgba(0,0,0,0.22)' }} onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: colors.borderLight }}>
-          <h2 className="text-base font-bold" style={{ color: colors.textPrimary }}>Profile & Settings</h2>
-          <button
-            onClick={onClose}
-            className="flex items-center justify-center rounded-full w-7 h-7 transition-colors hover:bg-gray-100"
-            style={{ border: 'none', cursor: 'pointer', background: 'transparent' }}
-          >
-            <X size={16} color={colors.textSecondary} />
+        <div className="flex items-center justify-between px-6 py-4 sticky top-0 z-10" style={{ background: colors.bgCard, borderBottom: `1px solid ${colors.borderLight}`, borderRadius: '16px 16px 0 0' }}>
+          <h2 className="text-lg font-bold" style={{ color: colors.textPrimary }}>Profile</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.textSecondary }}>
+            <X size={20} />
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex px-6 pt-4 gap-1">
-          <TabBtn active={tab === 'profile'} onClick={() => setTab('profile')}>Profile</TabBtn>
-          <TabBtn active={tab === 'preferences'} onClick={() => setTab('preferences')}>Preferences</TabBtn>
-          <TabBtn active={tab === 'feedback'} onClick={() => setTab('feedback')}>Feedback</TabBtn>
+        <div className="flex gap-1 px-6 pt-4">
+          <TabBtn active={tab === 'profile'} onClick={() => setTab('profile')} colors={colors}>Profile</TabBtn>
+          <TabBtn active={tab === 'preferences'} onClick={() => setTab('preferences')} colors={colors}>Preferences</TabBtn>
+          <TabBtn active={tab === 'feedback'} onClick={() => setTab('feedback')} colors={colors}>Feedback</TabBtn>
         </div>
 
-        {/* Body */}
-        <div className="px-6 py-5 overflow-y-auto" style={{ flex: 1 }}>
+        <div className="px-6 py-4">
           {tab === 'profile' && (
             <div className="space-y-5">
               {/* Avatar */}
               <div className="flex items-center gap-4">
                 <div className="relative">
                   {avatarUrl ? (
-                    <img
-                      src={avatarUrl}
-                      alt="Avatar"
-                      className="rounded-full object-cover"
-                      style={{ width: 72, height: 72, border: `2px solid ${colors.borderLight}` }}
-                    />
+                    <img src={avatarUrl} alt="" className="w-16 h-16 rounded-full object-cover" />
                   ) : (
-                    <div
-                      className="rounded-full flex items-center justify-center"
-                      style={{ width: 72, height: 72, background: colors.accent }}
-                    >
-                      <span className="text-2xl font-bold text-white">{initial}</span>
+                    <div className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold text-white" style={{ background: colors.accent }}>
+                      {(displayName || username || 'U').charAt(0).toUpperCase()}
                     </div>
                   )}
                   <button
                     onClick={() => fileRef.current?.click()}
                     disabled={avatarUploading}
-                    className="absolute -bottom-1 -right-1 flex items-center justify-center rounded-full transition-opacity hover:opacity-80"
-                    style={{
-                      width: 28, height: 28, background: colors.heroBg, border: `2px solid ${colors.bgCard}`,
-                      cursor: avatarUploading ? 'not-allowed' : 'pointer', opacity: avatarUploading ? 0.6 : 1,
-                    }}
-                    title="Change avatar"
+                    className="absolute bottom-0 right-0 w-6 h-6 rounded-full flex items-center justify-center"
+                    style={{ background: colors.accent, border: `2px solid ${colors.bgCard}`, cursor: avatarUploading ? 'not-allowed' : 'pointer' }}
                   >
-                    <Camera size={13} color="#fff" />
+                    {avatarUploading ? <span className="text-[8px]">…</span> : <Camera size={12} color="#fff" />}
                   </button>
-                  <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+                  <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleAvatarUpload(f); }} />
                 </div>
                 <div>
-                  <p className="text-sm font-bold" style={{ color: colors.textPrimary }}>{profile.display_name || profile.username}</p>
-                  <p className="text-xs" style={{ color: colors.textSecondary }}>@{profile.username}</p>
-                  {avatarUploading && <p className="text-xs mt-1" style={{ color: colors.accent }}>Uploading…</p>}
+                  <p className="text-sm font-semibold" style={{ color: colors.textPrimary }}>{displayName || username}</p>
+                  <p className="text-xs" style={{ color: colors.textSecondary }}>@{username}</p>
                 </div>
               </div>
 
-              {/* Display name */}
               <Field label="Display Name">
                 <input
                   type="text"
@@ -253,47 +217,33 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                   style={inputStyle}
                   onFocus={onFocus}
                   onBlur={onBlur}
+                  placeholder="Your display name"
                 />
               </Field>
 
-              {/* Username */}
               <Field label="Username">
                 <input
                   type="text"
                   value={username}
                   onChange={e => { setUsername(e.target.value); setUsernameStatus('idle'); }}
-                  onBlur={() => checkUsername(username)}
-                  autoCapitalize="none"
-                  spellCheck={false}
+                  onBlur={() => { const err = validateUsername(username.trim()); setUsernameStatus(err ? 'invalid' : 'ok'); }}
                   className="w-full rounded-lg px-3 py-2 text-sm outline-none"
                   style={{
                     ...inputStyle,
-                    borderColor: usernameStatus === 'invalid' ? colors.error : usernameStatus === 'ok' ? colors.success : 'var(--theme-border, #C8C8C8)',
+                    border: `1.5px solid ${usernameStatus === 'invalid' ? colors.error : usernameStatus === 'ok' ? colors.success : colors.border}`,
                   }}
-                  onFocus={e => { e.target.style.borderColor = 'var(--theme-accent, #7B1C3E)'; e.target.style.background = 'var(--theme-bg-card, #fff)'; }}
-                  onBlurCapture={e => {
-                    if (usernameStatus === 'idle') e.target.style.borderColor = 'var(--theme-border, #C8C8C8)';
-                    e.target.style.background = 'var(--theme-bg-input, #F2F2F2)';
-                  }}
+                  onFocus={onFocus}
+                  onBlurCapture={onBlur}
+                  placeholder="username"
                 />
-                {usernameStatus === 'checking' && <p className="text-xs mt-1" style={{ color: colors.textSecondary }}>Checking…</p>}
-                {usernameStatus === 'invalid' && (
-                  <p className="text-xs mt-1" style={{ color: colors.error }}>
-                    Use only letters, numbers, _ and . (3–24 chars, no spaces).
-                  </p>
-                )}
-                {usernameStatus === 'ok' && (
-                  <p className="text-xs mt-1" style={{ color: colors.success }}>Looks good.</p>
-                )}
-                <p className="text-xs mt-1" style={{ color: colors.textTertiary }}>Letters, numbers, _ and . only.</p>
+                {usernameStatus === 'invalid' && <p className="text-xs mt-1" style={{ color: colors.error }}>Invalid username.</p>}
+                {usernameStatus === 'ok' && <p className="text-xs mt-1" style={{ color: colors.success }}>Username looks good.</p>}
               </Field>
 
-              {/* Bio */}
               <Field label="Bio">
                 <textarea
                   value={bio}
                   onChange={e => setBio(e.target.value)}
-                  rows={3}
                   className="w-full rounded-lg px-3 py-2 text-sm outline-none resize-y"
                   style={{ ...inputStyle, minHeight: '70px' }}
                   onFocus={e => { e.target.style.borderColor = 'var(--theme-accent, #7B1C3E)'; e.target.style.background = 'var(--theme-bg-card, #fff)'; }}
@@ -308,30 +258,9 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
             <div className="space-y-5">
               <Field label="Default Calendar">
                 <div className="flex rounded-lg overflow-hidden" style={{ border: `1.5px solid ${colors.borderLight}` }}>
-                  <button
-                    onClick={() => setCalendarPref('shamsi')}
-                    className="flex-1 py-2.5 text-xs font-semibold transition-all"
-                    style={{
-                      background: calendarPref === 'shamsi' ? colors.accent : colors.bgInput,
-                      color: calendarPref === 'shamsi' ? '#fff' : colors.textSecondary,
-                      border: 'none', cursor: 'pointer',
-                    }}
-                  >
-                    Shamsi (1405)
-                  </button>
-                  <button
-                    onClick={() => setCalendarPref('gregorian')}
-                    className="flex-1 py-2.5 text-xs font-semibold transition-all"
-                    style={{
-                      background: calendarPref === 'gregorian' ? colors.accent : colors.bgInput,
-                      color: calendarPref === 'gregorian' ? '#fff' : colors.textSecondary,
-                      border: 'none', cursor: 'pointer',
-                    }}
-                  >
-                    Gregorian
-                  </button>
+                  <CalBtn active={calendarPref === 'shamsi'} onClick={() => setCalendarPref('shamsi')} colors={colors}>Shamsi</CalBtn>
+                  <CalBtn active={calendarPref === 'gregorian'} onClick={() => setCalendarPref('gregorian')} colors={colors}>Gregorian</CalBtn>
                 </div>
-                <p className="text-xs mt-1" style={{ color: colors.textTertiary }}>Applied on your next sign-in.</p>
               </Field>
 
               <Field label="Timezone">
@@ -341,127 +270,36 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                   className="w-full rounded-lg px-3 py-2 text-sm outline-none"
                   style={inputStyle}
                 >
-                  {TIMEZONES.map(tz => (
-                    <option key={tz} value={tz}>{tz}</option>
-                  ))}
+                  {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
                 </select>
-                <p className="text-xs mt-1" style={{ color: colors.textTertiary }}>Used for date display defaults.</p>
               </Field>
 
-              <Field label="Appearance">
+              <Field label="Theme">
                 <div className="flex rounded-lg overflow-hidden" style={{ border: `1.5px solid ${colors.borderLight}` }}>
                   <button
                     onClick={() => { setThemePref('light'); setTheme('light'); }}
-                    className="flex-1 py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all"
-                    style={{
-                      background: themePref === 'light' ? colors.accent : colors.bgInput,
-                      color: themePref === 'light' ? '#fff' : colors.textSecondary,
-                      border: 'none', cursor: 'pointer',
-                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold flex-1"
+                    style={{ background: themePref === 'light' ? colors.accent : 'transparent', color: themePref === 'light' ? '#fff' : colors.textPrimary, border: 'none', cursor: 'pointer' }}
                   >
-                    <Sun size={13} /> Light
+                    <Sun size={14} /> Light
                   </button>
                   <button
                     onClick={() => { setThemePref('dark'); setTheme('dark'); }}
-                    className="flex-1 py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all"
-                    style={{
-                      background: themePref === 'dark' ? colors.accent : colors.bgInput,
-                      color: themePref === 'dark' ? '#fff' : colors.textSecondary,
-                      border: 'none', cursor: 'pointer',
-                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold flex-1"
+                    style={{ background: themePref === 'dark' ? colors.accent : 'transparent', color: themePref === 'dark' ? '#fff' : colors.textPrimary, border: 'none', cursor: 'pointer' }}
                   >
-                    <Moon size={13} /> Dark
+                    <Moon size={14} /> Dark
                   </button>
                 </div>
-                <p className="text-xs mt-1" style={{ color: colors.textTertiary }}>Toggle dark mode for the entire app.</p>
               </Field>
 
-              <div
-                className="rounded-lg p-4 flex items-start gap-3"
-                style={{ background: colors.bgSubtle, border: `1px solid ${colors.borderLight}` }}
-              >
-                <UserIcon size={16} color={colors.textPrimary} style={{ flexShrink: 0, marginTop: 2 }} />
-                <div>
-                  <p className="text-xs font-semibold" style={{ color: colors.textPrimary }}>Account</p>
-                  <p className="text-xs mt-0.5" style={{ color: colors.textSecondary }}>
-                    You sign in with your username and password. Your recovery email is only used to
-                    send you a reset link if you forget your password.
-                  </p>
-                </div>
-              </div>
-
-              {/* Tours & Updates */}
-              <div className="space-y-2 pt-2">
-                <button
-                  onClick={onRestartTour}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors"
-                  style={{ background: colors.bgInput, border: 'none', cursor: 'pointer' }}
-                  onMouseEnter={e => e.currentTarget.style.background = colors.bgHover}
-                  onMouseLeave={e => e.currentTarget.style.background = colors.bgInput}
-                >
-                  <Sparkles size={18} color={colors.accent} />
-                  <span className="text-sm font-semibold" style={{ color: colors.textPrimary }}>View Welcome Tour Again</span>
+              <div className="pt-2 space-y-2">
+                <button onClick={onRestartTour} className="flex items-center gap-2 text-xs font-semibold" style={{ color: colors.accent, background: 'none', border: 'none', cursor: 'pointer' }}>
+                  <Sparkles size={14} /> Restart tour
                 </button>
-                <button
-                  onClick={onOpenWhatsNew}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors"
-                  style={{ background: colors.bgInput, border: 'none', cursor: 'pointer' }}
-                  onMouseEnter={e => e.currentTarget.style.background = colors.bgHover}
-                  onMouseLeave={e => e.currentTarget.style.background = colors.bgInput}
-                >
-                  <Gift size={18} color={colors.success} />
-                  <span className="text-sm font-semibold" style={{ color: colors.textPrimary }}>View What's New</span>
+                <button onClick={onOpenWhatsNew} className="flex items-center gap-2 text-xs font-semibold" style={{ color: colors.accent, background: 'none', border: 'none', cursor: 'pointer' }}>
+                  <Gift size={14} /> What's new
                 </button>
-              </div>
-
-              {/* Delete Account */}
-              <div className="rounded-lg overflow-hidden" style={{ border: `1.5px solid ${colors.errorBg}` }}>
-                <button
-                  onClick={() => { setShowDeleteConfirm(v => !v); setDeleteError(null); setDeleteConfirmText(''); }}
-                  className="w-full px-4 py-3 flex items-center gap-3 text-left transition-colors"
-                  style={{ background: colors.errorBg, border: 'none', cursor: 'pointer' }}
-                  onMouseEnter={e => e.currentTarget.style.background = colors.errorBg}
-                  onMouseLeave={e => e.currentTarget.style.background = colors.errorBg}
-                >
-                  <Trash2 size={15} color={colors.error} />
-                  <span className="text-sm font-semibold" style={{ color: colors.error }}>Delete Account</span>
-                </button>
-                {showDeleteConfirm && (
-                  <div className="px-4 pb-4 pt-2" style={{ background: colors.errorBg }}>
-                    <div className="flex items-start gap-2 mb-3">
-                      <AlertTriangle size={14} color={colors.error} style={{ flexShrink: 0, marginTop: 2 }} />
-                      <p className="text-xs" style={{ color: colors.error }}>
-                        This will permanently delete your account and all your planner data — habits, notes, reminders, countdowns, and profile. This cannot be undone.
-                      </p>
-                    </div>
-                    <p className="text-xs font-semibold mb-1.5" style={{ color: colors.error }}>
-                      Type <strong>delete</strong> to confirm:
-                    </p>
-                    <input
-                      type="text"
-                      value={deleteConfirmText}
-                      onChange={e => setDeleteConfirmText(e.target.value)}
-                      placeholder="delete"
-                      className="w-full rounded-lg px-3 py-2 text-sm outline-none mb-3"
-                      style={{ border: `1.5px solid ${colors.error}`, background: colors.bgInput, color: colors.textPrimary, fontFamily: 'inherit' }}
-                    />
-                    {deleteError && (
-                      <p className="text-xs mb-2" style={{ color: colors.error }}>{deleteError}</p>
-                    )}
-                    <button
-                      onClick={handleDeleteAccount}
-                      disabled={deleting || deleteConfirmText.trim().toLowerCase() !== 'delete'}
-                      className="w-full py-2 rounded-lg text-sm font-bold text-white transition-opacity"
-                      style={{
-                        background: colors.error, border: 'none',
-                        cursor: deleting || deleteConfirmText.trim().toLowerCase() !== 'delete' ? 'not-allowed' : 'pointer',
-                        opacity: deleting || deleteConfirmText.trim().toLowerCase() !== 'delete' ? 0.5 : 1,
-                      }}
-                    >
-                      {deleting ? 'Deleting…' : 'Permanently Delete My Account'}
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -482,49 +320,75 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
               <Check size={14} /> Profile saved.
             </div>
           )}
-        </div>
 
-        {/* Footer */}
-        <div className="flex gap-3 px-6 py-4 border-t" style={{ borderColor: colors.borderLight }}>
-          <button
-            onClick={onClose}
-            className="flex-1 py-2.5 rounded-lg text-sm font-semibold transition-colors"
-            style={{ background: colors.bgInput, color: colors.textPrimary, border: 'none', cursor: 'pointer' }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving || usernameStatus === 'invalid'}
-            className="flex-1 py-2.5 rounded-lg text-sm font-bold text-white transition-opacity"
-            style={{
-              background: colors.accent, border: 'none',
-              cursor: saving || usernameStatus === 'invalid' ? 'not-allowed' : 'pointer',
-              opacity: saving || usernameStatus === 'invalid' ? 0.6 : 1,
-            }}
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </button>
+          {/* Save button (profile + preferences tabs only) */}
+          {tab !== 'feedback' && (
+            <div className="pt-4">
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="w-full rounded-lg py-2.5 text-sm font-bold text-white transition-opacity"
+                style={{ background: saving ? '#9CA3AF' : colors.accent, border: 'none', cursor: saving ? 'not-allowed' : 'pointer' }}
+              >
+                {saving ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+          )}
+
+          {/* Delete account */}
+          {tab === 'profile' && (
+            <div className="pt-6 border-t" style={{ borderColor: colors.borderLight }}>
+              {!showDeleteConfirm ? (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="flex items-center gap-2 text-xs font-semibold"
+                  style={{ color: colors.error, background: 'none', border: 'none', cursor: 'pointer' }}
+                >
+                  <Trash2 size={14} /> Delete account
+                </button>
+              ) : (
+                <div className="rounded-lg p-4" style={{ background: colors.errorBg, border: `1px solid ${colors.error}` }}>
+                  <div className="flex items-start gap-2 mb-3">
+                    <AlertTriangle size={16} color={colors.error} style={{ flexShrink: 0, marginTop: 2 }} />
+                    <div>
+                      <p className="text-sm font-bold" style={{ color: colors.error }}>Delete account permanently?</p>
+                      <p className="text-xs mt-1" style={{ color: colors.textSecondary }}>This cannot be undone. All your data will be lost.</p>
+                    </div>
+                  </div>
+                  <input
+                    type="text"
+                    value={deleteConfirmText}
+                    onChange={e => setDeleteConfirmText(e.target.value)}
+                    placeholder="Type DELETE to confirm"
+                    className="w-full rounded-lg px-3 py-2 text-sm outline-none mb-3"
+                    style={inputStyle}
+                  />
+                  {deleteError && <p className="text-xs mb-2" style={{ color: colors.error }}>{deleteError}</p>}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(''); setDeleteError(null); }}
+                      className="flex-1 py-2 rounded-lg text-xs font-semibold"
+                      style={{ background: colors.bgInput, color: colors.textSecondary, border: 'none', cursor: 'pointer' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleDeleteAccount}
+                      disabled={deleting || deleteConfirmText !== 'DELETE'}
+                      className="flex-1 py-2 rounded-lg text-xs font-bold text-white"
+                      style={{ background: deleting ? '#9CA3AF' : colors.error, border: 'none', cursor: deleting || deleteConfirmText !== 'DELETE' ? 'not-allowed' : 'pointer' }}
+                    >
+                      {deleting ? 'Deleting…' : 'Delete'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
-}
-
-const inputStyle: React.CSSProperties = {
-  border: '1.5px solid var(--theme-border, #C8C8C8)',
-  background: 'var(--theme-bg-input, #F2F2F2)',
-  color: 'var(--theme-text, #111)',
-  fontFamily: 'inherit',
-};
-
-function onFocus(e: React.FocusEvent<HTMLInputElement>) {
-  e.target.style.borderColor = 'var(--theme-accent, #7B1C3E)';
-  e.target.style.background = 'var(--theme-bg-card, #fff)';
-}
-function onBlur(e: React.FocusEvent<HTMLInputElement>) {
-  e.target.style.borderColor = 'var(--theme-border, #C8C8C8)';
-  e.target.style.background = 'var(--theme-bg-input, #F2F2F2)';
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -539,16 +403,33 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  const { colors } = useTheme();
+function TabBtn({ active, onClick, colors, children }: { active: boolean; onClick: () => void; colors: ReturnType<typeof useTheme>['colors']; children: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
-      className="px-4 py-2 text-xs font-bold rounded-t-lg transition-colors"
+      className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
       style={{
-        color: active ? colors.accent : colors.textSecondary,
-        borderBottom: active ? `2px solid ${colors.accent}` : '2px solid transparent',
-        background: 'none', border: 'none', cursor: 'pointer',
+        background: active ? colors.accent : 'transparent',
+        color: active ? '#fff' : colors.textSecondary,
+        border: 'none',
+        cursor: 'pointer',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function CalBtn({ active, onClick, colors, children }: { active: boolean; onClick: () => void; colors: ReturnType<typeof useTheme>['colors']; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex-1 px-4 py-2 text-xs font-semibold"
+      style={{
+        background: active ? colors.accent : 'transparent',
+        color: active ? '#fff' : colors.textPrimary,
+        border: 'none',
+        cursor: 'pointer',
       }}
     >
       {children}
