@@ -1,7 +1,10 @@
+import { memo } from 'react';
+
 interface BarData {
   label: string;
   activityHours: number;
   habitHours: number; // e.g. violin minutes / 60
+  habitPages?: number;
 }
 
 interface Props {
@@ -12,10 +15,10 @@ const CHART_HEIGHT = 180;
 const BAR_GAP = 6;
 const GROUP_GAP = 16;
 
-export default function WeeklyChart({ data }: Props) {
+function WeeklyChartBase({ data }: Props) {
   if (!data.length) return null;
 
-  const maxVal = Math.max(...data.flatMap(d => [d.activityHours, d.habitHours]), 0.5);
+  const maxVal = Math.max(...data.flatMap(d => [d.activityHours, d.habitHours, d.habitPages || 0]), 0.5);
   const paddedMax = Math.ceil(maxVal * 1.25 * 2) / 2 || 1;
 
   const totalWidth = 560;
@@ -23,7 +26,9 @@ export default function WeeklyChart({ data }: Props) {
   const rightPad = 16;
   const chartWidth = totalWidth - leftPad - rightPad;
   const groupWidth = chartWidth / data.length;
-  const barWidth = Math.min((groupWidth - GROUP_GAP) / 2 - BAR_GAP / 2, 28);
+  const hasPages = data.some(d => (d.habitPages || 0) > 0);
+  const barCount = hasPages ? 3 : 2;
+  const barWidth = Math.min((groupWidth - GROUP_GAP) / barCount - BAR_GAP / 2, 24);
 
   function barHeight(val: number) {
     return Math.max((val / paddedMax) * CHART_HEIGHT, val > 0 ? 2 : 0);
@@ -63,33 +68,38 @@ export default function WeeklyChart({ data }: Props) {
         {/* Bars */}
         {data.map((d, i) => {
           const groupX = leftPad + i * groupWidth + GROUP_GAP / 2;
-          const centerX = groupX + (groupWidth - GROUP_GAP) / 2;
+          const innerWidth = groupWidth - GROUP_GAP;
+          const centerX = groupX + innerWidth / 2;
           const actH = barHeight(d.activityHours);
           const habH = barHeight(d.habitHours);
+          const pgH = barHeight(d.habitPages || 0);
 
-          const actX = centerX - barWidth - BAR_GAP / 2;
-          const habX = centerX + BAR_GAP / 2;
+          const slots: { h: number; fill: string }[] = [
+            { h: actH, fill: '#1B2A4A' },
+            { h: habH, fill: '#7B1C3E' },
+          ];
+          if (hasPages) slots.push({ h: pgH, fill: '#2D6A4F' });
+
+          const totalBarsWidth = slots.length * barWidth + (slots.length - 1) * BAR_GAP;
+          let cursor = centerX - totalBarsWidth / 2;
 
           return (
             <g key={i}>
-              {/* Activity bar */}
-              <rect
-                x={actX}
-                y={CHART_HEIGHT - actH}
-                width={barWidth}
-                height={actH}
-                rx={4}
-                fill="#1B2A4A"
-              />
-              {/* Habit/Violin bar */}
-              <rect
-                x={habX}
-                y={CHART_HEIGHT - habH}
-                width={barWidth}
-                height={habH}
-                rx={4}
-                fill="#7B1C3E"
-              />
+              {slots.map((s, si) => {
+                const x = cursor;
+                cursor += barWidth + BAR_GAP;
+                return (
+                  <rect
+                    key={si}
+                    x={x}
+                    y={CHART_HEIGHT - s.h}
+                    width={barWidth}
+                    height={s.h}
+                    rx={4}
+                    fill={s.fill}
+                  />
+                );
+              })}
               {/* X label */}
               <text
                 x={centerX}
@@ -110,8 +120,17 @@ export default function WeeklyChart({ data }: Props) {
           <text x={14} y={9} fontSize="10" fill="#6B6B6B">Activities</text>
           <rect x={80} y={0} width={10} height={10} rx={2} fill="#7B1C3E" />
           <text x={94} y={9} fontSize="10" fill="#6B6B6B">Habits (h)</text>
+          {hasPages && (
+            <>
+              <rect x={160} y={0} width={10} height={10} rx={2} fill="#2D6A4F" />
+              <text x={174} y={9} fontSize="10" fill="#6B6B6B">Pages</text>
+            </>
+          )}
         </g>
       </svg>
     </div>
   );
 }
+
+const WeeklyChart = memo(WeeklyChartBase);
+export default WeeklyChart;

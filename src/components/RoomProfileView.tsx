@@ -113,8 +113,33 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Realtime subscriptions
+  // Realtime subscriptions — debounced reload to avoid refetching on every
+  // single change event (a member approval can fire 3 events at once).
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let pending = false;
+    const scheduleReload = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        pending = false;
+        // Only reload room + members (not the heavy timer data).
+        (async () => {
+          try {
+            const [r, m, me] = await Promise.all([
+              fetchRoomById(roomId),
+              fetchMembers(roomId),
+              fetchMyMembership(roomId, userId),
+            ]);
+            setRoom(r);
+            setMembers(m || []);
+            setMyMembership(me);
+          } catch (e) {
+            console.error('RoomProfileView realtime reload error:', e);
+          }
+        })();
+      }, 300);
+    };
+
     // Members channel - updates for join requests, approvals, role changes
     const membersChannel = supabase.channel(`room_members:${roomId}`)
       .on('postgres_changes', {
@@ -122,7 +147,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
         schema: 'public',
         table: 'study_room_members',
         filter: `room_id=eq.${roomId}`,
-      }, () => { load(); })
+      }, scheduleReload)
       .subscribe();
 
     // Study sessions channel - updates for timer status
@@ -132,7 +157,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
         schema: 'public',
         table: 'room_study_sessions',
         filter: `room_id=eq.${roomId}`,
-      }, () => { load(); })
+      }, scheduleReload)
       .subscribe();
 
     // Join requests channel
@@ -142,7 +167,7 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
         schema: 'public',
         table: 'study_room_join_requests',
         filter: `room_id=eq.${roomId}`,
-      }, () => { load(); })
+      }, scheduleReload)
       .subscribe();
 
     // Persistent unread count — fetch on mount and subscribe to changes
@@ -155,12 +180,13 @@ export default function RoomProfileView({ roomId, userId, onBack }: Props) {
     const unreadSub = subscribeToChatUnread(roomId, userId, refreshUnread);
 
     return () => {
+      if (timer) clearTimeout(timer);
       supabase.removeChannel(membersChannel);
       supabase.removeChannel(sessionsChannel);
       supabase.removeChannel(requestsChannel);
       unreadSub.unsubscribe();
     };
-  }, [roomId, load, userId, tab]);
+  }, [roomId, userId, tab]);
 
   // Clear unread when opening Chat tab — update read receipt persistently
   useEffect(() => {

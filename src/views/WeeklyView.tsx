@@ -108,16 +108,22 @@ export default function WeeklyView({
         }
       }
       let habitMin = 0;
+      let habitPages = 0;
       for (const h of habits) {
         if (h.habit_type === 'value') {
           const val = d.habit_values[h.id];
-          if (typeof val === 'number') habitMin += val;
+          if (typeof val === 'number') {
+            const unit = (h.unit || 'min').toLowerCase();
+            if (unit === 'pages' || unit === 'page') habitPages += val;
+            else habitMin += val;
+          }
         }
       }
       return {
         label,
         activityHours: +(actMin / 60).toFixed(2),
         habitHours: +(habitMin / 60).toFixed(2),
+        habitPages,
       };
     });
   }, [weeks, activeWeek, getDayData, habits]);

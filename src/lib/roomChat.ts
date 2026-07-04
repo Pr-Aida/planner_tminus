@@ -47,6 +47,81 @@ interface ProfileRow {
 }
 
 const MAX_MESSAGE = 1000;
+const PAGE_SIZE = 50;
+const INITIAL_LOAD_LIMIT = 200;
+
+// In-memory cache of member profiles per room. Cleared when the room changes.
+// This avoids re-fetching profiles on every realtime message insert.
+const profileCache = new Map<string, Map<string, ProfileRow>>();
+
+async function getRoomProfileMap(roomId: string): Promise<Map<string, ProfileRow>> {
+  const cached = profileCache.get(roomId);
+  if (cached) return cached;
+  const { data: profiles } = await supabase.rpc('get_room_member_profiles', { p_room_id: roomId });
+  const map = new Map<string, ProfileRow>();
+  ((profiles || []) as unknown as ProfileRow[]).forEach(p => map.set(p.id, p));
+  profileCache.set(roomId, map);
+  return map;
+}
+
+/** Clear the profile cache for a room (call on room switch / unmount). */
+export function clearChatCache(roomId?: string): void {
+  if (roomId) {
+    profileCache.delete(roomId);
+  } else {
+    profileCache.clear();
+  }
+}
+
+function rowToMessage(r: ChatRow, profileMap: Map<string, ProfileRow>): ChatMessage {
+  const p = profileMap.get(r.user_id);
+  return {
+    id: r.id,
+    room_id: r.room_id,
+    user_id: r.user_id,
+    message: r.is_deleted ? '' : r.message,
+    message_type: r.message_type || 'text',
+    attachment_id: r.attachment_id,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+    is_deleted: r.is_deleted,
+    username: p?.username,
+    display_name: p?.display_name,
+    avatar_url: p?.avatar_url,
+    attachment: null as ChatMessage['attachment'],
+    attachment_url: null as string | null,
+  };
+}
+
+async function resolveAttachments(messages: ChatMessage[]): Promise<void> {
+  const attachmentIds = messages
+    .filter(m => m.attachment_id && !m.is_deleted)
+    .map(m => m.attachment_id!) as string[];
+  if (attachmentIds.length === 0) return;
+
+  const fileMap = new Map<string, UploadedFile>();
+  await Promise.all(attachmentIds.map(async (fid) => {
+    const file = await fetchFileById(fid);
+    if (file) fileMap.set(fid, file);
+  }));
+
+  for (const m of messages) {
+    if (m.attachment_id && !m.is_deleted) {
+      const file = fileMap.get(m.attachment_id);
+      if (file) {
+        m.attachment = {
+          id: file.id,
+          file_type: file.file_type,
+          original_file_name: file.original_file_name,
+          file_size: file.file_size,
+          mime_type: file.mime_type,
+        };
+        const url = await getSignedUrl(file.storage_bucket, file.storage_path);
+        m.attachment_url = url;
+      }
+    }
+  }
+}
 
 export async function fetchChatMessages(roomId: string): Promise<ChatMessage[]> {
   const { data, error } = await supabase
@@ -55,7 +130,7 @@ export async function fetchChatMessages(roomId: string): Promise<ChatMessage[]> 
     .eq('room_id', roomId)
     .eq('is_deleted', false)
     .order('created_at', { ascending: true })
-    .limit(200);
+    .limit(INITIAL_LOAD_LIMIT);
 
   if (error) {
     console.error('[Chat] fetch failed:', error);
@@ -65,64 +140,66 @@ export async function fetchChatMessages(roomId: string): Promise<ChatMessage[]> 
   const rows = (data || []) as unknown as ChatRow[];
   if (rows.length === 0) return [];
 
-  // Fetch profiles via SECURITY DEFINER RPC to bypass RLS safely.
-  // This returns only safe fields: id, username, display_name, avatar_url.
-  const { data: profiles } = await supabase.rpc('get_room_member_profiles', { p_room_id: roomId });
+  const profileMap = await getRoomProfileMap(roomId);
+  const messages = rows.map(r => rowToMessage(r, profileMap));
+  await resolveAttachments(messages);
+  return messages;
+}
 
-  const profileMap = new Map<string, ProfileRow>();
-  ((profiles || []) as unknown as ProfileRow[]).forEach(p => profileMap.set(p.id, p));
+/**
+ * Fetch only messages newer than the given ISO timestamp.
+ * Used by realtime handlers to avoid refetching the entire message list.
+ * Returns new messages with profiles + attachments resolved.
+ */
+export async function fetchNewChatMessages(roomId: string, sinceIso: string): Promise<ChatMessage[]> {
+  const { data, error } = await supabase
+    .from('room_chat_messages')
+    .select('*')
+    .eq('room_id', roomId)
+    .eq('is_deleted', false)
+    .gt('created_at', sinceIso)
+    .order('created_at', { ascending: true })
+    .limit(PAGE_SIZE);
 
-  const messages = rows.map(r => {
-    const p = profileMap.get(r.user_id);
-    return {
-      id: r.id,
-      room_id: r.room_id,
-      user_id: r.user_id,
-      message: r.is_deleted ? '' : r.message,
-      message_type: r.message_type || 'text',
-      attachment_id: r.attachment_id,
-      created_at: r.created_at,
-      updated_at: r.updated_at,
-      is_deleted: r.is_deleted,
-      username: p?.username,
-      display_name: p?.display_name,
-      avatar_url: p?.avatar_url,
-      attachment: null as ChatMessage['attachment'],
-      attachment_url: null as string | null,
-    };
-  });
-
-  // Resolve attachments for non-text messages
-  const attachmentIds = messages
-    .filter(m => m.attachment_id && !m.is_deleted)
-    .map(m => m.attachment_id!) as string[];
-
-  if (attachmentIds.length > 0) {
-    const fileMap = new Map<string, UploadedFile>();
-    await Promise.all(attachmentIds.map(async (fid) => {
-      const file = await fetchFileById(fid);
-      if (file) fileMap.set(fid, file);
-    }));
-
-    for (const m of messages) {
-      if (m.attachment_id && !m.is_deleted) {
-        const file = fileMap.get(m.attachment_id);
-        if (file) {
-          m.attachment = {
-            id: file.id,
-            file_type: file.file_type,
-            original_file_name: file.original_file_name,
-            file_size: file.file_size,
-            mime_type: file.mime_type,
-          };
-          // Get signed URL for the attachment
-          const url = await getSignedUrl(file.storage_bucket, file.storage_path);
-          m.attachment_url = url;
-        }
-      }
-    }
+  if (error) {
+    console.error('[Chat] fetch new failed:', error);
+    return [];
   }
 
+  const rows = (data || []) as unknown as ChatRow[];
+  if (rows.length === 0) return [];
+
+  const profileMap = await getRoomProfileMap(roomId);
+  const messages = rows.map(r => rowToMessage(r, profileMap));
+  await resolveAttachments(messages);
+  return messages;
+}
+
+/**
+ * Fetch older messages for pagination (load more history).
+ * Returns messages older than the given ISO timestamp, in ascending order.
+ */
+export async function fetchOlderChatMessages(roomId: string, beforeIso: string): Promise<ChatMessage[]> {
+  const { data, error } = await supabase
+    .from('room_chat_messages')
+    .select('*')
+    .eq('room_id', roomId)
+    .eq('is_deleted', false)
+    .lt('created_at', beforeIso)
+    .order('created_at', { ascending: false })
+    .limit(PAGE_SIZE);
+
+  if (error) {
+    console.error('[Chat] fetch older failed:', error);
+    return [];
+  }
+
+  const rows = (data || []) as unknown as ChatRow[];
+  if (rows.length === 0) return [];
+
+  const profileMap = await getRoomProfileMap(roomId);
+  const messages = rows.map(r => rowToMessage(r, profileMap)).reverse();
+  await resolveAttachments(messages);
   return messages;
 }
 

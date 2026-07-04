@@ -210,36 +210,24 @@ export default function App() {
     ? shDate.month
     : (gregorianToSh(gregDate)?.month ?? 1);
 
-  // ─── Load habits ─────────────────────────────────────────────────────────
+  // ─── Load habits, countdown, and reminders in parallel ───────────────────
   useEffect(() => {
     if (!user) return;
-    supabase.from('planner_habits')
-      .select('*')
-      .order('sort_order')
-      .then(({ data }) => { if (data) setHabits(data as Habit[]); });
-  }, [user]);
-
-  // ─── Load countdown ───────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!user) return;
-    supabase.from('planner_monthly_notes')
-      .select('note')
-      .eq('month_key', COUNTDOWN_KEY)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data?.note) {
-          try { setCountdown(JSON.parse(data.note)); } catch {}
-        }
-      });
-  }, [user]);
-
-  // ─── Load all reminders for the user ─────────────────────────────────────
-  useEffect(() => {
-    if (!user) return;
-    supabase.from('planner_reminders')
-      .select('*')
-      .order('date_key')
-      .then(({ data }) => { if (data) setReminders(data as Reminder[]); });
+    let cancelled = false;
+    (async () => {
+      const [habitsRes, countdownRes, remindersRes] = await Promise.all([
+        supabase.from('planner_habits').select('*').order('sort_order'),
+        supabase.from('planner_monthly_notes').select('note').eq('month_key', COUNTDOWN_KEY).maybeSingle(),
+        supabase.from('planner_reminders').select('*').order('date_key'),
+      ]);
+      if (cancelled) return;
+      if (habitsRes.data) setHabits(habitsRes.data as Habit[]);
+      if (countdownRes.data?.note) {
+        try { setCountdown(JSON.parse(countdownRes.data.note)); } catch {}
+      }
+      if (remindersRes.data) setReminders(remindersRes.data as Reminder[]);
+    })();
+    return () => { cancelled = true; };
   }, [user]);
 
   // ─── Browser notifications for today's reminders ─────────────────────────
@@ -256,32 +244,35 @@ export default function App() {
     });
   }, [user, reminders]);
 
-  // ─── Load daily data for current key ─────────────────────────────────────
+  // ─── Load daily data + day notes for current key (parallel) ──────────────
   useEffect(() => {
-    if (!user || dayCache.has(currentKey)) return;
-    supabase.from('planner_daily')
-      .select('*')
-      .eq('date_key', currentKey)
-      .maybeSingle()
-      .then(({ data }) => {
+    if (!user) return;
+    const needDay = !dayCache.has(currentKey);
+    const needNote = !dayNotes.has(currentKey);
+    if (!needDay && !needNote) return;
+    let cancelled = false;
+    (async () => {
+      const queries: Promise<unknown>[] = [];
+      if (needDay) queries.push(supabase.from('planner_daily').select('*').eq('date_key', currentKey).maybeSingle());
+      if (needNote) queries.push(supabase.from('planner_monthly_notes').select('note').eq('month_key', 'day-' + currentKey).maybeSingle());
+      const results = await Promise.all(queries);
+      if (cancelled) return;
+      let qi = 0;
+      if (needDay) {
+        const dayRes = results[qi++] as { data: any };
+        const data = dayRes.data;
         const day: DailyData = data
           ? { date_key: data.date_key, top_note: data.top_note, habit_values: data.habit_values, activities: data.activities, habit_overrides: data.habit_overrides || { hidden: [], extras: [] } }
           : emptyDay(currentKey);
         setDayCache(prev => new Map(prev).set(currentKey, day));
-      });
-  }, [currentKey, user]);
-
-  // ─── Load day notes for current key ──────────────────────────────────────
-  useEffect(() => {
-    if (!user || dayNotes.has(currentKey)) return;
-    supabase.from('planner_monthly_notes')
-      .select('note')
-      .eq('month_key', 'day-' + currentKey)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data?.note) setDayNotes(prev => new Map(prev).set(currentKey, data.note));
-      });
-  }, [currentKey, user]);
+      }
+      if (needNote) {
+        const noteRes = results[qi] as { data: { note: string } | null };
+        if (noteRes.data?.note) setDayNotes(prev => new Map(prev).set(currentKey, noteRes.data.note));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentKey, user, dayCache, dayNotes]);
 
   // ─── Prefetch a whole month ───────────────────────────────────────────────
   const prefetchMonthKeys = useCallback((keys: string[]) => {
@@ -333,16 +324,31 @@ export default function App() {
     ? monthKey('shamsi', shDate.year, shDate.month)
     : monthKey('gregorian', gregDate.year, gregDate.month));
 
+  // Load monthly + weekly notes in parallel when the weekly key changes
   useEffect(() => {
-    if (!user || monthlyNotes.has(weeklyNoteKey)) return;
-    supabase.from('planner_monthly_notes')
-      .select('note')
-      .eq('month_key', weeklyNoteKey)
-      .maybeSingle()
-      .then(({ data }) => {
-        setMonthlyNotes(prev => new Map(prev).set(weeklyNoteKey, data?.note || ''));
-      });
-  }, [weeklyNoteKey, user]);
+    if (!user) return;
+    const needMonthly = !monthlyNotes.has(currentMonthKey);
+    const needWeekly = !monthlyNotes.has(weeklyNoteKey);
+    if (!needMonthly && !needWeekly) return;
+    let cancelled = false;
+    (async () => {
+      const queries: Promise<unknown>[] = [];
+      if (needMonthly) queries.push(supabase.from('planner_monthly_notes').select('note').eq('month_key', currentMonthKey).maybeSingle());
+      if (needWeekly) queries.push(supabase.from('planner_monthly_notes').select('note').eq('month_key', weeklyNoteKey).maybeSingle());
+      const results = await Promise.all(queries);
+      if (cancelled) return;
+      let qi = 0;
+      if (needMonthly) {
+        const r = results[qi++] as { data: { note: string } | null };
+        setMonthlyNotes(prev => new Map(prev).set(currentMonthKey, r.data?.note || ''));
+      }
+      if (needWeekly) {
+        const r = results[qi] as { data: { note: string } | null };
+        setMonthlyNotes(prev => new Map(prev).set(weeklyNoteKey, r.data?.note || ''));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentMonthKey, weeklyNoteKey, user, monthlyNotes]);
 
   // ─── Load cover image from Supabase ──────────────────────────────────────
   useEffect(() => {
@@ -590,6 +596,11 @@ export default function App() {
   const handleRenameHabit = useCallback(async (id: string, newName: string) => {
     await supabase.from('planner_habits').update({ name: newName }).eq('id', id);
     setHabits(prev => prev.map(h => h.id === id ? { ...h, name: newName } : h));
+  }, []);
+
+  const handleUpdateHabitUnit = useCallback(async (id: string, unit: string | null) => {
+    await supabase.from('planner_habits').update({ unit }).eq('id', id);
+    setHabits(prev => prev.map(h => h.id === id ? { ...h, unit } : h));
   }, []);
 
   const handleAddHabitToDay = useCallback((name: string, type: HabitType, unit: string | null) => {
@@ -873,6 +884,7 @@ export default function App() {
       onAddHabitToDay={handleAddHabitToDay}
       onDeleteHabit={handleDeleteHabit}
       onRenameHabit={handleRenameHabit}
+      onUpdateHabitUnit={handleUpdateHabitUnit}
       onHideHabitForDay={handleHideHabitForDay}
       onRemoveExtraHabit={handleRemoveExtraHabit}
       onSaveTemplate={handleSaveTemplate}
@@ -984,6 +996,7 @@ interface MainAppContentProps {
   onAddHabitToDay: (name: string, type: HabitType, unit: string | null) => void;
   onDeleteHabit: (id: string) => void;
   onRenameHabit: (id: string, name: string) => void;
+  onUpdateHabitUnit: (id: string, unit: string | null) => void;
   onHideHabitForDay: (id: string) => void;
   onRemoveExtraHabit: (id: string) => void;
   onSaveTemplate: () => void;
@@ -1098,6 +1111,7 @@ function MainAppContent(props: MainAppContentProps) {
             onAddHabitToDay={props.onAddHabitToDay}
             onDeleteHabit={props.onDeleteHabit}
             onRenameHabit={props.onRenameHabit}
+            onUpdateHabitUnit={props.onUpdateHabitUnit}
             onHideHabitForDay={props.onHideHabitForDay}
             onRemoveExtraHabit={props.onRemoveExtraHabit}
             onSaveTemplate={props.onSaveTemplate}

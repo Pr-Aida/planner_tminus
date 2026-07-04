@@ -17,13 +17,14 @@ interface Props {
   onAddHabitToDay: (name: string, type: HabitType, unit: string | null) => void;
   onDeleteHabit: (id: string) => Promise<void>;
   onRenameHabit: (id: string, newName: string) => Promise<void>;
+  onUpdateHabitUnit: (id: string, unit: string | null) => Promise<void>;
   onHideHabitForDay: (id: string) => void;
   onRemoveExtraHabit: (id: string) => void;
   onSaveTemplate: () => void;
   onUpdateReminderStatus: (id: string, status: ReminderStatus) => void;
 }
 
-export default function DailyView({ data, habits, isToday, reminders, onDataChange, onAddHabitToTemplate, onAddHabitToDay, onDeleteHabit, onRenameHabit, onHideHabitForDay, onRemoveExtraHabit, onSaveTemplate, onUpdateReminderStatus }: Props) {
+export default function DailyView({ data, habits, isToday, reminders, onDataChange, onAddHabitToTemplate, onAddHabitToDay, onDeleteHabit, onRenameHabit, onUpdateHabitUnit, onHideHabitForDay, onRemoveExtraHabit, onSaveTemplate, onUpdateReminderStatus }: Props) {
   const { colors } = useTheme();
   // Compute summary stats
   const { totalMinutes, namedActivities } = useMemo(() => {
@@ -45,17 +46,23 @@ export default function DailyView({ data, habits, isToday, reminders, onDataChan
   const totalM = totalMinutes % 60;
 
   // Find total habit "value" minutes (habits with type='value' and unit containing 'min')
-  const habitMinutes = useMemo(() => {
+  const { habitMinutes, habitPages } = useMemo(() => {
     let mins = 0;
+    let pages = 0;
     for (const h of habits) {
       if (h.habit_type === 'value') {
         const val = data.habit_values[h.id];
         if (typeof val === 'number') {
-          mins += val;
+          const unit = (h.unit || 'min').toLowerCase();
+          if (unit === 'pages' || unit === 'page') {
+            pages += val;
+          } else {
+            mins += val;
+          }
         }
       }
     }
-    return mins;
+    return { habitMinutes: mins, habitPages: pages };
   }, [habits, data.habit_values]);
 
   const handleAddActivity = useCallback((act: Omit<Activity, 'id'>) => {
@@ -142,7 +149,11 @@ export default function DailyView({ data, habits, isToday, reminders, onDataChan
       >
         <StatItem num={String(namedActivities)} label="Activities" />
         <StatItem num={`${totalH}h ${totalM}m`} label="Total Time" />
-        <StatItem num={`${habitMinutes} min`} label="Habit Time" />
+        {habitPages > 0 ? (
+          <StatItem num={`${habitMinutes} min · ${habitPages} pg`} label="Habit Time" />
+        ) : (
+          <StatItem num={`${habitMinutes} min`} label="Habit Time" />
+        )}
       </div>
 
       {/* Activities */}
@@ -161,6 +172,7 @@ export default function DailyView({ data, habits, isToday, reminders, onDataChan
         onAddHabitToDay={onAddHabitToDay}
         onDeleteHabit={onDeleteHabit}
         onRenameHabit={onRenameHabit}
+        onUpdateHabitUnit={onUpdateHabitUnit}
         onToggleHabit={handleToggleHabit}
         onHideHabitForDay={onHideHabitForDay}
         onRemoveExtraHabit={onRemoveExtraHabit}

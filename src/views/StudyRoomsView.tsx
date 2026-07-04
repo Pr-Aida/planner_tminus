@@ -101,15 +101,22 @@ export default function StudyRoomsView({ userId, initialOpenRoomId }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Realtime subscription for invites and membership changes
+  // Realtime subscription for invites and membership changes — debounced
+  // so a batch of changes (e.g. approval + notification) only triggers one reload.
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleReload = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { load(); }, 300);
+    };
+
     const invitesChannel = supabase.channel(`my_invites:${userId}`)
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
         table: 'study_room_invites',
         filter: `invitee_user_id=eq.${userId}`,
-      }, () => { load(); })
+      }, scheduleReload)
       .subscribe();
 
     const membersChannel = supabase.channel(`my_memberships:${userId}`)
@@ -118,10 +125,11 @@ export default function StudyRoomsView({ userId, initialOpenRoomId }: Props) {
         schema: 'public',
         table: 'study_room_members',
         filter: `user_id=eq.${userId}`,
-      }, () => { load(); })
+      }, scheduleReload)
       .subscribe();
 
     return () => {
+      if (timer) clearTimeout(timer);
       supabase.removeChannel(invitesChannel);
       supabase.removeChannel(membersChannel);
     };

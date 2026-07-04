@@ -14,6 +14,7 @@ interface Props {
   onAddHabitToDay: (name: string, type: HabitType, unit: string | null) => void;
   onDeleteHabit: (id: string) => Promise<void>;
   onRenameHabit: (id: string, newName: string) => Promise<void>;
+  onUpdateHabitUnit: (id: string, unit: string | null) => Promise<void>;
   onToggleHabit: (id: string, value: boolean | number) => void;
   onHideHabitForDay: (id: string) => void;
   onRemoveExtraHabit: (id: string) => void;
@@ -28,7 +29,7 @@ interface AddForm {
 
 export default function HabitSection({
   habits, habitValues, overrides,
-  onAddHabitToTemplate, onAddHabitToDay, onDeleteHabit, onRenameHabit,
+  onAddHabitToTemplate, onAddHabitToDay, onDeleteHabit, onRenameHabit, onUpdateHabitUnit,
   onToggleHabit, onHideHabitForDay, onRemoveExtraHabit, onSaveTemplate,
 }: Props) {
   const { colors } = useTheme();
@@ -107,6 +108,7 @@ export default function HabitSection({
             onToggle={v => onToggleHabit(habit.id, v)}
             onDelete={habit.isExtra ? () => onRemoveExtraHabit(habit.id) : () => onDeleteHabit(habit.id)}
             onRename={habit.isExtra ? undefined : (newName => onRenameHabit(habit.id, newName))}
+            onUpdateUnit={habit.isExtra ? undefined : (unit => onUpdateHabitUnit(habit.id, unit))}
             onHideForDay={habit.isExtra ? undefined : () => onHideHabitForDay(habit.id)}
             isExtra={habit.isExtra}
             isLast={idx === effectiveHabits.length - 1 && !showForm}
@@ -175,16 +177,36 @@ export default function HabitSection({
 
           {/* Unit input for value type */}
           {form.type === 'value' && (
-            <input
-              type="text"
-              value={form.unit}
-              onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}
-              placeholder="Unit label (default: min)"
-              className="w-full rounded-lg px-4 py-2.5 text-sm outline-none mb-3"
-              style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, fontFamily: 'inherit', color: colors.textPrimary }}
-              onFocus={e => (e.target.style.borderColor = colors.heroBg)}
-              onBlur={e => (e.target.style.borderColor = colors.borderLight)}
-            />
+            <>
+              <div className="flex gap-2 mb-2">
+                {['min', 'pages'].map(u => (
+                  <button
+                    key={u}
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, unit: u }))}
+                    className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
+                    style={{
+                      background: form.unit === u ? colors.heroBg : colors.bgInput,
+                      color: form.unit === u ? '#fff' : colors.textSecondary,
+                      border: `1.5px solid ${form.unit === u ? colors.heroBg : colors.borderLight}`,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {u === 'min' ? 'Minutes' : 'Pages'}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="text"
+                value={form.unit}
+                onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}
+                placeholder="Unit label (default: min)"
+                className="w-full rounded-lg px-4 py-2.5 text-sm outline-none mb-3"
+                style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, fontFamily: 'inherit', color: colors.textPrimary }}
+                onFocus={e => (e.target.style.borderColor = colors.heroBg)}
+                onBlur={e => (e.target.style.borderColor = colors.borderLight)}
+              />
+            </>
           )}
 
           {/* Actions */}
@@ -219,13 +241,14 @@ interface HabitRowProps {
   onToggle: (v: boolean | number) => void;
   onDelete: () => void;
   onRename?: (newName: string) => void;
+  onUpdateUnit?: (unit: string | null) => void;
   onHideForDay?: () => void;
   isExtra: boolean;
   isLast: boolean;
   tourAttr?: string;
 }
 
-function HabitRow({ habit, value, onToggle, onDelete, onRename, onHideForDay, isExtra, isLast, tourAttr }: HabitRowProps) {
+function HabitRow({ habit, value, onToggle, onDelete, onRename, onUpdateUnit, onHideForDay, isExtra, isLast, tourAttr }: HabitRowProps) {
   const { colors } = useTheme();
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(habit.name);
@@ -326,7 +349,23 @@ function HabitRow({ habit, value, onToggle, onDelete, onRename, onHideForDay, is
               className="rounded-md text-center text-xs outline-none"
               style={{ width: 64, height: 28, border: `1.5px solid ${colors.border}`, color: colors.textPrimary, fontFamily: 'inherit', background: colors.bgInput }}
             />
-            <span className="text-xs" style={{ color: colors.textSecondary }}>{habit.unit || 'min'}</span>
+            {onUpdateUnit ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const current = (habit.unit || 'min').toLowerCase();
+                  const next = current === 'pages' ? 'min' : 'pages';
+                  onUpdateUnit(next);
+                }}
+                className="text-xs rounded px-1.5 py-0.5 transition-colors"
+                style={{ color: colors.textSecondary, background: 'transparent', border: `1px solid ${colors.borderLight}`, cursor: 'pointer' }}
+                title="Click to switch unit (min / pages)"
+              >
+                {habit.unit || 'min'}
+              </button>
+            ) : (
+              <span className="text-xs" style={{ color: colors.textSecondary }}>{habit.unit || 'min'}</span>
+            )}
           </div>
           {timeError && (
             <span className="text-[9px] leading-tight" style={{ color: colors.warning, maxWidth: 120 }}>

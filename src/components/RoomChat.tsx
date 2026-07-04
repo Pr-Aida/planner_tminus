@@ -4,8 +4,8 @@ import {
   Loader2, X, Mic, Square, AlertTriangle, MoreVertical,
 } from 'lucide-react';
 import {
-  fetchChatMessages, sendChatMessage, sendChatMessageWithAttachment, deleteChatMessage,
-  subscribeToChat, markRoomChatRead,
+  fetchChatMessages, fetchNewChatMessages, sendChatMessage, sendChatMessageWithAttachment, deleteChatMessage,
+  subscribeToChat, markRoomChatRead, clearChatCache,
   type ChatMessage, type MessageType,
 } from '../lib/roomChat';
 import {
@@ -61,13 +61,43 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     setLoading(false);
   }, [roomId]);
 
+  // Incremental refresh: only fetch messages newer than the newest known message.
+  // Avoids refetching the entire history on every realtime event.
+  const refreshNew = useCallback(async () => {
+    setMessages(prev => {
+      const newest = prev.length > 0 ? prev[prev.length - 1].created_at : null;
+      // Fire async fetch without blocking render
+      (async () => {
+        if (newest) {
+          const fresh = await fetchNewChatMessages(roomId, newest);
+          if (fresh.length > 0) {
+            setMessages(cur => {
+              // Merge: append only messages not already present (dedupe by id)
+              const existing = new Set(cur.map(m => m.id));
+              const toAdd = fresh.filter(m => !existing.has(m.id));
+              return toAdd.length > 0 ? [...cur, ...toAdd] : cur;
+            });
+          }
+        } else {
+          // No known messages — full load
+          const all = await fetchChatMessages(roomId);
+          setMessages(all);
+        }
+      })();
+      return prev;
+    });
+  }, [roomId]);
+
   useEffect(() => {
     setLoading(true);
     load();
     markRoomChatRead(roomId);
-    const sub = subscribeToChat(roomId, () => { load(); });
-    return () => { sub.unsubscribe(); };
-  }, [roomId, load]);
+    const sub = subscribeToChat(roomId, () => { refreshNew(); });
+    return () => {
+      sub.unsubscribe();
+      clearChatCache(roomId);
+    };
+  }, [roomId, load, refreshNew]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -151,10 +181,12 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
 
   async function confirmDelete() {
     if (!deleteConfirmId) return;
-    const result = await deleteChatMessage(deleteConfirmId);
+    const targetId = deleteConfirmId;
+    const result = await deleteChatMessage(targetId);
     setDeleteConfirmId(null);
     if (result.ok) {
-      await load();
+      // Optimistically remove the deleted message from state — no refetch needed.
+      setMessages(prev => prev.filter(m => m.id !== targetId));
     } else {
       setError(result.error || 'Failed to delete message.');
     }
@@ -412,7 +444,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         recordedBlobRef.current = null;
         setRecordingSeconds(0);
         setReadyToSend(false);
-        await load();
+        // Realtime subscription will deliver the new message — no refetch needed.
       } else {
         setVoiceError(result.error || 'Failed to send voice message.');
       }
