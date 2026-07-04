@@ -5,8 +5,8 @@ import {
 } from 'lucide-react';
 import {
   fetchChatMessages, fetchNewChatMessages, refreshMessagesByIds, sendChatMessage, sendChatMessageWithAttachment, deleteChatMessage,
-  subscribeToChat, markRoomChatRead, clearChatCache,
-  type ChatMessage, type MessageType,
+  subscribeToChat, subscribeToChatActivity, broadcastChatActivity, markRoomChatRead, clearChatCache,
+  type ChatMessage, type MessageType, type ChatActivityState, type ChatActivityType,
 } from '../lib/roomChat';
 import {
   validateFile, formatFileSize, getSignedUrl, downloadFile,
@@ -56,6 +56,14 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
   // upload + attachment link is still in flight. Replaced by the real
   // server message once it arrives via realtime/refresh.
   const [sendingVoice, setSendingVoice] = useState<{ url: string; duration: number } | null>(null);
+
+  // ─── Chat activity indicators (iMessage-style typing dots) ────────────────
+  // Other approved members' ephemeral activity, received via realtime broadcast.
+  const [otherActivity, setOtherActivity] = useState<ChatActivityState[]>([]);
+  // Current user's outgoing activity broadcast — debounced so we don't spam.
+  const lastBroadcastRef = useRef<number>(0);
+  const activityTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const currentActivityRef = useRef<ChatActivityType | null>(null);
 
   // Delete confirmation state
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -123,11 +131,23 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     load();
     markRoomChatRead(roomId);
     const sub = subscribeToChat(roomId, () => { refreshNew(); });
+    const actSub = subscribeToChatActivity(roomId, userId, (states) => {
+      // Prune states older than 5s (safety net for missed clear broadcasts).
+      const cutoff = Date.now() - 5000;
+      setOtherActivity(states.filter(s => s.timestamp > cutoff));
+    });
     return () => {
       sub.unsubscribe();
+      actSub.unsubscribe();
       clearChatCache(roomId);
+      // Clear our activity broadcast when leaving the room.
+      broadcastChatActivity(roomId, userId, null);
+      if (activityTimeoutRef.current) {
+        clearTimeout(activityTimeoutRef.current);
+        activityTimeoutRef.current = null;
+      }
     };
-  }, [roomId, load, refreshNew]);
+  }, [roomId, userId, load, refreshNew]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -156,6 +176,23 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     };
   }, []);
 
+  // ─── Part 1: clear the optimistic voice bubble the instant the real audio
+  // message from this user arrives in the chat, instead of a fixed delay. This
+  // makes the swap from "Sending…" to the playable audio player feel immediate.
+  useEffect(() => {
+    if (!sendingVoice) return;
+    const arrived = messages.some(
+      m => m.user_id === userId && m.message_type === 'audio'
+        && Date.now() - new Date(m.created_at).getTime() < 30000,
+    );
+    if (arrived) {
+      setSendingVoice(prev => {
+        if (prev) URL.revokeObjectURL(prev.url);
+        return null;
+      });
+    }
+  }, [messages, sendingVoice, userId]);
+
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -181,10 +218,12 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
       setSending(true);
       setUploadProgress(true);
       setError(null);
+      setActivity('uploading_file');
       const msgType: MessageType = pendingFileType as MessageType;
       const result = await sendChatMessageWithAttachment(roomId, trimmed, pendingFile, userId, msgType);
       setSending(false);
       setUploadProgress(false);
+      setActivity(null);
 
       if (result.ok) {
         setInput('');
@@ -204,6 +243,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     setError(null);
     const result = await sendChatMessage(roomId, trimmed);
     setSending(false);
+    setActivity(null);
 
     if (result.ok) {
       setInput('');
@@ -333,6 +373,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     setIsRecording(true);
     setReadyToSend(false);
     setRecordingSeconds(0);
+    setActivity('recording_voice');
 
     recordingTimerRef.current = setInterval(() => {
       setRecordingSeconds(s => {
@@ -427,6 +468,33 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     });
   }
 
+  // ─── Activity broadcast helpers ───────────────────────────────────────────
+  // Debounce broadcasts to at most once per 1.5s. Auto-clear after 4s of no
+  // re-broadcast so the indicator disappears if the user stops interacting.
+  function setActivity(type: ChatActivityType | null) {
+    if (type === null) {
+      currentActivityRef.current = null;
+      if (activityTimeoutRef.current) {
+        clearTimeout(activityTimeoutRef.current);
+        activityTimeoutRef.current = null;
+      }
+      broadcastChatActivity(roomId, userId, null);
+      return;
+    }
+    currentActivityRef.current = type;
+    const now = Date.now();
+    if (now - lastBroadcastRef.current > 1500) {
+      lastBroadcastRef.current = now;
+      broadcastChatActivity(roomId, userId, type);
+    }
+    // Reset the auto-clear timer — every keystroke/recording tick refreshes it.
+    if (activityTimeoutRef.current) clearTimeout(activityTimeoutRef.current);
+    activityTimeoutRef.current = setTimeout(() => {
+      currentActivityRef.current = null;
+      broadcastChatActivity(roomId, userId, null);
+    }, 4000);
+  }
+
   function cancelRecording() {
     stopRecordingTimer();
     cancelRef.current = true;
@@ -443,6 +511,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     audioChunksRef.current = [];
     recordedBlobRef.current = null;
     clearPreviewUrl();
+    setActivity(null);
   }
 
   async function sendVoiceMessage() {
@@ -481,6 +550,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
     setSending(true);
     setUploadProgress(true);
     setVoiceError(null);
+    setActivity('sending_voice');
 
     // Optimistic: show an immediate audio bubble using the local preview URL
     // so the user sees a voice bubble (not a filename) while upload is in flight.
@@ -500,15 +570,16 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         setRecordingSeconds(0);
         setReadyToSend(false);
         clearPreviewUrl();
+        setActivity(null);
         // Trigger a refresh to pick up the new message + attachment.
-        // Realtime may also fire, but this ensures the sender sees it immediately.
+        // Realtime may also fire; whichever arrives first clears the optimistic
+        // bubble (handled by the effect watching messages for an audio row from
+        // the current user). This avoids a fixed-delay wait.
         refreshNew();
-        // Drop the optimistic bubble once the real message is on its way in.
-        // Slight delay so refresh/realtime has a chance to deliver the real row.
-        setTimeout(() => setSendingVoice(null), 1500);
       } else {
         setSendingVoice(null);
         if (optimisticUrl !== previewUrl) URL.revokeObjectURL(optimisticUrl);
+        setActivity(null);
         setVoiceError(result.error || 'Failed to send voice message.');
       }
     } catch (err) {
@@ -516,6 +587,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
       setUploadProgress(false);
       setSendingVoice(null);
       if (optimisticUrl !== previewUrl) URL.revokeObjectURL(optimisticUrl);
+      setActivity(null);
       const errMsg = err instanceof Error ? err.message : String(err);
       setVoiceError(`Failed to send voice message: ${errMsg}`);
       console.error('[Voice] send error:', err);
@@ -615,6 +687,36 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
               </div>
             );
           })
+        )}
+        {/* iMessage-style activity indicator — shows when another approved
+            room member is typing/recording/uploading. Ephemeral realtime
+            broadcast; no database rows. Only other users' activity is shown. */}
+        {otherActivity.length > 0 && (
+          <div className="flex gap-2 flex-row-reverse" style={{ opacity: 0.85 }}>
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5" style={{ background: colors.textSecondary }}>
+              {'•'}
+            </div>
+            <div className="inline-block rounded-2xl px-3 py-2" style={{ background: colors.bgSubtle }}>
+              <div className="flex items-center gap-2">
+                <span className="typing-dots flex items-center gap-1">
+                  <span className="typing-dot" />
+                  <span className="typing-dot" />
+                  <span className="typing-dot" />
+                </span>
+                <span className="text-xs" style={{ color: colors.textSecondary }}>
+                  {(() => {
+                    const a = otherActivity[0];
+                    switch (a.activity_type) {
+                      case 'recording_voice': return 'recording voice…';
+                      case 'sending_voice': return 'sending…';
+                      case 'uploading_file': return 'uploading…';
+                      default: return 'typing…';
+                    }
+                  })()}
+                </span>
+              </div>
+            </div>
+          </div>
         )}
         {/* Optimistic voice bubble — shown immediately on Send while the
             upload/attachment-link is in flight. Replaced by the real server
@@ -768,7 +870,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
         <input
           type="text"
           value={input}
-          onChange={e => setInput(e.target.value)}
+          onChange={e => { setInput(e.target.value); setActivity('typing'); }}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
           placeholder={pendingFile ? 'Add a caption (optional)…' : isRecording ? 'Recording voice message…' : 'Write a message…'}
           maxLength={1000}
