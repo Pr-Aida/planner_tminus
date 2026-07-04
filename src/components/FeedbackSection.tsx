@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { MessageSquare, Send, Check, AlertTriangle, Loader2, Reply, Shield, MoreVertical, EyeOff } from 'lucide-react';
+import { MessageSquare, Send, Check, AlertTriangle, Loader2, Reply, Shield, MoreVertical, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../lib/theme';
 
@@ -69,9 +69,10 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
   const [replyStatus, setReplyStatus] = useState<'idle' | 'sending' | 'ok' | 'error'>('idle');
   const [replyError, setReplyError] = useState<string | null>(null);
 
-  // User-side hide state
+  // User-side delete state
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
-  const [hidingId, setHidingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const remaining = MAX_LEN - message.length;
@@ -84,6 +85,7 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
     const { data, error: qErr } = await supabase
       .from('feedback')
       .select('id, feedback_type, message, status, admin_reply, admin_reply_created_at, created_at')
+      .eq('user_id', session.user.id)
       .order('created_at', { ascending: false })
       .limit(20);
     setLoadingItems(false);
@@ -218,22 +220,58 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
     }
   }
 
-  async function handleHide(feedbackId: string) {
+  async function handleDelete(feedbackId: string) {
+    setConfirmDeleteId(null);
     setMenuOpenFor(null);
-    setHidingId(feedbackId);
+    setDeletingId(feedbackId);
     try {
-      const { error } = await supabase
-        .from('feedback')
-        .update({ user_hidden_at: new Date().toISOString() })
-        .eq('id', feedbackId);
-      if (error) throw error;
-      // Remove from local list immediately.
+      const { data: { session } } = await supabase.auth.getSession();
+      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-feedback/delete`;
+      const res = await fetch(fnUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ feedback_id: feedbackId }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error || 'Could not delete feedback.');
+      }
       setItems(prev => prev.filter(i => i.id !== feedbackId));
     } catch {
-      // If RLS blocks it or row gone, just remove from view anyway.
-      setItems(prev => prev.filter(i => i.id !== feedbackId));
+      // If the edge function fails, try direct delete via RLS (owner can delete own).
+      try {
+        await supabase.from('feedback').delete().eq('id', feedbackId);
+        setItems(prev => prev.filter(i => i.id !== feedbackId));
+      } catch {
+        // give up silently
+      }
     } finally {
-      setHidingId(null);
+      setDeletingId(null);
+    }
+  }
+
+  async function handleAdminDelete(feedbackId: string) {
+    setDeletingId(feedbackId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-feedback/delete`;
+      const res = await fetch(fnUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ feedback_id: feedbackId }),
+      });
+      if (!res.ok) throw new Error('Could not delete feedback.');
+      setAdminItems(prev => prev.filter(i => i.id !== feedbackId));
+    } catch {
+      // ignore
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -385,7 +423,7 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
                           style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: colors.textTertiary }}
                           aria-label="Feedback options"
                         >
-                          {hidingId === item.id ? <Loader2 size={12} className="animate-spin" /> : <MoreVertical size={12} />}
+                          {deletingId === item.id ? <Loader2 size={12} className="animate-spin" /> : <MoreVertical size={12} />}
                         </button>
                         {menuOpenFor === item.id && (
                           <div
@@ -393,14 +431,14 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
                             style={{ background: colors.bgCard, border: `1px solid ${colors.border}`, minWidth: '160px' }}
                           >
                             <button
-                              onClick={() => handleHide(item.id)}
+                              onClick={() => { setMenuOpenFor(null); setConfirmDeleteId(item.id); }}
                               className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left rounded-lg transition-colors"
-                              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: colors.textPrimary }}
-                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = colors.bgSubtle; }}
+                              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: colors.error }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = colors.errorBg; }}
                               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                             >
-                              <EyeOff size={12} />
-                              Hide from my profile
+                              <Trash2 size={12} />
+                              Delete feedback
                             </button>
                           </div>
                         )}
@@ -534,16 +572,64 @@ export default function FeedbackSection({ pageRoute }: { pageRoute?: string }) {
                       )}
                     </div>
                   ) : (
-                    <button
-                      onClick={() => { setReplyingTo(item.id); setReplyText(item.admin_reply || ''); setReplyError(null); setReplyStatus('idle'); }}
-                      className="text-xs font-semibold flex items-center gap-1"
-                      style={{ color: colors.accent, background: 'transparent', border: 'none', cursor: 'pointer' }}
-                    >
-                      <Reply size={12} /> {item.admin_reply ? 'Edit reply' : 'Reply'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => { setReplyingTo(item.id); setReplyText(item.admin_reply || ''); setReplyError(null); setReplyStatus('idle'); }}
+                        className="text-xs font-semibold flex items-center gap-1"
+                        style={{ color: colors.accent, background: 'transparent', border: 'none', cursor: 'pointer' }}
+                      >
+                        <Reply size={12} /> {item.admin_reply ? 'Edit reply' : 'Reply'}
+                      </button>
+                      <button
+                        onClick={() => handleAdminDelete(item.id)}
+                        disabled={deletingId === item.id}
+                        className="text-xs font-semibold flex items-center gap-1"
+                        style={{ color: colors.error, background: 'transparent', border: 'none', cursor: deletingId === item.id ? 'not-allowed' : 'pointer', opacity: deletingId === item.id ? 0.5 : 1 }}
+                      >
+                        {deletingId === item.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />} Delete
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+        {confirmDeleteId && (
+          <div
+            className="fixed inset-0 flex items-center justify-center z-50"
+            style={{ background: 'rgba(0,0,0,0.5)' }}
+            onClick={() => setConfirmDeleteId(null)}
+          >
+            <div
+              className="rounded-xl p-5 max-w-xs mx-4"
+              style={{ background: colors.bgCard, border: `1px solid ${colors.border}` }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle size={18} style={{ color: colors.error }} />
+                <h3 className="text-sm font-bold" style={{ color: colors.textPrimary }}>Delete feedback?</h3>
+              </div>
+              <p className="text-xs mb-4" style={{ color: colors.textSecondary }}>
+                Delete this feedback? This cannot be undone.
+              </p>
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setConfirmDeleteId(null)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                  style={{ background: colors.bgSubtle, color: colors.textPrimary, border: 'none', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleDelete(confirmDeleteId)}
+                  disabled={deletingId === confirmDeleteId}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1"
+                  style={{ background: colors.error, color: '#fff', border: 'none', cursor: deletingId === confirmDeleteId ? 'not-allowed' : 'pointer', opacity: deletingId === confirmDeleteId ? 0.5 : 1 }}
+                >
+                  {deletingId === confirmDeleteId ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />} Delete
+                </button>
+              </div>
             </div>
           </div>
         )}

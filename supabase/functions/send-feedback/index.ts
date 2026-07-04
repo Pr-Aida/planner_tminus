@@ -91,9 +91,11 @@ async function handleSubmit(req: Request) {
   const body = await req.json().catch(() => ({}));
   const feedbackType = typeof body.feedback_type === "string" ? body.feedback_type : "other";
   const message = typeof body.message === "string" ? sanitizeText(body.message) : "";
-  const contactEmail = typeof body.optional_contact_email === "string" && body.optional_contact_email
+  const contactEmail = (typeof body.optional_contact_email === "string" && body.optional_contact_email
     ? String(body.optional_contact_email).trim().slice(0, 254)
-    : null;
+    : null) || (typeof body.contact_email === "string" && body.contact_email
+    ? String(body.contact_email).trim().slice(0, 254)
+    : null);
   const pageRoute = typeof body.page_route === "string" ? String(body.page_route).slice(0, 200) : null;
 
   if (!message) return json({ error: "Message cannot be empty." }, 400);
