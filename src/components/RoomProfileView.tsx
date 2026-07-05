@@ -1202,7 +1202,9 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                       )}
                     </p>
                   </div>
-                  <p className="text-xs" style={{ color: colors.textTertiary }}>@{m.username || '—'}</p>
+                  <p className="text-xs truncate" style={{ color: colors.textTertiary }}>
+                    {m.username ? `@${m.username}` : '\u00A0'}
+                  </p>
                 </div>
 
                 {/* Member actions (owner only) */}

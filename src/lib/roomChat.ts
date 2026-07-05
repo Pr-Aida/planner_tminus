@@ -82,14 +82,24 @@ async function ensureProfiles(roomId: string, userIds: string[]): Promise<void> 
   if (!map || userIds.length === 0) return;
   const missing = userIds.filter(uid => uid && !map.has(uid));
   if (missing.length === 0) return;
-  // Re-fetch the full member profile set (RPC returns all current members).
-  // This picks up newly joined members and fills any gaps.
+  // First try the main RPC (returns all current members).
   const { data: profiles, error } = await supabase.rpc('get_room_member_profiles', { p_room_id: roomId });
-  if (error) {
-    console.error('[Chat] ensureProfiles RPC error:', error.message);
-    return;
+  if (!error) {
+    ((profiles || []) as unknown as ProfileRow[]).forEach(p => map.set(p.id, p));
   }
-  ((profiles || []) as unknown as ProfileRow[]).forEach(p => map.set(p.id, p));
+  // If any are still missing, use resolve_room_profiles as a targeted fallback.
+  const stillMissing = missing.filter(uid => !map.has(uid));
+  if (stillMissing.length > 0) {
+    try {
+      const { resolveProfilesByIds } = await import('./studyRooms');
+      const resolved = await resolveProfilesByIds(roomId, stillMissing);
+      resolved.forEach((p, uid) => {
+        map.set(uid, { id: p.id, username: p.username, display_name: p.display_name, avatar_url: p.avatar_url });
+      });
+    } catch (e) {
+      console.error('[Chat] ensureProfiles fallback error:', e);
+    }
+  }
 }
 
 /** Clear the profile cache for a room (call on room switch / unmount). */

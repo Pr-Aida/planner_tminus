@@ -77,6 +77,39 @@ function describeError(error: unknown): string {
   return 'Room creation failed. Please try again.';
 }
 
+// ─── Profile resolution (safe public fields only) ────────────────────────────
+
+export interface PublicProfile {
+  id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+}
+
+/**
+ * Resolve safe public profile fields for a set of user IDs within a room.
+ * Uses the SECURITY DEFINER RPC `resolve_room_profiles` which validates that
+ * the caller is an approved member/owner and only returns profiles for users
+ * who are members (any status) or the room owner.
+ * Returns a Map keyed by user_id. Never throws — returns empty map on error.
+ */
+export async function resolveProfilesByIds(roomId: string, userIds: string[]): Promise<Map<string, PublicProfile>> {
+  const map = new Map<string, PublicProfile>();
+  const uniqueIds = [...new Set(userIds.filter(Boolean))];
+  if (!roomId || uniqueIds.length === 0) return map;
+
+  const { data, error } = await supabase.rpc('resolve_room_profiles', {
+    p_room_id: roomId,
+    p_user_ids: uniqueIds,
+  });
+  if (error) {
+    logSupabaseError('resolveProfilesByIds RPC', error);
+    return map;
+  }
+  ((data || []) as unknown as PublicProfile[]).forEach(p => map.set(p.id, p));
+  return map;
+}
+
 // ─── Room CRUD ────────────────────────────────────────────────────────────────
 
 export async function createRoom(input: {
@@ -450,24 +483,21 @@ export async function fetchMembers(roomId: string): Promise<RoomMember[]> {
     (profiles || []).map(p => [(p as { id: string }).id, p as { id: string; display_name: string; username: string; avatar_url: string | null }])
   );
 
-  // Fallback: if the RPC failed or returned nothing, try to fetch the current
-  // user's own profile directly (RLS allows reading your own profile) so the
-  // current user never sees "Unknown user" for themselves.
-  if (profById.size === 0 && (members || []).length > 0) {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: myProfile } = await supabase
-          .from('profiles')
-          .select('id, username, display_name, avatar_url')
-          .eq('id', user.id)
-          .maybeSingle();
-        if (myProfile) {
-          profById.set((myProfile as { id: string }).id, myProfile as { id: string; display_name: string; username: string; avatar_url: string | null });
-        }
+  // Fallback: if the main RPC failed or returned nothing for some members,
+  // use resolve_room_profiles to fetch all member profiles in one batch.
+  // This handles the case where get_room_member_profiles fails for any reason.
+  if ((members || []).length > 0) {
+    const memberUserIds = (members || []).map(m => (m as RoomMember).user_id);
+    const missingIds = memberUserIds.filter(uid => !profById.has(uid));
+    if (missingIds.length > 0) {
+      try {
+        const resolved = await resolveProfilesByIds(roomId, missingIds);
+        resolved.forEach((p, uid) => {
+          profById.set(uid, { id: p.id, display_name: p.display_name, username: p.username, avatar_url: p.avatar_url });
+        });
+      } catch (fallbackErr) {
+        logSupabaseError('fetchMembers resolveProfilesByIds fallback', fallbackErr);
       }
-    } catch (fallbackErr) {
-      logSupabaseError('fetchMembers fallback own profile', fallbackErr);
     }
   }
 
