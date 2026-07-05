@@ -1073,7 +1073,7 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
   async function handleInvite(userId: string) {
     setInvitingId(userId); setInviteError(null);
     try {
-      await inviteByUsername(room.id, userId);
+      await inviteByUsername(room.id, userId, currentUserId);
       setInviteSuccess('Invitation sent successfully.');
       setInviteResults(prev => prev.filter(r => r.id !== userId));
       setInviteQuery('');
