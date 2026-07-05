@@ -58,7 +58,9 @@ export default function SignUp({ onSwitchToSignIn }: Props) {
       >
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center mb-3">
-            <img src="/logo.svg" alt="T Minus logo" className="h-14 w-14 mb-1" />
+            <span className="inline-flex items-center justify-center rounded-xl overflow-hidden" style={{ width: 64, height: 64, background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,0.10)' }}>
+              <img src="/photo_2026-07-01_13-17-16%20copy.jpg" alt="T Minus logo" style={{ width: 58, height: 58, objectFit: 'contain' }} />
+            </span>
           </div>
           <div className="inline-flex items-center justify-center mb-3">
             <span className="text-2xl font-extrabold tracking-widest" style={{ color: colors.textPrimary }}>

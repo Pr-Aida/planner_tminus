@@ -20,8 +20,6 @@ import MonthlyView from './views/MonthlyView';
 import YearlyView from './views/YearlyView';
 import SignIn from './views/SignIn';
 import SignUp from './views/SignUp';
-import ForgotPassword from './views/ForgotPassword';
-import ResetPassword from './views/ResetPassword';
 import ProfileView from './components/ProfileView';
 import GuidedTour, { APP_VERSION, WHATS_NEW_UPDATES } from './components/GuidedTour';
 import OnboardingScreen from './components/OnboardingScreen';
@@ -31,7 +29,7 @@ import JoinRoomView from './views/JoinRoomView';
 import RoomNotifications from './components/RoomNotifications';
 import { ThemeProvider, useTheme, type ThemeMode } from './lib/theme';
 
-type AuthScreen = 'sign-in' | 'sign-up' | 'forgot-password' | 'reset-password';
+type AuthScreen = 'sign-in' | 'sign-up';
 type TourMode = 'onboarding' | 'whats-new';
 
 const EMPTY_DAY: DailyData = { date_key: '', top_note: '', habit_values: {}, activities: [], habit_overrides: { hidden: [], extras: [] } };
@@ -181,7 +179,6 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const type = params.get('type');
     if (type === 'recovery') {
-      setAuthScreen('reset-password');
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
@@ -823,18 +820,11 @@ export default function App() {
       return (
         <SignIn
           onSwitchToSignUp={() => setAuthScreen('sign-up')}
-          onSwitchToForgot={() => setAuthScreen('forgot-password')}
         />
       );
     }
     if (authScreen === 'sign-up') {
       return <SignUp onSwitchToSignIn={() => setAuthScreen('sign-in')} />;
-    }
-    if (authScreen === 'forgot-password') {
-      return <ForgotPassword onSwitchToSignIn={() => setAuthScreen('sign-in')} />;
-    }
-    if (authScreen === 'reset-password') {
-      return <ResetPassword onComplete={() => setAuthScreen('sign-in')} />;
     }
   }
 

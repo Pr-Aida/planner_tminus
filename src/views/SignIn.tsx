@@ -4,10 +4,9 @@ import { useTheme } from '../lib/theme';
 
 interface Props {
   onSwitchToSignUp: () => void;
-  onSwitchToForgot: () => void;
 }
 
-export default function SignIn({ onSwitchToSignUp, onSwitchToForgot }: Props) {
+export default function SignIn({ onSwitchToSignUp }: Props) {
   const { colors } = useTheme();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -37,7 +36,9 @@ export default function SignIn({ onSwitchToSignUp, onSwitchToForgot }: Props) {
       >
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center mb-3">
-            <img src="/logo.svg" alt="T Minus logo" className="h-14 w-14 mb-1" />
+            <span className="inline-flex items-center justify-center rounded-xl overflow-hidden" style={{ width: 64, height: 64, background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,0.10)' }}>
+              <img src="/photo_2026-07-01_13-17-16%20copy.jpg" alt="T Minus logo" style={{ width: 58, height: 58, objectFit: 'contain' }} />
+            </span>
           </div>
           <div className="inline-flex items-center justify-center mb-3">
             <span className="text-2xl font-extrabold tracking-widest" style={{ color: colors.textPrimary }}>
@@ -116,14 +117,7 @@ export default function SignIn({ onSwitchToSignUp, onSwitchToForgot }: Props) {
           </button>
         </form>
 
-        <div className="mt-6 text-center space-y-2">
-          <button
-            onClick={onSwitchToForgot}
-            className="text-xs font-medium transition-colors"
-            style={{ color: colors.accent }}
-          >
-            Forgot your password?
-          </button>
+        <div className="mt-6 text-center">
           <p className="text-xs" style={{ color: colors.textSecondary }}>
             Don't have an account?{' '}
             <button onClick={onSwitchToSignUp} className="font-semibold" style={{ color: colors.accent }}>

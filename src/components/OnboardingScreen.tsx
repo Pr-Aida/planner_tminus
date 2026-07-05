@@ -147,7 +147,9 @@ export default function OnboardingScreen({ onFinish, onSkip }: Props) {
       {/* Top bar: Skip button */}
       <div className="flex items-center justify-between px-5 py-4 md:px-8 md:py-5 flex-shrink-0">
         <div className="flex items-center gap-2">
-          <img src="/logo.svg" alt="T Minus" className="h-7 w-7" />
+          <span className="inline-flex items-center justify-center rounded-md overflow-hidden" style={{ width: 28, height: 28, background: '#fff', flexShrink: 0 }}>
+            <img src="/photo_2026-07-01_13-17-16%20copy.jpg" alt="T Minus" style={{ width: 28, height: 28, objectFit: 'contain' }} />
+          </span>
           <span className="text-sm font-bold" style={{ color: colors.textPrimary }}>T Minus</span>
         </div>
         {!isEnd && (

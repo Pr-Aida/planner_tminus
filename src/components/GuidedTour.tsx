@@ -424,15 +424,15 @@ export default function GuidedTour({
             // ─── Intro / splash screen ────────────────────────────────────────
             <div className="text-center">
               <div
-                className="inline-flex items-center justify-center rounded-full mb-4"
+                className="inline-flex items-center justify-center rounded-xl mb-4 overflow-hidden"
                 style={{
                   width: 56, height: 56,
-                  background: isWhatsNew ? '#D1FAE5' : colors.accentLight,
+                  background: isWhatsNew ? '#D1FAE5' : '#ffffff',
                 }}
               >
                 {isWhatsNew
                   ? <Sparkles size={28} color="#059669" />
-                  : <img src="/logo.svg" alt="T Minus logo" className="h-10 w-10" />
+                  : <img src="/photo_2026-07-01_13-17-16%20copy.jpg" alt="T Minus logo" style={{ width: 52, height: 52, objectFit: 'contain' }} />
                 }
               </div>
 

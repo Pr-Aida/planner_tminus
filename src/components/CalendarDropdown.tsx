@@ -48,7 +48,9 @@ export function CalendarDropdown({ mode, currentYear, currentShYear, onChange }:
           padding: '4px 0',
         }}
       >
-        <img src="/logo.svg" alt="T Minus logo" className="h-7 w-7" style={{ flexShrink: 0 }} />
+        <span className="inline-flex items-center justify-center rounded-md overflow-hidden" style={{ width: 28, height: 28, flexShrink: 0, background: '#fff' }}>
+          <img src="/photo_2026-07-01_13-17-16%20copy.jpg" alt="T Minus logo" style={{ width: 28, height: 28, objectFit: 'contain' }} />
+        </span>
         <span style={{ color: colors.navTextActive }}>
           T Minus <span style={{ color: '#C8A0B0' }}>{displayYear}</span>
         </span>
