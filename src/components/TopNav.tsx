@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { CalendarDropdown } from './CalendarDropdown';
 import CountdownBar from './CountdownBar';
-import { Sparkles, Edit2, X, Plus, Clock, Check, Users, Menu } from 'lucide-react';
+import { Sparkles, X, Plus, Clock, Check, Users, Menu } from 'lucide-react';
 import type { CalendarMode, ViewMode } from '../types';
 import { TIMEZONES } from '../types';
 import type { CountdownConfig } from './CountdownBar';
@@ -15,6 +16,110 @@ export interface ClockSettings {
   clock2_tz: string;
   clock2_label: string;
   clock2_visible: boolean;
+}
+
+// ─── Timezone display labels: "City, Country" + searchable aliases ──────────────
+// Keys are IANA timezone IDs (must exist in TIMEZONES or be Intl-valid).
+// `country` powers the "City, Country" label; `aliases` covers common names
+// (e.g. "Iran", "UK", "UAE", "GMT") so search works intuitively.
+interface TZMeta { city: string; country: string; aliases?: string[] }
+const TZ_LABELS: Record<string, TZMeta> = {
+  'UTC': { city: 'UTC', country: 'GMT', aliases: ['gmt', 'utc', 'universal', 'coordinated'] },
+  'Africa/Cairo': { city: 'Cairo', country: 'Egypt', aliases: ['egypt'] },
+  'Africa/Lagos': { city: 'Lagos', country: 'Nigeria', aliases: ['nigeria'] },
+  'Africa/Nairobi': { city: 'Nairobi', country: 'Kenya', aliases: ['kenya'] },
+  'America/Anchorage': { city: 'Anchorage', country: 'United States', aliases: ['alaska'] },
+  'America/Argentina/Buenos_Aires': { city: 'Buenos Aires', country: 'Argentina', aliases: ['argentina'] },
+  'America/Bogota': { city: 'Bogotá', country: 'Colombia', aliases: ['colombia'] },
+  'America/Chicago': { city: 'Chicago', country: 'United States' },
+  'America/Denver': { city: 'Denver', country: 'United States' },
+  'America/Halifax': { city: 'Halifax', country: 'Canada' },
+  'America/Lima': { city: 'Lima', country: 'Peru', aliases: ['peru'] },
+  'America/Los_Angeles': { city: 'Los Angeles', country: 'United States', aliases: ['la'] },
+  'America/Mexico_City': { city: 'Mexico City', country: 'Mexico', aliases: ['mexico'] },
+  'America/New_York': { city: 'New York', country: 'United States' },
+  'America/Phoenix': { city: 'Phoenix', country: 'United States' },
+  'America/Santiago': { city: 'Santiago', country: 'Chile', aliases: ['chile'] },
+  'America/Sao_Paulo': { city: 'São Paulo', country: 'Brazil', aliases: ['brazil'] },
+  'America/Toronto': { city: 'Toronto', country: 'Canada' },
+  'America/Vancouver': { city: 'Vancouver', country: 'Canada' },
+  'Asia/Almaty': { city: 'Almaty', country: 'Kazakhstan', aliases: ['kazakhstan'] },
+  'Asia/Baghdad': { city: 'Baghdad', country: 'Iraq', aliases: ['iraq'] },
+  'Asia/Baku': { city: 'Baku', country: 'Azerbaijan', aliases: ['azerbaijan'] },
+  'Asia/Bangkok': { city: 'Bangkok', country: 'Thailand', aliases: ['thailand'] },
+  'Asia/Colombo': { city: 'Colombo', country: 'Sri Lanka', aliases: ['sri lanka'] },
+  'Asia/Dhaka': { city: 'Dhaka', country: 'Bangladesh', aliases: ['bangladesh'] },
+  'Asia/Dubai': { city: 'Dubai', country: 'United Arab Emirates', aliases: ['uae', 'emirates'] },
+  'Asia/Hong_Kong': { city: 'Hong Kong', country: 'China', aliases: ['hongkong'] },
+  'Asia/Jakarta': { city: 'Jakarta', country: 'Indonesia', aliases: ['indonesia'] },
+  'Asia/Jerusalem': { city: 'Jerusalem', country: 'Israel', aliases: ['israel'] },
+  'Asia/Kabul': { city: 'Kabul', country: 'Afghanistan', aliases: ['afghanistan'] },
+  'Asia/Karachi': { city: 'Karachi', country: 'Pakistan', aliases: ['pakistan'] },
+  'Asia/Kathmandu': { city: 'Kathmandu', country: 'Nepal', aliases: ['nepal'] },
+  'Asia/Kolkata': { city: 'Mumbai', country: 'India', aliases: ['mumbai', 'delhi', 'india', 'calcatta'] },
+  'Asia/Kuala_Lumpur': { city: 'Kuala Lumpur', country: 'Malaysia', aliases: ['malaysia'] },
+  'Asia/Manila': { city: 'Manila', country: 'Philippines', aliases: ['philippines'] },
+  'Asia/Muscat': { city: 'Muscat', country: 'Oman', aliases: ['oman'] },
+  'Asia/Riyadh': { city: 'Riyadh', country: 'Saudi Arabia', aliases: ['saudi', 'arabia', 'ksa'] },
+  'Asia/Seoul': { city: 'Seoul', country: 'South Korea', aliases: ['korea'] },
+  'Asia/Shanghai': { city: 'Shanghai', country: 'China', aliases: ['china', 'beijing'] },
+  'Asia/Singapore': { city: 'Singapore', country: 'Singapore' },
+  'Asia/Taipei': { city: 'Taipei', country: 'Taiwan', aliases: ['taiwan'] },
+  'Asia/Tashkent': { city: 'Tashkent', country: 'Uzbekistan', aliases: ['uzbekistan'] },
+  'Asia/Tehran': { city: 'Tehran', country: 'Iran', aliases: ['iran'] },
+  'Asia/Tokyo': { city: 'Tokyo', country: 'Japan', aliases: ['japan'] },
+  'Asia/Yerevan': { city: 'Yerevan', country: 'Armenia', aliases: ['armenia'] },
+  'Atlantic/Azores': { city: 'Azores', country: 'Portugal' },
+  'Australia/Adelaide': { city: 'Adelaide', country: 'Australia' },
+  'Australia/Brisbane': { city: 'Brisbane', country: 'Australia' },
+  'Australia/Melbourne': { city: 'Melbourne', country: 'Australia' },
+  'Australia/Perth': { city: 'Perth', country: 'Australia' },
+  'Australia/Sydney': { city: 'Sydney', country: 'Australia' },
+  'Europe/Amsterdam': { city: 'Amsterdam', country: 'Netherlands', aliases: ['holland', 'netherlands'] },
+  'Europe/Athens': { city: 'Athens', country: 'Greece', aliases: ['greece'] },
+  'Europe/Berlin': { city: 'Berlin', country: 'Germany', aliases: ['germany'] },
+  'Europe/Brussels': { city: 'Brussels', country: 'Belgium', aliases: ['belgium'] },
+  'Europe/Budapest': { city: 'Budapest', country: 'Hungary', aliases: ['hungary'] },
+  'Europe/Copenhagen': { city: 'Copenhagen', country: 'Denmark', aliases: ['denmark'] },
+  'Europe/Dublin': { city: 'Dublin', country: 'Ireland', aliases: ['ireland'] },
+  'Europe/Helsinki': { city: 'Helsinki', country: 'Finland', aliases: ['finland'] },
+  'Europe/Istanbul': { city: 'Istanbul', country: 'Turkey', aliases: ['turkey'] },
+  'Europe/Lisbon': { city: 'Lisbon', country: 'Portugal', aliases: ['portugal'] },
+  'Europe/London': { city: 'London', country: 'United Kingdom', aliases: ['uk', 'britain', 'england', 'gmt'] },
+  'Europe/Madrid': { city: 'Madrid', country: 'Spain', aliases: ['spain'] },
+  'Europe/Moscow': { city: 'Moscow', country: 'Russia', aliases: ['russia'] },
+  'Europe/Oslo': { city: 'Oslo', country: 'Norway', aliases: ['norway'] },
+  'Europe/Paris': { city: 'Paris', country: 'France', aliases: ['france'] },
+  'Europe/Prague': { city: 'Prague', country: 'Czechia', aliases: ['czech'] },
+  'Europe/Rome': { city: 'Rome', country: 'Italy', aliases: ['italy'] },
+  'Europe/Stockholm': { city: 'Stockholm', country: 'Sweden', aliases: ['sweden'] },
+  'Europe/Vienna': { city: 'Vienna', country: 'Austria', aliases: ['austria'] },
+  'Europe/Warsaw': { city: 'Warsaw', country: 'Poland', aliases: ['poland'] },
+  'Europe/Zurich': { city: 'Zurich', country: 'Switzerland', aliases: ['switzerland'] },
+  'Pacific/Auckland': { city: 'Auckland', country: 'New Zealand', aliases: ['new zealand'] },
+  'Pacific/Fiji': { city: 'Fiji', country: 'Fiji' },
+  'Pacific/Honolulu': { city: 'Honolulu', country: 'United States', aliases: ['hawaii'] },
+  'Pacific/Midway': { city: 'Midway', country: 'United States' },
+};
+
+// Friendly primary label, e.g. "Melbourne, Australia" or "Tehran, Iran".
+function tzLabel(tz: string): string {
+  const meta = TZ_LABELS[tz];
+  if (meta) return `${meta.city}, ${meta.country}`;
+  const city = tz.split('/').pop()?.replace(/_/g, ' ') || tz;
+  return city;
+}
+
+// Short label for the clock chip (city only, or custom label).
+function tzShort(tz: string): string {
+  const meta = TZ_LABELS[tz];
+  if (meta) return meta.city;
+  return tz.split('/').pop()?.replace(/_/g, ' ') || tz;
+}
+
+function isValidTz(t: string): boolean {
+  try { new Date().toLocaleTimeString('en-US', { timeZone: t }); return true; }
+  catch { return false; }
 }
 
 interface Props {
@@ -67,16 +172,19 @@ interface ClockWidgetProps {
   tz: string;
   label: string;
   onEdit: () => void;
-  onRemove: () => void;
 }
-function ClockWidget({ tz, label, onEdit, onRemove }: ClockWidgetProps) {
+function ClockWidget({ tz, label, onEdit }: ClockWidgetProps) {
   const time = useClockTime(tz);
   const [hover, setHover] = useState(false);
 
   return (
-    <div
-      className="relative flex flex-col items-center cursor-default select-none"
-      style={{ minWidth: 60 }}
+    <button
+      type="button"
+      onClick={onEdit}
+      title="Click to change timezone"
+      aria-haspopup="dialog"
+      className="relative flex flex-col items-center cursor-pointer select-none transition-colors rounded-md px-1.5 py-0.5 border-0 bg-transparent"
+      style={{ minWidth: 60, background: hover ? 'rgba(255,255,255,0.08)' : 'transparent' }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
@@ -84,29 +192,9 @@ function ClockWidget({ tz, label, onEdit, onRemove }: ClockWidgetProps) {
         {time}
       </span>
       <span className="hidden sm:block text-xs" style={{ color: 'rgba(255,255,255,0.45)', fontSize: '10px', lineHeight: 1.2 }}>
-        {label || tz.split('/').pop()?.replace(/_/g, ' ') || tz}
+        {label || tzShort(tz)}
       </span>
-      {hover && (
-        <div className="absolute -top-1 -right-1 flex gap-0.5 z-10">
-          <button
-            onClick={e => { e.stopPropagation(); onEdit(); }}
-            className="flex items-center justify-center rounded-full"
-            style={{ width: 16, height: 16, background: 'rgba(27,42,74,0.85)', border: 'none', cursor: 'pointer' }}
-            title="Edit clock"
-          >
-            <Edit2 size={9} color="#fff" />
-          </button>
-          <button
-            onClick={e => { e.stopPropagation(); onRemove(); }}
-            className="flex items-center justify-center rounded-full"
-            style={{ width: 16, height: 16, background: 'rgba(185,28,28,0.85)', border: 'none', cursor: 'pointer' }}
-            title="Remove clock"
-          >
-            <X size={9} color="#fff" />
-          </button>
-        </div>
-      )}
-    </div>
+    </button>
   );
 }
 
@@ -117,27 +205,97 @@ interface ClockEditorProps {
   isFirst: boolean;
   onSave: (tz: string, label: string) => void;
   onClose: () => void;
+  onRemove?: () => void;
+  triggerRef?: React.RefObject<HTMLElement>;
 }
 
-function ClockEditor({ initial, profileTz, isFirst, onSave, onClose }: ClockEditorProps) {
-  const [tz, setTz] = useState(initial.tz === 'auto' ? profileTz : initial.tz);
+function ClockEditor({ initial, profileTz, isFirst, onSave, onClose, onRemove, triggerRef }: ClockEditorProps) {
+  const [tz, setTz] = useState(() => {
+    const v = initial.tz === 'auto' ? profileTz : initial.tz;
+    return isValidTz(v) ? v : 'UTC';
+  });
   const [label, setLabel] = useState(initial.label);
-  const ref = useRef<HTMLDivElement>(null);
+  const [search, setSearch] = useState('');
+  const panelRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const { colors } = useTheme();
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
+  // Position the portal panel below the trigger, clamped to the viewport.
+  useEffect(() => {
+    function place() {
+      const el = triggerRef?.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const pw = Math.min(300, vw - 16);
+      let left = r.left + r.width / 2 - pw / 2;
+      left = Math.max(8, Math.min(left, vw - pw - 8));
+      let top = r.bottom + 8;
+      // If not enough room below, open above.
+      const roomBelow = window.innerHeight - r.bottom;
+      if (roomBelow < 340 && r.top > 340) top = r.top - 8;
+      setPos({ top, left });
+    }
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [triggerRef]);
+
+  // Focus search on open.
+  useEffect(() => { searchRef.current?.focus(); }, []);
+
+  // Outside click + Escape close.
   useEffect(() => {
     function onClickOut(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+      const target = e.target as Node;
+      if (panelRef.current?.contains(target)) return;
+      if (triggerRef?.current?.contains(target)) return;
+      onClose();
     }
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
     document.addEventListener('mousedown', onClickOut);
-    return () => document.removeEventListener('mousedown', onClickOut);
-  }, [onClose]);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClickOut);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [onClose, triggerRef]);
 
-  // Auto-fill label from timezone if empty
+  const allTzs = useMemo(() => {
+    const list: string[] = [];
+    for (const t of TIMEZONES) { if (!list.includes(t) && isValidTz(t)) list.push(t); }
+    if (tz && !list.includes(tz) && isValidTz(tz)) list.unshift(tz);
+    return list;
+  }, [tz]);
+
+  const filteredTzs = useMemo(() => {
+    let list = allTzs;
+    if (isFirst && isValidTz(profileTz)) list = list.filter(t => t !== profileTz);
+    const q = search.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter(t => {
+      if (t.toLowerCase().includes(q)) return true;
+      if (t.replace(/_/g, ' ').toLowerCase().includes(q)) return true;
+      const meta = TZ_LABELS[t];
+      if (!meta) return false;
+      if (meta.city.toLowerCase().includes(q)) return true;
+      if (meta.country.toLowerCase().includes(q)) return true;
+      if (meta.aliases?.some(a => a.includes(q))) return true;
+      return false;
+    });
+  }, [allTzs, search, isFirst, profileTz]);
+
+  const isAuto = isFirst && isValidTz(profileTz) && tz === profileTz;
+
   function autoLabel(val: string) {
     if (!label) {
-      const city = val.split('/').pop()?.replace(/_/g, ' ') || val;
-      setLabel(city);
+      const meta = TZ_LABELS[val];
+      setLabel(meta ? meta.city : (val.split('/').pop()?.replace(/_/g, ' ') || val));
     }
   }
 
@@ -147,21 +305,23 @@ function ClockEditor({ initial, profileTz, isFirst, onSave, onClose }: ClockEdit
     onClose();
   }
 
-  return (
+  const panel = (
     <div
-      ref={ref}
-      className="absolute z-[200] rounded-xl p-4"
+      ref={panelRef}
+      className="fixed z-[9999] rounded-xl p-4"
       style={{
-        top: '110%', left: '50%', transform: 'translateX(-50%)',
-        width: 'min(280px, calc(100vw - 2rem))', background: colors.bgCard,
-        boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
+        top: pos?.top ?? -9999, left: pos?.left ?? -9999,
+        width: 'min(300px, calc(100vw - 16px))', background: colors.bgCard,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.22)', border: `1px solid ${colors.borderLight}`,
       }}
+      role="dialog"
+      aria-label={isFirst ? 'Clock 1 timezone' : 'Clock 2 timezone'}
     >
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.textPrimary }}>
           {isFirst ? 'Clock 1' : 'Clock 2'}
         </span>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }} aria-label="Close">
           <X size={14} color={colors.textTertiary} />
         </button>
       </div>
@@ -171,17 +331,60 @@ function ClockEditor({ initial, profileTz, isFirst, onSave, onClose }: ClockEdit
           <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: colors.textSecondary }}>
             Timezone
           </label>
-          <select
-            value={tz}
-            onChange={e => { setTz(e.target.value); autoLabel(e.target.value); }}
-            className="w-full rounded-lg px-3 py-2 text-xs outline-none"
+          <input
+            ref={searchRef}
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search city, country, or timezone..."
+            className="w-full rounded-lg px-3 py-2 text-xs outline-none mb-2"
             style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgSubtle, color: colors.textPrimary, fontFamily: 'inherit' }}
-          >
-            {isFirst && <option value={profileTz}>Auto (from profile: {profileTz})</option>}
-            {(TIMEZONES as readonly string[]).filter(t => t !== profileTz || !isFirst).map(t => (
-              <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
-            ))}
-          </select>
+            onKeyDown={e => { if (e.key === 'Enter' && filteredTzs[0]) { setTz(filteredTzs[0]); autoLabel(filteredTzs[0]); } }}
+          />
+          {isFirst && isValidTz(profileTz) && (
+            <button
+              onClick={() => { setTz(profileTz); autoLabel(profileTz); setSearch(''); }}
+              className="w-full text-left px-3 py-2 rounded-md text-xs transition-colors mb-0.5"
+              style={{
+                background: isAuto ? colors.accent : 'transparent',
+                color: isAuto ? '#fff' : colors.textPrimary,
+                border: 'none', cursor: 'pointer', fontWeight: isAuto ? 600 : 400, fontFamily: 'inherit',
+              }}
+              onMouseEnter={e => { if (!isAuto) e.currentTarget.style.background = colors.bgHover; }}
+              onMouseLeave={e => { if (!isAuto) e.currentTarget.style.background = 'transparent'; }}
+            >
+              Auto (profile: {tzShort(profileTz)})
+            </button>
+          )}
+          <div className="rounded-lg overflow-y-auto" style={{ maxHeight: 200, border: `1.5px solid ${colors.borderLight}`, background: colors.bgSubtle }}>
+            {filteredTzs.length === 0 ? (
+              <div className="px-3 py-4 text-xs text-center" style={{ color: colors.textTertiary }}>
+                No results found
+              </div>
+            ) : (
+              filteredTzs.map(t => {
+                const selected = t === tz;
+                const meta = TZ_LABELS[t];
+                return (
+                  <button
+                    key={t}
+                    onClick={() => { setTz(t); autoLabel(t); }}
+                    className="w-full text-left px-3 py-2 text-xs transition-colors flex items-center justify-between gap-2"
+                    style={{
+                      background: selected ? colors.accent : 'transparent',
+                      color: selected ? '#fff' : colors.textPrimary,
+                      border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                    onMouseEnter={e => { if (!selected) e.currentTarget.style.background = colors.bgHover; }}
+                    onMouseLeave={e => { if (!selected) e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <span style={{ fontWeight: 600 }}>{meta ? `${meta.city}, ${meta.country}` : t.replace(/_/g, ' ')}</span>
+                    <span style={{ fontSize: 10, opacity: 0.6 }}>{t}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
         </div>
 
         <div>
@@ -192,7 +395,7 @@ function ClockEditor({ initial, profileTz, isFirst, onSave, onClose }: ClockEdit
             type="text"
             value={label}
             onChange={e => setLabel(e.target.value)}
-            placeholder={tz.split('/').pop()?.replace(/_/g, ' ') || 'My Clock'}
+            placeholder={tzShort(tz) || 'My Clock'}
             maxLength={20}
             className="w-full rounded-lg px-3 py-2 text-xs outline-none"
             style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgSubtle, color: colors.textPrimary, fontFamily: 'inherit' }}
@@ -202,6 +405,15 @@ function ClockEditor({ initial, profileTz, isFirst, onSave, onClose }: ClockEdit
       </div>
 
       <div className="flex gap-2 mt-4">
+        {onRemove && (
+          <button
+            onClick={() => { onRemove(); onClose(); }}
+            className="py-2 px-3 rounded-lg text-xs font-semibold"
+            style={{ background: colors.errorBg, color: colors.error, border: 'none', cursor: 'pointer' }}
+          >
+            Remove
+          </button>
+        )}
         <button
           onClick={onClose}
           className="flex-1 py-2 rounded-lg text-xs font-semibold"
@@ -217,6 +429,130 @@ function ClockEditor({ initial, profileTz, isFirst, onSave, onClose }: ClockEdit
           <Check size={12} /> Save
         </button>
       </div>
+    </div>
+  );
+
+  return createPortal(panel, document.body);
+}
+
+// ─── Clocks area: own state/refs per render site (desktop & mobile) ───────────
+interface ClocksAreaProps {
+  clockSettings: ClockSettings;
+  timezone: string;
+  eff1Tz: string;
+  eff2Tz: string;
+  showClock1: boolean;
+  showClock2: boolean;
+  showAddClock2: boolean;
+  onSaveClock1: (tz: string, label: string) => void;
+  onSaveClock2: (tz: string, label: string) => void;
+  onClockSettingsChange: (s: ClockSettings) => void;
+}
+
+function ClocksArea({
+  clockSettings, timezone, eff1Tz, eff2Tz,
+  showClock1, showClock2, showAddClock2,
+  onSaveClock1, onSaveClock2, onClockSettingsChange,
+}: ClocksAreaProps) {
+  const [editing, setEditing] = useState<1 | 2 | null>(null);
+  const clock1Ref = useRef<HTMLDivElement>(null);
+  const clock2Ref = useRef<HTMLDivElement>(null);
+
+  return (
+    <div className="flex items-center gap-2 md:gap-4 relative">
+      {/* Clock 1 */}
+      {showClock1 && (
+        <div className="relative" ref={clock1Ref}>
+          <ClockWidget
+            tz={eff1Tz}
+            label={clockSettings.clock1_label}
+            onEdit={() => setEditing(prev => prev === 1 ? null : 1)}
+          />
+          {editing === 1 && (
+            <ClockEditor
+              initial={{ tz: clockSettings.clock1_tz, label: clockSettings.clock1_label }}
+              profileTz={timezone}
+              isFirst={true}
+              onSave={onSaveClock1}
+              onClose={() => setEditing(null)}
+              triggerRef={clock1Ref}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Divider between clocks */}
+      {showClock1 && showClock2 && (
+        <div className="h-5 md:h-6" style={{ width: 1, background: 'rgba(255,255,255,0.15)' }} />
+      )}
+
+      {/* Clock 2 */}
+      {showClock2 && (
+        <div className="relative" ref={clock2Ref}>
+          <ClockWidget
+            tz={eff2Tz}
+            label={clockSettings.clock2_label}
+            onEdit={() => setEditing(prev => prev === 2 ? null : 2)}
+          />
+          {editing === 2 && (
+            <ClockEditor
+              initial={{ tz: clockSettings.clock2_tz, label: clockSettings.clock2_label }}
+              profileTz={timezone}
+              isFirst={false}
+              onSave={onSaveClock2}
+              onClose={() => setEditing(null)}
+              onRemove={() => onClockSettingsChange({ ...clockSettings, clock2_visible: false, clock2_tz: '' })}
+              triggerRef={clock2Ref}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Add second clock button */}
+      {showClock1 && showAddClock2 && (
+        <div className="relative" ref={clock2Ref}>
+          <button
+            onClick={() => setEditing(2)}
+            className="flex items-center gap-1 rounded-md px-1.5 md:px-2 py-1 transition-all"
+            style={{
+              background: 'transparent', border: '1px dashed rgba(255,255,255,0.2)',
+              color: 'rgba(255,255,255,0.35)', cursor: 'pointer', fontSize: '10px',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.5)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = 'rgba(255,255,255,0.35)'; }}
+            title="Add second clock"
+          >
+            <Plus size={10} /> <span className="hidden sm:inline">Clock</span>
+          </button>
+          {editing === 2 && (
+            <ClockEditor
+              initial={{ tz: timezone, label: '' }}
+              profileTz={timezone}
+              isFirst={false}
+              onSave={onSaveClock2}
+              onClose={() => setEditing(null)}
+              triggerRef={clock2Ref}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Show clock 1 restore button if hidden */}
+      {!showClock1 && (
+        <button
+          onClick={() => onClockSettingsChange({ ...clockSettings, clock1_visible: true })}
+          className="flex items-center gap-1 rounded-md px-1.5 md:px-2 py-1 transition-all"
+          style={{
+            background: 'transparent', border: '1px dashed rgba(255,255,255,0.2)',
+            color: 'rgba(255,255,255,0.35)', cursor: 'pointer', fontSize: '10px',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.5)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = 'rgba(255,255,255,0.35)'; }}
+          title="Show clock"
+        >
+          <Clock size={10} /> <span className="hidden sm:inline">Add Clock</span>
+        </button>
+      )}
     </div>
   );
 }
@@ -236,8 +572,6 @@ export default function TopNav({
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
-  const [editingClock, setEditingClock] = useState<1 | 2 | null>(null);
-
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (
@@ -283,99 +617,18 @@ export default function TopNav({
   const hasClocksArea = showClock1 || showClock2 || showAddClock2;
 
   const clocksGroup = hasClocksArea && (
-    <div className="flex items-center gap-2 md:gap-4 relative">
-      {/* Clock 1 */}
-      {showClock1 && (
-        <div className="relative">
-          <ClockWidget
-            tz={eff1Tz}
-            label={clockSettings.clock1_label}
-            onEdit={() => setEditingClock(1)}
-            onRemove={() => onClockSettingsChange({ ...clockSettings, clock1_visible: false })}
-          />
-          {editingClock === 1 && (
-            <ClockEditor
-              initial={{ tz: clockSettings.clock1_tz, label: clockSettings.clock1_label }}
-              profileTz={timezone}
-              isFirst={true}
-              onSave={handleSaveClock1}
-              onClose={() => setEditingClock(null)}
-            />
-          )}
-        </div>
-      )}
-
-      {/* Divider between clocks */}
-      {showClock1 && (showClock2) && (
-        <div className="h-5 md:h-6" style={{ width: 1, background: 'rgba(255,255,255,0.15)' }} />
-      )}
-
-      {/* Clock 2 */}
-      {showClock2 && (
-        <div className="relative">
-          <ClockWidget
-            tz={eff2Tz}
-            label={clockSettings.clock2_label}
-            onEdit={() => setEditingClock(2)}
-            onRemove={() => onClockSettingsChange({ ...clockSettings, clock2_visible: false, clock2_tz: '' })}
-          />
-          {editingClock === 2 && (
-            <ClockEditor
-              initial={{ tz: clockSettings.clock2_tz, label: clockSettings.clock2_label }}
-              profileTz={timezone}
-              isFirst={false}
-              onSave={handleSaveClock2}
-              onClose={() => setEditingClock(null)}
-            />
-          )}
-        </div>
-      )}
-
-      {/* Add second clock button */}
-      {showClock1 && showAddClock2 && (
-        <div className="relative">
-          <button
-            onClick={() => setEditingClock(2)}
-            className="flex items-center gap-1 rounded-md px-1.5 md:px-2 py-1 transition-all"
-            style={{
-              background: 'transparent', border: '1px dashed rgba(255,255,255,0.2)',
-              color: 'rgba(255,255,255,0.35)', cursor: 'pointer', fontSize: '10px',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.5)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = 'rgba(255,255,255,0.35)'; }}
-            title="Add second clock"
-          >
-            <Plus size={10} /> <span className="hidden sm:inline">Clock</span>
-          </button>
-          {editingClock === 2 && (
-            <ClockEditor
-              initial={{ tz: timezone, label: '' }}
-              profileTz={timezone}
-              isFirst={false}
-              onSave={handleSaveClock2}
-              onClose={() => setEditingClock(null)}
-            />
-          )}
-        </div>
-      )}
-
-      {/* Show clock 1 restore button if hidden */}
-      {!showClock1 && (
-        <button
-          onClick={() => onClockSettingsChange({ ...clockSettings, clock1_visible: true })}
-          className="flex items-center gap-1 rounded-md px-1.5 md:px-2 py-1 transition-all"
-          style={{
-            background: 'transparent', border: '1px dashed rgba(255,255,255,0.2)',
-            color: 'rgba(255,255,255,0.35)', cursor: 'pointer', fontSize: '10px',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.5)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = 'rgba(255,255,255,0.35)'; }}
-          title="Show clock"
-        >
-          <Clock size={10} /> <span className="hidden sm:inline">Add Clock</span>
-        </button>
-      )}
-    </div>
+    <ClocksArea
+      clockSettings={clockSettings}
+      timezone={timezone}
+      eff1Tz={eff1Tz}
+      eff2Tz={eff2Tz}
+      showClock1={showClock1}
+      showClock2={showClock2}
+      showAddClock2={showAddClock2}
+      onSaveClock1={handleSaveClock1}
+      onSaveClock2={handleSaveClock2}
+      onClockSettingsChange={onClockSettingsChange}
+    />
   );
 
   return (
