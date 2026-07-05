@@ -449,12 +449,37 @@ export async function fetchMembers(roomId: string): Promise<RoomMember[]> {
   const profById = new Map<string, { id: string; display_name: string; username: string; avatar_url: string | null }>(
     (profiles || []).map(p => [(p as { id: string }).id, p as { id: string; display_name: string; username: string; avatar_url: string | null }])
   );
-  return ((members || []) as RoomMember[]).map(m => ({
-    ...m,
-    display_name: profById.get(m.user_id)?.display_name || '',
-    username: profById.get(m.user_id)?.username || '',
-    avatar_url: profById.get(m.user_id)?.avatar_url ?? null,
-  }));
+
+  // Fallback: if the RPC failed or returned nothing, try to fetch the current
+  // user's own profile directly (RLS allows reading your own profile) so the
+  // current user never sees "Unknown user" for themselves.
+  if (profById.size === 0 && (members || []).length > 0) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: myProfile } = await supabase
+          .from('profiles')
+          .select('id, username, display_name, avatar_url')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (myProfile) {
+          profById.set((myProfile as { id: string }).id, myProfile as { id: string; display_name: string; username: string; avatar_url: string | null });
+        }
+      }
+    } catch (fallbackErr) {
+      logSupabaseError('fetchMembers fallback own profile', fallbackErr);
+    }
+  }
+
+  return ((members || []) as RoomMember[]).map(m => {
+    const p = profById.get(m.user_id);
+    return {
+      ...m,
+      display_name: p?.display_name || '',
+      username: p?.username || '',
+      avatar_url: p?.avatar_url ?? null,
+    };
+  });
 }
 
 // ─── Activity (shared) ─────────────────────────────────────────────────────────

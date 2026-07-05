@@ -1167,7 +1167,9 @@ function MembersTab({ room, members, currentUserId, isOwner, onRemove, onApprove
                 <MemberAvatar m={m} themeColor={themeColor} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate" style={{ color: colors.textPrimary }}>{m.display_name || m.username || 'Unknown user'}</p>
-                  <p className="text-xs truncate" style={{ color: colors.textTertiary }}>@{m.username || '—'}</p>
+                  <p className="text-xs truncate" style={{ color: colors.textTertiary }}>
+                    {m.username ? `@${m.username}` : '\u00A0'}
+                  </p>
                 </div>
                 <button onClick={() => onApprove(m.user_id)} className="px-2 py-1 rounded-lg text-xs font-bold text-white flex-shrink-0" style={{ background: colors.success, border: 'none', cursor: 'pointer' }}>Approve</button>
                 <button onClick={() => onReject(m.user_id)} className="px-2 py-1 rounded-lg text-xs font-semibold flex-shrink-0" style={{ background: colors.errorBg, color: colors.error, border: 'none', cursor: 'pointer' }}>Reject</button>
