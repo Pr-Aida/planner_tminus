@@ -21,6 +21,7 @@ interface AddForm {
 interface TimerState {
   id: string;
   activity_name: string;
+  activity_note: string | null;
   started_at: string;
   accumulated_seconds: number;
   is_paused: boolean;
@@ -67,6 +68,7 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete }
   const [timerState, setTimerState] = useState<TimerState | null>(null);
   const [loadingTimer, setLoadingTimer] = useState(true);
   const [timerName, setTimerName] = useState('');
+  const [timerNote, setTimerNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [elapsed, setElapsed] = useState(0);
 
@@ -92,6 +94,7 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete }
       if (!error && data) {
         setTimerState(data as TimerState);
         setTimerName(data.activity_name);
+        setTimerNote(data.activity_note || '');
 
         // Calculate current elapsed if running
         if (!data.is_paused) {
@@ -176,6 +179,7 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete }
 
     const newState = await saveTimerState({
       activity_name: timerName.trim(),
+      activity_note: timerNote.trim(),
       started_at: new Date().toISOString(),
       accumulated_seconds: accumulated,
       is_paused: false,
@@ -199,6 +203,7 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete }
 
     const newState = await saveTimerState({
       activity_name: timerState.activity_name,
+      activity_note: timerState.activity_note || '',
       started_at: timerState.started_at,
       accumulated_seconds: accumulated,
       is_paused: true,
@@ -219,6 +224,7 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete }
     // Start fresh with accumulated time preserved
     const newState = await saveTimerState({
       activity_name: timerState.activity_name,
+      activity_note: timerState.activity_note || '',
       started_at: new Date().toISOString(),
       accumulated_seconds: timerState.accumulated_seconds,
       is_paused: false,
@@ -248,11 +254,13 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete }
     // Only add if there's meaningful time (> 0 seconds)
     if (finalSeconds > 0) {
       const timeRange = formatTimeInput(finalSeconds);
+      const timerNoteText = timerState.activity_note?.trim();
+      const durationLabel = `${Math.floor(finalSeconds / 60)} minutes (timer)`;
       onAdd({
         name: timerState.activity_name,
         from: timeRange.from,
         to: timeRange.to,
-        note: `${Math.floor(finalSeconds / 60)} minutes (timer)`,
+        note: timerNoteText ? `${durationLabel} — ${timerNoteText}` : durationLabel,
       });
     }
 
@@ -260,6 +268,7 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete }
     await deleteTimerState();
     setTimerState(null);
     setTimerName('');
+    setTimerNote('');
     setElapsed(0);
     setSaving(false);
   }
@@ -333,6 +342,11 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete }
                   {timerState.is_paused ? 'Paused' : 'Running'}
                 </span>
               </div>
+              {timerState.activity_note && (
+                <p className="text-xs mb-2 leading-relaxed" style={{ color: colors.textSecondary }}>
+                  {timerState.activity_note}
+                </p>
+              )}
               <div
                 className="text-2xl font-mono font-bold text-center py-3 rounded-lg mb-3"
                 style={{
@@ -415,6 +429,17 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete }
                   Start
                 </button>
               </div>
+              <input
+                type="text"
+                value={timerNote}
+                onChange={e => setTimerNote(e.target.value)}
+                placeholder="Note (optional)"
+                className="w-full rounded-lg px-4 py-2.5 text-sm outline-none"
+                style={inputStyle}
+                onFocus={e => e.target.style.borderColor = colors.accent}
+                onBlur={e => e.target.style.borderColor = colors.borderLight}
+                onKeyDown={e => e.key === 'Enter' && handleStartTimer()}
+              />
             </div>
           )}
         </div>
