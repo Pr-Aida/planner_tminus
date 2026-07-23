@@ -73,6 +73,10 @@ export default function DailyView({ data, habits, dateKey, isToday, reminders, o
     onDataChange({ activities: data.activities.filter(a => a.id !== id) });
   }, [data.activities, onDataChange]);
 
+  const handleUpdateActivity = useCallback((id: string, act: Omit<Activity, 'id'>) => {
+    onDataChange({ activities: data.activities.map(a => a.id === id ? { ...act, id } : a) });
+  }, [data.activities, onDataChange]);
+
   const handleToggleHabit = useCallback((id: string, value: boolean | number) => {
     onDataChange({ habit_values: { ...data.habit_values, [id]: value } });
   }, [data.habit_values, onDataChange]);
@@ -162,6 +166,7 @@ export default function DailyView({ data, habits, dateKey, isToday, reminders, o
         dateKey={dateKey}
         onAdd={handleAddActivity}
         onDelete={handleDeleteActivity}
+        onUpdate={handleUpdateActivity}
       />
 
       {/* Habits */}

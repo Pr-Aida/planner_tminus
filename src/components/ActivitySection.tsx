@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Trash2, Clock, Play, Pause, Square, Timer, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Clock, Play, Pause, Square, Timer, Loader2, Pencil, X } from 'lucide-react';
 import type { Activity } from '../types';
 import { useTheme } from '../lib/theme';
 import { supabase } from '../lib/supabase';
@@ -9,6 +9,7 @@ interface Props {
   dateKey: string;
   onAdd: (act: Omit<Activity, 'id'>) => void;
   onDelete: (id: string) => void;
+  onUpdate: (id: string, act: Omit<Activity, 'id'>) => void;
 }
 
 interface AddForm {
@@ -44,7 +45,6 @@ function formatDuration(seconds: number): string {
 }
 
 function formatTimeInput(seconds: number): { from: string; to: string } {
-  // Convert seconds to time range ending at current time
   const now = new Date();
   const toMinutes = now.getHours() * 60 + now.getMinutes();
   const fromMinutes = toMinutes - Math.floor(seconds / 60);
@@ -59,10 +59,11 @@ function formatTimeInput(seconds: number): { from: string; to: string } {
   };
 }
 
-export default function ActivitySection({ activities, dateKey, onAdd, onDelete }: Props) {
+export default function ActivitySection({ activities, dateKey, onAdd, onDelete, onUpdate }: Props) {
   const { colors } = useTheme();
-  const [showForm, setShowForm] = useState(false);
+  const [addMode, setAddMode] = useState<'menu' | 'timer' | 'manual' | null>(null);
   const [form, setForm] = useState<AddForm>(emptyForm);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Timer state
   const [timerState, setTimerState] = useState<TimerState | null>(null);
@@ -188,6 +189,7 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete }
 
     if (newState) {
       setTimerState(newState);
+      setAddMode(null);
     }
     setSaving(false);
   }
@@ -256,12 +258,16 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete }
       const timeRange = formatTimeInput(finalSeconds);
       const timerNoteText = timerState.activity_note?.trim();
       const durationLabel = `${Math.floor(finalSeconds / 60)} minutes (timer)`;
-      onAdd({
+
+      // Pre-fill the manual form with timer data for editing before saving
+      setForm({
         name: timerState.activity_name,
         from: timeRange.from,
         to: timeRange.to,
         note: timerNoteText ? `${durationLabel} — ${timerNoteText}` : durationLabel,
       });
+      setEditingId(null);
+      setAddMode('manual');
     }
 
     // Clear timer state
@@ -273,11 +279,28 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete }
     setSaving(false);
   }
 
-  function handleAddManual() {
+  function handleSaveForm() {
     if (!form.name.trim()) return;
-    onAdd({ name: form.name.trim(), from: form.from, to: form.to, note: form.note.trim() });
+    if (editingId) {
+      onUpdate(editingId, { name: form.name.trim(), from: form.from, to: form.to, note: form.note.trim() });
+    } else {
+      onAdd({ name: form.name.trim(), from: form.from, to: form.to, note: form.note.trim() });
+    }
     setForm(emptyForm);
-    setShowForm(false);
+    setEditingId(null);
+    setAddMode(null);
+  }
+
+  function handleEditActivity(act: Activity) {
+    setForm({ name: act.name, from: act.from, to: act.to, note: act.note });
+    setEditingId(act.id);
+    setAddMode('manual');
+  }
+
+  function handleCancelForm() {
+    setForm(emptyForm);
+    setEditingId(null);
+    setAddMode(null);
   }
 
   const inputStyle: React.CSSProperties = {
@@ -303,17 +326,17 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete }
         </span>
         <div className="flex-1 h-px ml-3" style={{ background: colors.accentLight }} />
         <button
-          onClick={() => { setShowForm(true); setForm(emptyForm); }}
+          onClick={() => { setAddMode('menu'); setForm(emptyForm); setEditingId(null); }}
           className="ml-3 flex items-center justify-center rounded-lg w-7 h-7 transition-opacity hover:opacity-80"
           style={{ background: colors.heroBg, border: 'none', cursor: 'pointer' }}
-          title="Add activity manually"
+          title="Add activity"
         >
           <Plus size={14} color="#fff" />
         </button>
       </div>
 
-      {/* Timer section */}
-      {!loadingTimer && (
+      {/* Active timer display — always visible when a timer is running/paused */}
+      {!loadingTimer && timerState && (
         <div
           className="rounded-xl p-4 mb-4"
           style={{ background: colors.bgSubtle, border: `1px solid ${colors.borderLight}` }}
@@ -325,137 +348,222 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete }
             </span>
           </div>
 
-          {/* Timer display */}
-          {timerState ? (
-            <div className="mb-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-bold" style={{ color: colors.textPrimary }}>
-                  {timerState.activity_name}
-                </span>
-                <span
-                  className="text-xs px-2 py-0.5 rounded-full"
-                  style={{
-                    background: timerState.is_paused ? colors.warningBg : colors.successBg,
-                    color: timerState.is_paused ? colors.warning : colors.success,
-                  }}
-                >
-                  {timerState.is_paused ? 'Paused' : 'Running'}
-                </span>
-              </div>
-              {timerState.activity_note && (
-                <p className="text-xs mb-2 leading-relaxed" style={{ color: colors.textSecondary }}>
-                  {timerState.activity_note}
-                </p>
-              )}
-              <div
-                className="text-2xl font-mono font-bold text-center py-3 rounded-lg mb-3"
+          <div className="mb-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-bold" style={{ color: colors.textPrimary }}>
+                {timerState.activity_name}
+              </span>
+              <span
+                className="text-xs px-2 py-0.5 rounded-full"
                 style={{
-                  background: colors.bgCard,
-                  color: timerState.is_paused ? colors.textSecondary : colors.accent,
+                  background: timerState.is_paused ? colors.warningBg : colors.successBg,
+                  color: timerState.is_paused ? colors.warning : colors.success,
                 }}
               >
-                {formatDuration(elapsed)}
-              </div>
-
-              {/* Timer controls */}
-              <div className="flex gap-2">
-                {timerState.is_paused ? (
-                  <>
-                    <button
-                      onClick={handleResumeTimer}
-                      disabled={saving}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold text-white"
-                      style={{ background: colors.success, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
-                    >
-                      {saving ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-                      Resume
-                    </button>
-                    <button
-                      onClick={handleEndTimer}
-                      disabled={saving}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold text-white"
-                      style={{ background: colors.heroBg, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
-                    >
-                      {saving ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
-                      End & Save
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      onClick={handlePauseTimer}
-                      disabled={saving}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold"
-                      style={{ background: colors.warningBg, color: colors.warning, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
-                    >
-                      {saving ? <Loader2 size={14} className="animate-spin" /> : <Pause size={14} />}
-                      Pause
-                    </button>
-                    <button
-                      onClick={handleEndTimer}
-                      disabled={saving}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold text-white"
-                      style={{ background: colors.heroBg, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
-                    >
-                      {saving ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
-                      End & Save
-                    </button>
-                  </>
-                )}
-              </div>
+                {timerState.is_paused ? 'Paused' : 'Running'}
+              </span>
             </div>
-          ) : (
-            /* New timer form */
-            <div className="space-y-3">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={timerName}
-                  onChange={e => setTimerName(e.target.value)}
-                  placeholder="What are you studying?"
-                  className="flex-1 rounded-lg px-3 py-2 text-sm outline-none"
-                  style={inputStyle}
-                  onFocus={e => e.target.style.borderColor = colors.accent}
-                  onBlur={e => e.target.style.borderColor = colors.borderLight}
-                  onKeyDown={e => e.key === 'Enter' && handleStartTimer()}
-                />
-                <button
-                  onClick={handleStartTimer}
-                  disabled={!timerName.trim() || saving}
-                  className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white"
-                  style={{ background: colors.success, border: 'none', cursor: !timerName.trim() || saving ? 'not-allowed' : 'pointer', opacity: !timerName.trim() || saving ? 0.6 : 1 }}
-                >
-                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-                  Start
-                </button>
-              </div>
+            {timerState.activity_note && (
+              <p className="text-xs mb-2 leading-relaxed" style={{ color: colors.textSecondary }}>
+                {timerState.activity_note}
+              </p>
+            )}
+            <div
+              className="text-2xl font-mono font-bold text-center py-3 rounded-lg mb-3"
+              style={{
+                background: colors.bgCard,
+                color: timerState.is_paused ? colors.textSecondary : colors.accent,
+              }}
+            >
+              {formatDuration(elapsed)}
+            </div>
+
+            {/* Timer controls */}
+            <div className="flex gap-2">
+              {timerState.is_paused ? (
+                <>
+                  <button
+                    onClick={handleResumeTimer}
+                    disabled={saving}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold text-white"
+                    style={{ background: colors.success, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
+                  >
+                    {saving ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                    Resume
+                  </button>
+                  <button
+                    onClick={handleEndTimer}
+                    disabled={saving}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold text-white"
+                    style={{ background: colors.heroBg, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
+                  >
+                    {saving ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
+                    End & Edit
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={handlePauseTimer}
+                    disabled={saving}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold"
+                    style={{ background: colors.warningBg, color: colors.warning, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
+                  >
+                    {saving ? <Loader2 size={14} className="animate-spin" /> : <Pause size={14} />}
+                    Pause
+                  </button>
+                  <button
+                    onClick={handleEndTimer}
+                    disabled={saving}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold text-white"
+                    style={{ background: colors.heroBg, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
+                  >
+                    {saving ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
+                    End & Edit
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add choice menu */}
+      {addMode === 'menu' && (
+        <div
+          className="rounded-xl p-4 mb-4"
+          style={{ background: colors.bgSubtle, border: `1px solid ${colors.borderLight}` }}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: colors.textSecondary }}>
+              Add Activity
+            </span>
+            <button
+              onClick={() => setAddMode(null)}
+              className="p-1 rounded transition-colors"
+              style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textTertiary }}
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setAddMode('timer')}
+              disabled={!!timerState}
+              className="flex-1 flex flex-col items-center gap-2 py-4 rounded-lg text-xs font-bold transition-opacity"
+              style={{
+                background: colors.bgCard,
+                border: `1.5px solid ${colors.borderLight}`,
+                color: colors.textPrimary,
+                cursor: timerState ? 'not-allowed' : 'pointer',
+                opacity: timerState ? 0.5 : 1,
+              }}
+            >
+              <Timer size={20} color={colors.accent} />
+              Activity Timer
+            </button>
+            <button
+              onClick={() => { setForm(emptyForm); setEditingId(null); setAddMode('manual'); }}
+              className="flex-1 flex flex-col items-center gap-2 py-4 rounded-lg text-xs font-bold transition-opacity hover:opacity-80"
+              style={{
+                background: colors.bgCard,
+                border: `1.5px solid ${colors.borderLight}`,
+                color: colors.textPrimary,
+                cursor: 'pointer',
+              }}
+            >
+              <Plus size={20} color={colors.accent} />
+              Add Manually
+            </button>
+          </div>
+          {timerState && (
+            <p className="text-xs mt-2 text-center" style={{ color: colors.textTertiary }}>
+              Finish the active timer first to start a new one.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* New timer form */}
+      {addMode === 'timer' && !timerState && (
+        <div
+          className="rounded-xl p-4 mb-4"
+          style={{ background: colors.bgSubtle, border: `1px solid ${colors.borderLight}` }}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Timer size={14} color={colors.accent} />
+              <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: colors.textSecondary }}>
+                Activity Timer
+              </span>
+            </div>
+            <button
+              onClick={() => setAddMode(null)}
+              className="p-1 rounded transition-colors"
+              style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textTertiary }}
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex gap-2">
               <input
                 type="text"
-                value={timerNote}
-                onChange={e => setTimerNote(e.target.value)}
-                placeholder="Note (optional)"
-                className="w-full rounded-lg px-4 py-2.5 text-sm outline-none"
+                value={timerName}
+                onChange={e => setTimerName(e.target.value)}
+                placeholder="What are you studying?"
+                className="flex-1 rounded-lg px-3 py-2 text-sm outline-none"
                 style={inputStyle}
                 onFocus={e => e.target.style.borderColor = colors.accent}
                 onBlur={e => e.target.style.borderColor = colors.borderLight}
                 onKeyDown={e => e.key === 'Enter' && handleStartTimer()}
               />
+              <button
+                onClick={handleStartTimer}
+                disabled={!timerName.trim() || saving}
+                className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white"
+                style={{ background: colors.success, border: 'none', cursor: !timerName.trim() || saving ? 'not-allowed' : 'pointer', opacity: !timerName.trim() || saving ? 0.6 : 1 }}
+              >
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                Start
+              </button>
             </div>
-          )}
+            <input
+              type="text"
+              value={timerNote}
+              onChange={e => setTimerNote(e.target.value)}
+              placeholder="Note (optional)"
+              className="w-full rounded-lg px-4 py-2.5 text-sm outline-none"
+              style={inputStyle}
+              onFocus={e => e.target.style.borderColor = colors.accent}
+              onBlur={e => e.target.style.borderColor = colors.borderLight}
+              onKeyDown={e => e.key === 'Enter' && handleStartTimer()}
+            />
+          </div>
         </div>
       )}
 
-      {/* Manual add form */}
-      {showForm && (
+      {/* Manual add/edit form */}
+      {addMode === 'manual' && (
         <div
           className="rounded-xl p-4 mb-4"
           style={{ background: colors.bgSubtle, border: `1px solid ${colors.borderLight}` }}
         >
-          <div className="flex items-center gap-2 mb-3">
-            <Clock size={12} color={colors.textSecondary} />
-            <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: colors.textSecondary }}>
-              Add Activity Manually
-            </span>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Clock size={12} color={colors.textSecondary} />
+              <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: colors.textSecondary }}>
+                {editingId ? 'Edit Activity' : 'Add Activity Manually'}
+              </span>
+            </div>
+            <button
+              onClick={handleCancelForm}
+              className="p-1 rounded transition-colors"
+              style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textTertiary }}
+            >
+              <X size={14} />
+            </button>
           </div>
 
           {/* Activity name */}
@@ -511,13 +619,13 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete }
             style={inputStyle}
             onFocus={e => e.target.style.borderColor = colors.heroBg}
             onBlur={e => e.target.style.borderColor = colors.borderLight}
-            onKeyDown={e => e.key === 'Enter' && handleAddManual()}
+            onKeyDown={e => e.key === 'Enter' && handleSaveForm()}
           />
 
           {/* Action buttons */}
           <div className="flex gap-3">
             <button
-              onClick={handleAddManual}
+              onClick={handleSaveForm}
               disabled={!form.name.trim()}
               className="flex-1 py-2.5 rounded-lg text-xs font-bold text-white transition-opacity"
               style={{
@@ -527,10 +635,10 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete }
                 opacity: form.name.trim() ? 1 : 0.6,
               }}
             >
-              Add
+              {editingId ? 'Save Changes' : 'Add'}
             </button>
             <button
-              onClick={() => { setShowForm(false); setForm(emptyForm); }}
+              onClick={handleCancelForm}
               className="flex-1 py-2.5 rounded-lg text-xs font-semibold transition-colors"
               style={{ background: colors.bgHover, color: colors.textPrimary, border: 'none', cursor: 'pointer' }}
             >
@@ -547,11 +655,12 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete }
             key={act.id}
             activity={act}
             onDelete={() => onDelete(act.id)}
+            onEdit={() => handleEditActivity(act)}
           />
         ))}
-        {activities.length === 0 && !showForm && !loadingTimer && (
+        {activities.length === 0 && !addMode && !loadingTimer && (
           <p className="text-xs py-2" style={{ color: colors.textTertiary }}>
-            No activities yet — use the timer above or click + to add manually.
+            No activities yet — click + to start a timer or add one manually.
           </p>
         )}
       </div>
@@ -562,9 +671,10 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete }
 interface CardProps {
   activity: Activity;
   onDelete: () => void;
+  onEdit: () => void;
 }
 
-function ActivityCard({ activity, onDelete }: CardProps) {
+function ActivityCard({ activity, onDelete, onEdit }: CardProps) {
   const { colors } = useTheme();
   const duration = (() => {
     if (!activity.from || !activity.to) return null;
@@ -606,15 +716,28 @@ function ActivityCard({ activity, onDelete }: CardProps) {
           </p>
         )}
       </div>
-      <button
-        onClick={onDelete}
-        className="flex-shrink-0 p-1 rounded transition-colors opacity-0 group-hover:opacity-100"
-        style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textTertiary }}
-        onMouseEnter={e => (e.currentTarget.style.color = colors.accent)}
-        onMouseLeave={e => (e.currentTarget.style.color = colors.textTertiary)}
-      >
-        <Trash2 size={13} />
-      </button>
+      <div className="flex-shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={onEdit}
+          className="p-1 rounded transition-colors"
+          style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textTertiary }}
+          onMouseEnter={e => (e.currentTarget.style.color = colors.accent)}
+          onMouseLeave={e => (e.currentTarget.style.color = colors.textTertiary)}
+          title="Edit activity"
+        >
+          <Pencil size={13} />
+        </button>
+        <button
+          onClick={onDelete}
+          className="p-1 rounded transition-colors"
+          style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textTertiary }}
+          onMouseEnter={e => (e.currentTarget.style.color = colors.accent)}
+          onMouseLeave={e => (e.currentTarget.style.color = colors.textTertiary)}
+          title="Delete activity"
+        >
+          <Trash2 size={13} />
+        </button>
+      </div>
     </div>
   );
 }
