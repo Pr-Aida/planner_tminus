@@ -28,7 +28,7 @@ import StudyRoomsView from './views/StudyRoomsView';
 import JoinRoomView from './views/JoinRoomView';
 import RoomNotifications from './components/RoomNotifications';
 import ClaudeChat from './components/ClaudeChat';
-import { Sparkles } from 'lucide-react';
+import type { AssistantAction } from './lib/claudeChat';
 import { ThemeProvider, useTheme, type ThemeMode } from './lib/theme';
 
 type AuthScreen = 'sign-in' | 'sign-up';
@@ -1060,6 +1060,31 @@ function MainAppContent(props: MainAppContentProps) {
   const { colors } = useTheme();
   const [chatOpen, setChatOpen] = useState(false);
 
+  const handleAssistantAction = useCallback((action: AssistantAction) => {
+    switch (action.type) {
+      case 'addActivity':
+        props.onDataChange({
+          activities: [...(props.currentDayData.activities || []), action.activity],
+        });
+        break;
+      case 'setTopNote':
+        props.onDataChange({ top_note: action.note });
+        break;
+      case 'addHabitToDay':
+        props.onAddHabitToDay(action.name, action.habitType, action.unit);
+        break;
+      case 'setCountdown':
+        props.onCountdownSave(action.config);
+        break;
+      case 'switchView':
+        props.onViewChange(action.view);
+        break;
+      case 'startTimer':
+      case 'stopTimer':
+        break;
+    }
+  }, [props]);
+
   return (
     <div className="min-h-screen" style={{ background: colors.bg }}>
       {props.showTour && (
@@ -1213,16 +1238,20 @@ function MainAppContent(props: MainAppContentProps) {
       {!chatOpen && (
         <button
           onClick={() => setChatOpen(true)}
-          className="fixed bottom-5 right-5 flex items-center gap-2 rounded-full px-4 py-3 text-sm font-bold text-white shadow-lg transition-transform hover:scale-105 z-40"
+          className="fixed bottom-5 left-5 flex items-center gap-2 rounded-full px-4 py-3 text-sm font-bold text-white shadow-lg transition-transform hover:scale-105 z-40"
           style={{ background: colors.accent, border: 'none', cursor: 'pointer', boxShadow: `0 4px 16px ${colors.shadow}` }}
-          title="Ask Claude"
+          title="T-Minus Assistant"
         >
-          <Sparkles size={18} />
-          <span className="hidden sm:inline">Ask Claude</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M7 10c2 2 8 2 10 0" />
+            <circle cx="9" cy="7" r="0.8" fill="#fff" stroke="none" />
+            <circle cx="15" cy="7" r="0.8" fill="#fff" stroke="none" />
+          </svg>
+          <span className="hidden sm:inline">Assistant</span>
         </button>
       )}
 
-      <ClaudeChat open={chatOpen} onClose={() => setChatOpen(false)} />
+      <ClaudeChat open={chatOpen} onClose={() => setChatOpen(false)} onAction={handleAssistantAction} />
     </div>
   );
 }
