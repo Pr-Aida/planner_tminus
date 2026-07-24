@@ -27,6 +27,8 @@ import type { CountdownConfig } from './components/CountdownBar';
 import StudyRoomsView from './views/StudyRoomsView';
 import JoinRoomView from './views/JoinRoomView';
 import RoomNotifications from './components/RoomNotifications';
+import ClaudeChat from './components/ClaudeChat';
+import { Sparkles } from 'lucide-react';
 import { ThemeProvider, useTheme, type ThemeMode } from './lib/theme';
 
 type AuthScreen = 'sign-in' | 'sign-up';
@@ -1056,6 +1058,7 @@ interface MainAppContentProps {
 
 function MainAppContent(props: MainAppContentProps) {
   const { colors } = useTheme();
+  const [chatOpen, setChatOpen] = useState(false);
 
   return (
     <div className="min-h-screen" style={{ background: colors.bg }}>
@@ -1206,6 +1209,20 @@ function MainAppContent(props: MainAppContentProps) {
       {props.profileLoading && !props.profile && (
         <div className="fixed bottom-4 right-4 text-xs" style={{ color: colors.textTertiary }}>Loading profile…</div>
       )}
+
+      {!chatOpen && (
+        <button
+          onClick={() => setChatOpen(true)}
+          className="fixed bottom-5 right-5 flex items-center gap-2 rounded-full px-4 py-3 text-sm font-bold text-white shadow-lg transition-transform hover:scale-105 z-40"
+          style={{ background: colors.accent, border: 'none', cursor: 'pointer', boxShadow: `0 4px 16px ${colors.shadow}` }}
+          title="Ask Claude"
+        >
+          <Sparkles size={18} />
+          <span className="hidden sm:inline">Ask Claude</span>
+        </button>
+      )}
+
+      <ClaudeChat open={chatOpen} onClose={() => setChatOpen(false)} />
     </div>
   );
 }
