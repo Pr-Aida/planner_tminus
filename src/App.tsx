@@ -3,7 +3,7 @@ import { supabase } from './lib/supabase';
 import {
   todaySh, todayGreg, shToGregorian, gregorianToSh,
   dateKey, monthKey, shDateKey, SH_MONTHS, gregMonthDays, shDaysInMonth,
-  addDaysGreg, addDaysSh,
+  addDaysGreg, addDaysSh, gregDateFromKey,
 } from './lib/calendar';
 import type {
   CalendarMode, ViewMode, Habit, HabitType, DailyData, ShDate, GregDate,
@@ -1079,6 +1079,14 @@ function MainAppContent(props: MainAppContentProps) {
       case 'switchView':
         props.onViewChange(action.view);
         break;
+      case 'addReminder':
+        props.onAddReminder(action.dateKey, action.title, action.offset);
+        break;
+      case 'navigateToDate': {
+        const g = gregDateFromKey(action.dateKey);
+        props.onGregDateChange(g);
+        break;
+      }
       case 'startTimer':
       case 'stopTimer':
         break;

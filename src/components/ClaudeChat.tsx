@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Loader2, X, MessageSquare, Clock, Sparkles } from 'lucide-react';
+import { Send, Loader2, X, Clock, Sparkles, CheckCircle2, Square } from 'lucide-react';
 import { useTheme } from '../lib/theme';
 import { sendClaudeChat, type ChatMessage, type AssistantAction } from '../lib/claudeChat';
 
@@ -19,9 +19,13 @@ function AssistantIcon({ size = 18, color = '#fff' }: { size?: number; color?: s
   );
 }
 
+interface DisplayMessage extends ChatMessage {
+  actionLabel?: string;
+}
+
 export default function ClaudeChat({ open, onClose, onAction }: Props) {
   const { colors } = useTheme();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,7 +89,7 @@ export default function ClaudeChat({ open, onClose, onAction }: Props) {
 
     try {
       const res = await sendClaudeChat(nextMessages);
-      setMessages([...nextMessages, { role: 'assistant', content: res.content }]);
+      setMessages([...nextMessages, { role: 'assistant', content: res.content, actionLabel: res.actionLabel }]);
       if (res.action) {
         if (res.action.type === 'startTimer') {
           startTimer(res.action.seconds, res.action.label);
@@ -169,7 +173,17 @@ export default function ClaudeChat({ open, onClose, onAction }: Props) {
               <Clock size={13} />
               {timer.label}
             </span>
-            <span className="font-bold" style={{ color: colors.accent }}>{formatTimer(timer.remaining)}</span>
+            <div className="flex items-center gap-2">
+              <span className="font-bold" style={{ color: colors.accent }}>{formatTimer(timer.remaining)}</span>
+              <button
+                onClick={stopTimer}
+                className="flex items-center justify-center rounded transition-opacity hover:opacity-70"
+                style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: colors.textTertiary, padding: '2px' }}
+                title="Stop timer"
+              >
+                <Square size={11} />
+              </button>
+            </div>
           </div>
         )}
 
@@ -179,16 +193,19 @@ export default function ClaudeChat({ open, onClose, onAction }: Props) {
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <AssistantIcon size={32} color={colors.textTertiary} />
               <p className="text-sm mt-3" style={{ color: colors.textSecondary }}>
-                I can plan your day, set timers, add activities, or guide you around the app.
+                I can plan your week, set reminders, add tasks, start timers, and guide you around the app.
               </p>
               <p className="text-xs mt-1" style={{ color: colors.textTertiary }}>
-                Try: "plan my day" or "set a 25 minute timer"
+                Try: "plan my week" or "remind me to study tomorrow evening"
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>
+                یا: «برنامه هفته‌ام رو بکش» یا «یادآور ۲ مرداد»
               </p>
             </div>
           )}
 
           {messages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
               <div
                 className="max-w-[82%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap"
                 style={
@@ -199,6 +216,15 @@ export default function ClaudeChat({ open, onClose, onAction }: Props) {
               >
                 {m.content}
               </div>
+              {m.actionLabel && (
+                <span
+                  className="flex items-center gap-1 mt-1 text-[10px] font-semibold"
+                  style={{ color: colors.success }}
+                >
+                  <CheckCircle2 size={11} />
+                  {m.actionLabel}
+                </span>
+              )}
             </div>
           ))}
 
@@ -234,7 +260,7 @@ export default function ClaudeChat({ open, onClose, onAction }: Props) {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask me to plan, set a timer, or add a task…"
+              placeholder="Ask me to plan, set a reminder, add a task… (فارسی هم کار می‌کند)"
               rows={1}
               className="flex-1 rounded-lg px-3 py-2.5 text-sm outline-none resize-none"
               style={{
