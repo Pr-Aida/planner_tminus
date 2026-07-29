@@ -27,8 +27,9 @@ import type { CountdownConfig } from './components/CountdownBar';
 import StudyRoomsView from './views/StudyRoomsView';
 import JoinRoomView from './views/JoinRoomView';
 import RoomNotifications from './components/RoomNotifications';
-import ClaudeChat from './components/ClaudeChat';
-import type { AssistantAction } from './lib/claudeChat';
+import AssistantPanel, { AssistantButton } from './components/assistant/AssistantPanel';
+import type { AssistantAction, PlannerContext } from './services/assistant/types';
+import { isRTL } from './services/assistant/languageDetector';
 import { ThemeProvider, useTheme, type ThemeMode } from './lib/theme';
 
 type AuthScreen = 'sign-in' | 'sign-up';
@@ -1067,6 +1068,15 @@ function MainAppContent(props: MainAppContentProps) {
           activities: [...(props.currentDayData.activities || []), action.activity],
         });
         break;
+      case 'addActivities': {
+        const existing = props.currentDayData.activities || [];
+        const merged = [...existing];
+        for (const a of action.activities) {
+          if (!merged.some(m => m.from === a.from && m.name === a.name)) merged.push(a);
+        }
+        props.onDataChange({ activities: merged });
+        break;
+      }
       case 'setTopNote':
         props.onDataChange({ top_note: action.note });
         break;
@@ -1244,22 +1254,27 @@ function MainAppContent(props: MainAppContentProps) {
       )}
 
       {!chatOpen && (
-        <button
-          onClick={() => setChatOpen(true)}
-          className="fixed bottom-5 left-5 flex items-center gap-2 rounded-full px-4 py-3 text-sm font-bold text-white shadow-lg transition-transform hover:scale-105 z-40"
-          style={{ background: colors.accent, border: 'none', cursor: 'pointer', boxShadow: `0 4px 16px ${colors.shadow}` }}
-          title="T-Minus Assistant"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M7 10c2 2 8 2 10 0" />
-            <circle cx="9" cy="7" r="0.8" fill="#fff" stroke="none" />
-            <circle cx="15" cy="7" r="0.8" fill="#fff" stroke="none" />
-          </svg>
-          <span className="hidden sm:inline">Assistant</span>
-        </button>
+        <AssistantButton onClick={() => setChatOpen(true)} lang={isRTL() ? 'fa' : 'en'} />
       )}
 
-      <ClaudeChat open={chatOpen} onClose={() => setChatOpen(false)} onAction={handleAssistantAction} />
+      <AssistantPanel
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        onAction={handleAssistantAction}
+        defaultLang="auto"
+        getCtx={() => ({
+          viewMode: props.viewMode,
+          calMode: props.calMode,
+          currentKey: props.currentKey,
+          currentDayData: props.currentDayData,
+          habits: props.habits,
+          reminders: props.reminders,
+          weeklyData: [],
+          profile: { lang: 'auto', timezone: props.timezone, wakeTime: '07:00', sleepTime: '23:00', availableDays: [0,1,2,3,4], availableHoursPerDay: 4, sessionDuration: 45, breakDuration: 10, maxDailyStudy: 240, minDailyStudy: 60, difficultSubjects: [], strongSubjects: [], upcomingExams: [], mainGoals: [], preferredTimeOfDay: 'morning', energyPattern: 'balanced', intensity: 'balanced', planStyle: 'structured', weekendAvailable: false, daysOff: [], reminderPref: 1, flexibleOrFixed: 'flexible', historyLimit: 50 },
+          energy: 'medium',
+          lang: 'en',
+        })}
+      />
     </div>
   );
 }
