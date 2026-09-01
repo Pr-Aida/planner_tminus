@@ -307,16 +307,31 @@ export default function AssistantPanel({ open, onClose, onAction, getCtx, defaul
   );
 }
 
-export function AssistantButton({ onClick, lang }: { onClick: () => void; lang: 'fa' | 'en' }) {
+export function AssistantButton({ onClick, lang, hasUnread = false }: { onClick: () => void; lang: 'fa' | 'en'; hasUnread?: boolean }) {
   const { colors } = useTheme();
   const isRtl = lang === 'fa';
+  const label = isRtl ? 'باز کردن دستیار' : 'Open Planner Assistant';
   return (
-    <button onClick={onClick} className="fixed bottom-5 flex items-center gap-2 rounded-full px-4 py-3 text-sm font-bold text-white shadow-xl transition-all hover:scale-105 z-40" style={{ [isRtl ? 'left' : 'right']: '20px', background: `linear-gradient(135deg, ${colors.accent}, ${colors.heroBg})`, border: 'none', cursor: 'pointer', boxShadow: `0 4px 20px ${colors.shadow}` }}>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <button
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={`fixed bottom-5 flex items-center justify-center rounded-full text-white transition-all hover:scale-110 active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2 z-40 ${hasUnread ? 'animate-pulse' : ''}`}
+      style={{
+        [isRtl ? 'left' : 'right']: '20px',
+        width: '56px',
+        height: '56px',
+        background: `linear-gradient(135deg, ${colors.accent}, ${colors.heroBg})`,
+        border: 'none',
+        cursor: 'pointer',
+        boxShadow: `0 4px 16px ${colors.shadow}`,
+        ['--tw-ring-color' as string]: colors.accent,
+      } as React.CSSProperties}
+    >
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 3C7 3 4 6 4 10c0 3 2 5.5 5 6.5V20l3-2 3 2v-3.5c3-1 5-3.5 5-6.5 0-4-3-7-8-7z" />
         <path d="M7 10c2 2 8 2 10 0" />
       </svg>
-      <span className="hidden sm:inline">{isRtl ? 'دستیار' : 'Assistant'}</span>
     </button>
   );
 }
