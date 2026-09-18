@@ -639,27 +639,15 @@ export default function TopNav({
         className="flex items-center px-4 md:px-8 gap-2"
         style={{ background: colors.navBgGradient || colors.navBg, height: '56px' }}
       >
-        {/* Left: Calendar toggle */}
-        <div className="flex-shrink-0 md:flex-1 flex items-center justify-start">
+        {/* Left: Calendar toggle + utility icons */}
+        <div className="flex-shrink-0 md:flex-1 flex items-center justify-start gap-1">
           <CalendarDropdown
             mode={calMode}
             currentYear={currentGregYear}
             currentShYear={currentShYear}
             onChange={onCalModeChange}
           />
-        </div>
-
-        {/* Center: Clock(s) — desktop only, centered between left and right columns */}
-        <div
-          className="hidden md:flex flex-1 items-center justify-center"
-          data-tour="tour-local-time"
-        >
-          {clocksGroup}
-        </div>
-
-        {/* Right: Utility icons + view tabs + avatar (desktop) */}
-        <div className="flex-1 md:flex-1 flex items-center justify-end gap-2 md:gap-3">
-          <div className="hidden sm:flex items-center gap-1">
+          <div className="hidden sm:flex items-center gap-1 ml-1">
             {notificationsNode}
             <button
               data-tour="tour-study-rooms"
@@ -689,7 +677,18 @@ export default function TopNav({
               <CalendarRange size={15} />
             </button>
           </div>
+        </div>
 
+        {/* Center: Clock(s) — desktop only, centered between left and right columns */}
+        <div
+          className="hidden md:flex flex-1 items-center justify-center"
+          data-tour="tour-local-time"
+        >
+          {clocksGroup}
+        </div>
+
+        {/* Right: View tabs + avatar (desktop) */}
+        <div className="flex-1 md:flex-1 flex items-center justify-end gap-2 md:gap-3">
           <div className="hidden sm:flex gap-1" data-tour="tour-view-tabs">
             {tabs.map(tab => (
               <button

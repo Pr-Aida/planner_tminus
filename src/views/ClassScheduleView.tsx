@@ -415,12 +415,16 @@ export default function ClassScheduleView({ userId, calMode, onClose }: Props) {
                             return (
                               <div
                                 key={cls.id}
-                                className="rounded-lg overflow-hidden transition-all"
+                                className="rounded-lg transition-all"
                                 style={{ border: `1px solid ${colors.borderLight}`, background: colors.bgSubtle }}
                               >
                                 <div
                                   className="px-2.5 py-2 cursor-pointer"
-                                  onClick={() => setExpandedId(isExpanded ? null : cls.id)}
+                                  onClick={() => {
+                                    const next = isExpanded ? null : cls.id;
+                                    setExpandedId(next);
+                                    if (next === null) setMenuOpenId(null);
+                                  }}
                                   style={{ borderLeft: `3px solid ${accentColor}` }}
                                 >
                                   <div className="flex items-start justify-between gap-1.5">
