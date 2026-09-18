@@ -115,6 +115,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ cls: ClassEntry; reminders: LinkedReminder[] } | null>(null);
   const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const menuPanelRef = useRef<HTMLDivElement | null>(null);
 
   // Form state
   const [form, setForm] = useState({
@@ -166,7 +167,9 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
     function handleClickOutside(e: MouseEvent) {
       const target = e.target as Node;
       const openBtn = menuOpenId ? menuButtonRefs.current[menuOpenId] : null;
-      if (openBtn && !openBtn.contains(target)) setMenuOpenId(null);
+      const panel = menuPanelRef.current;
+      if ((openBtn && openBtn.contains(target)) || (panel && panel.contains(target))) return;
+      setMenuOpenId(null);
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -1016,6 +1019,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
       {/* Three-dot menu — rendered via portal to avoid clipping */}
       {menuOpenId && menuPos && createPortal(
         <div
+          ref={menuPanelRef}
           className="fixed z-[9999] w-28 rounded-lg py-1"
           style={{
             background: colors.bgCard,
