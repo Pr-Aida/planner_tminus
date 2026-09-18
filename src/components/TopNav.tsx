@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { CalendarDropdown } from './CalendarDropdown';
 import CountdownBar from './CountdownBar';
-import { Sparkles, X, Plus, Clock, Check, Users, Menu } from 'lucide-react';
+import { Sparkles, X, Plus, Clock, Check, Users, Menu, CalendarRange } from 'lucide-react';
 import type { CalendarMode, ViewMode } from '../types';
 import { TIMEZONES } from '../types';
 import type { CountdownConfig } from './CountdownBar';
@@ -140,6 +140,8 @@ interface Props {
   onOpenWhatsNew: () => void;
   onOpenStudyRooms: () => void;
   studyRoomsActive: boolean;
+  onOpenClassSchedule: () => void;
+  classScheduleActive: boolean;
   notificationsNode?: React.ReactNode;
   timezone?: string;          // profile timezone (used for clock1 'auto')
   clockSettings: ClockSettings;
@@ -562,7 +564,7 @@ export default function TopNav({
   calMode, onCalModeChange, viewMode, onViewChange,
   currentGregYear, currentShYear, currentShMonth, countdown, onCountdownSave,
   userAvatar, userInitial, onSignOut, onOpenProfile, onRestartTour, onOpenWhatsNew,
-  onOpenStudyRooms, studyRoomsActive, notificationsNode,
+  onOpenStudyRooms, studyRoomsActive, onOpenClassSchedule, classScheduleActive, notificationsNode,
   timezone = 'UTC',
   clockSettings, onClockSettingsChange,
 }: Props) {
@@ -655,9 +657,38 @@ export default function TopNav({
           {clocksGroup}
         </div>
 
-        {/* Right: View tabs + Rooms + avatar (desktop) */}
+        {/* Right: Utility icons + view tabs + avatar (desktop) */}
         <div className="flex-1 md:flex-1 flex items-center justify-end gap-2 md:gap-3">
-          {notificationsNode}
+          <div className="hidden sm:flex items-center gap-1">
+            {notificationsNode}
+            <button
+              data-tour="tour-study-rooms"
+              onClick={onOpenStudyRooms}
+              aria-label="Rooms"
+              className="flex items-center justify-center px-2.5 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all duration-150"
+              style={{
+                background: studyRoomsActive ? colors.navAccent : 'transparent',
+                color: studyRoomsActive ? '#fff' : colors.navText,
+                border: 'none', cursor: 'pointer',
+              }}
+              title="Rooms"
+            >
+              <Users size={15} />
+            </button>
+            <button
+              onClick={onOpenClassSchedule}
+              aria-label="Class Schedule"
+              title="Class Schedule"
+              className="flex items-center justify-center px-2.5 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all duration-150"
+              style={{
+                background: classScheduleActive ? colors.navAccent : 'transparent',
+                color: classScheduleActive ? '#fff' : colors.navText,
+                border: 'none', cursor: 'pointer',
+              }}
+            >
+              <CalendarRange size={15} />
+            </button>
+          </div>
 
           <div className="hidden sm:flex gap-1" data-tour="tour-view-tabs">
             {tabs.map(tab => (
@@ -675,20 +706,6 @@ export default function TopNav({
                 {tab.label}
               </button>
             ))}
-            <button
-              data-tour="tour-study-rooms"
-              onClick={onOpenStudyRooms}
-              aria-label="Rooms"
-              className="flex items-center gap-1.5 px-3 md:px-4 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all duration-150"
-              style={{
-                background: studyRoomsActive ? colors.navAccent : 'transparent',
-                color: studyRoomsActive ? '#fff' : colors.navText,
-                border: 'none', cursor: 'pointer',
-              }}
-              title="Rooms"
-            >
-              <Users size={14} />
-            </button>
           </div>
 
           {/* Mobile hamburger menu button */}
@@ -808,6 +825,17 @@ export default function TopNav({
               }}
             >
               <Users size={16} /> Rooms
+            </button>
+            <button
+              onClick={() => { onOpenClassSchedule(); setShowMobileMenu(false); }}
+              className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-semibold text-left transition-all"
+              style={{
+                background: classScheduleActive ? colors.navAccent : 'transparent',
+                color: classScheduleActive ? '#fff' : colors.navText,
+                border: 'none', cursor: 'pointer',
+              }}
+            >
+              <CalendarRange size={16} /> Class Schedule
             </button>
           </div>
         </div>

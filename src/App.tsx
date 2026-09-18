@@ -27,9 +27,7 @@ import type { CountdownConfig } from './components/CountdownBar';
 import StudyRoomsView from './views/StudyRoomsView';
 import JoinRoomView from './views/JoinRoomView';
 import RoomNotifications from './components/RoomNotifications';
-import AssistantPanel, { AssistantButton } from './components/assistant/AssistantPanel';
-import type { AssistantAction, PlannerContext } from './services/assistant/types';
-import { isRTL } from './services/assistant/languageDetector';
+import ClassScheduleView from './views/ClassScheduleView';
 import { ThemeProvider, useTheme, type ThemeMode } from './lib/theme';
 
 type AuthScreen = 'sign-in' | 'sign-up';
@@ -85,6 +83,7 @@ export default function App() {
 
   // Study Rooms panel + invite-link routing
   const [showStudyRooms, setShowStudyRooms] = useState(false);
+  const [showClassSchedule, setShowClassSchedule] = useState(false);
   const [inviteCodeFromUrl, setInviteCodeFromUrl] = useState<string | null>(null);
 
   const [shDate, setShDate] = useState<ShDate>(todaySh);
@@ -149,6 +148,7 @@ export default function App() {
         setShowTour(false);
         setShowProfile(false);
         setShowStudyRooms(false);
+        setShowClassSchedule(false);
         setInviteCodeFromUrl(null);
       }
 
@@ -171,6 +171,7 @@ export default function App() {
         setMonthlyNotes(new Map());
         setCountdown(null);
         setShowStudyRooms(false);
+        setShowClassSchedule(false);
       }
     });
 
@@ -879,6 +880,8 @@ export default function App() {
       onOpenWhatsNew={handleOpenWhatsNew}
       onOpenStudyRooms={() => setShowStudyRooms(true)}
       studyRoomsActive={showStudyRooms}
+      onOpenClassSchedule={() => { setShowStudyRooms(false); setShowClassSchedule(true); }}
+      classScheduleActive={showClassSchedule && !showStudyRooms}
       notificationsNode={user ? (
         <div className="flex items-center gap-1.5">
           <RoomNotifications
@@ -895,6 +898,7 @@ export default function App() {
       onCoverChange={handleCoverChange}
       showStudyRooms={showStudyRooms}
       studyRoomsUserId={user?.id}
+      showClassSchedule={showClassSchedule}
       initialOpenRoomId={pendingOpenRoomId.current}
       shDate={shDate}
       gregDate={gregDate}
@@ -1000,6 +1004,8 @@ interface MainAppContentProps {
   onOpenWhatsNew: () => void;
   onOpenStudyRooms: () => void;
   studyRoomsActive: boolean;
+  onOpenClassSchedule: () => void;
+  classScheduleActive: boolean;
   notificationsNode?: React.ReactNode;
   timezone: string;
   clockSettings: ClockSettings;
@@ -1008,6 +1014,7 @@ interface MainAppContentProps {
   onCoverChange: (d: string | null) => void;
   showStudyRooms: boolean;
   studyRoomsUserId?: string;
+  showClassSchedule: boolean;
   initialOpenRoomId?: string | null;
   shDate: ShDate;
   gregDate: GregDate;
@@ -1059,49 +1066,6 @@ interface MainAppContentProps {
 
 function MainAppContent(props: MainAppContentProps) {
   const { colors } = useTheme();
-  const [chatOpen, setChatOpen] = useState(false);
-
-  const handleAssistantAction = useCallback((action: AssistantAction) => {
-    switch (action.type) {
-      case 'addActivity':
-        props.onDataChange({
-          activities: [...(props.currentDayData.activities || []), action.activity],
-        });
-        break;
-      case 'addActivities': {
-        const existing = props.currentDayData.activities || [];
-        const merged = [...existing];
-        for (const a of action.activities) {
-          if (!merged.some(m => m.from === a.from && m.name === a.name)) merged.push(a);
-        }
-        props.onDataChange({ activities: merged });
-        break;
-      }
-      case 'setTopNote':
-        props.onDataChange({ top_note: action.note });
-        break;
-      case 'addHabitToDay':
-        props.onAddHabitToDay(action.name, action.habitType, action.unit);
-        break;
-      case 'setCountdown':
-        props.onCountdownSave(action.config);
-        break;
-      case 'switchView':
-        props.onViewChange(action.view);
-        break;
-      case 'addReminder':
-        props.onAddReminder(action.dateKey, action.title, action.offset);
-        break;
-      case 'navigateToDate': {
-        const g = gregDateFromKey(action.dateKey);
-        props.onGregDateChange(g);
-        break;
-      }
-      case 'startTimer':
-      case 'stopTimer':
-        break;
-    }
-  }, [props]);
 
   return (
     <div className="min-h-screen" style={{ background: colors.bg }}>
@@ -1146,6 +1110,8 @@ function MainAppContent(props: MainAppContentProps) {
         onOpenWhatsNew={props.onOpenWhatsNew}
         onOpenStudyRooms={props.onOpenStudyRooms}
         studyRoomsActive={props.studyRoomsActive}
+        onOpenClassSchedule={props.onOpenClassSchedule}
+        classScheduleActive={props.classScheduleActive}
         notificationsNode={props.notificationsNode}
         timezone={props.timezone}
         clockSettings={props.clockSettings}
@@ -1159,6 +1125,12 @@ function MainAppContent(props: MainAppContentProps) {
           userId={props.studyRoomsUserId}
           initialOpenRoomId={props.initialOpenRoomId}
           onOpenRoom={() => {}}
+        />
+      ) : props.showClassSchedule && props.userId ? (
+        <ClassScheduleView
+          userId={props.userId}
+          calMode={props.calMode}
+          onClose={props.onOpenStudyRooms}
         />
       ) : (
       <div className="max-w-5xl mx-auto px-4 md:px-6 pt-6 pb-16">
@@ -1252,29 +1224,6 @@ function MainAppContent(props: MainAppContentProps) {
       {props.profileLoading && !props.profile && (
         <div className="fixed bottom-4 right-4 text-xs" style={{ color: colors.textTertiary }}>Loading profile…</div>
       )}
-
-      {!chatOpen && (
-        <AssistantButton onClick={() => setChatOpen(true)} lang={isRTL() ? 'fa' : 'en'} />
-      )}
-
-      <AssistantPanel
-        open={chatOpen}
-        onClose={() => setChatOpen(false)}
-        onAction={handleAssistantAction}
-        defaultLang="auto"
-        getCtx={() => ({
-          viewMode: props.viewMode,
-          calMode: props.calMode,
-          currentKey: props.currentKey,
-          currentDayData: props.currentDayData,
-          habits: props.habits,
-          reminders: props.reminders,
-          weeklyData: [],
-          profile: { lang: 'auto', timezone: props.timezone, wakeTime: '07:00', sleepTime: '23:00', availableDays: [0,1,2,3,4], availableHoursPerDay: 4, sessionDuration: 45, breakDuration: 10, maxDailyStudy: 240, minDailyStudy: 60, difficultSubjects: [], strongSubjects: [], upcomingExams: [], mainGoals: [], preferredTimeOfDay: 'morning', energyPattern: 'balanced', intensity: 'balanced', planStyle: 'structured', weekendAvailable: false, daysOff: [], reminderPref: 1, flexibleOrFixed: 'flexible', historyLimit: 50 },
-          energy: 'medium',
-          lang: 'en',
-        })}
-      />
     </div>
   );
 }
