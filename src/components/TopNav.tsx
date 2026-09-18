@@ -672,6 +672,7 @@ export default function TopNav({
               <Users size={15} />
             </button>
             <button
+              data-tour="tour-class-schedule"
               onClick={onOpenClassSchedule}
               aria-label="Class Schedule"
               title="Class Schedule"
