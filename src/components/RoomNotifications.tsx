@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Bell, Check, X, UserPlus, UserCheck, LogIn, LogOut, Ban, MessageSquare } from 'lucide-react';
 import type { RoomNotification, RoomNotificationType } from '../types';
 import {
@@ -30,6 +31,7 @@ export default function RoomNotifications({ userId, onOpenRoom, onOpenFeedback }
   const [loading, setLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -147,10 +149,23 @@ export default function RoomNotifications({ userId, onOpenRoom, onOpenFeedback }
   async function handleOpen() {
     const next = !open;
     setOpen(next);
-    if (next && unread > 0) {
-      setLoading(true);
-      await load();
-      setLoading(false);
+    if (next) {
+      const rect = btnRef.current?.getBoundingClientRect();
+      if (rect) {
+        const panelWidth = 320;
+ const margin = 16;
+        let left = rect.right - panelWidth;
+        if (left < margin) left = margin;
+        if (left + panelWidth > window.innerWidth - margin) {
+          left = window.innerWidth - panelWidth - margin;
+        }
+        setPanelPos({ top: rect.bottom + 6, left });
+      }
+      if (unread > 0) {
+        setLoading(true);
+        await load();
+        setLoading(false);
+      }
     }
   }
 
@@ -224,11 +239,21 @@ export default function RoomNotifications({ userId, onOpenRoom, onOpenFeedback }
         )}
       </button>
 
-      {open && (
+      {open && panelPos && createPortal(
         <div
           ref={ref}
-          className="absolute top-12 right-0 w-80 max-w-[calc(100vw-2rem)] rounded-xl py-2 z-[200]"
-          style={{ background: colors.bgCard, boxShadow: '0 8px 32px rgba(0,0,0,0.22)' }}
+          className="fixed rounded-xl py-2 z-[9999]"
+          style={{
+            background: colors.bgCard,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
+            top: panelPos.top,
+            left: panelPos.left,
+            width: 'min(320px, calc(100vw - 2rem))',
+            maxHeight: 'min(420px, calc(100vh - 80px))',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
         >
           <div className="flex items-center justify-between px-4 py-2">
             <span className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.textPrimary }}>Notifications</span>
@@ -275,7 +300,8 @@ export default function RoomNotifications({ userId, onOpenRoom, onOpenFeedback }
               })}
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
