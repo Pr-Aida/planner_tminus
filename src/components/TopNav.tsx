@@ -707,14 +707,17 @@ export default function TopNav({
             ))}
           </div>
 
-          {/* Mobile hamburger menu button */}
-          <button
-            onClick={() => setShowMobileMenu(!showMobileMenu)}
-            className="sm:hidden flex items-center justify-center rounded-md p-1.5 transition-all flex-shrink-0"
-            style={{ background: showMobileMenu ? 'rgba(255,255,255,0.1)' : 'transparent', color: colors.navTextActive, border: 'none', cursor: 'pointer' }}
-          >
-            <Menu size={20} />
-          </button>
+          {/* Mobile notification bell + hamburger menu */}
+          <div className="sm:hidden flex items-center gap-1 flex-shrink-0">
+            {notificationsNode}
+            <button
+              onClick={() => setShowMobileMenu(!showMobileMenu)}
+              className="flex items-center justify-center rounded-md p-1.5 transition-all"
+              style={{ background: showMobileMenu ? 'rgba(255,255,255,0.1)' : 'transparent', color: colors.navTextActive, border: 'none', cursor: 'pointer' }}
+            >
+              <Menu size={20} />
+            </button>
+          </div>
 
           <button
             ref={buttonRef}
@@ -796,42 +799,46 @@ export default function TopNav({
       {showMobileMenu && (
         <div
           ref={mobileMenuRef}
-          className="sm:hidden absolute left-0 right-0 z-50 py-2 px-4"
-          style={{ background: colors.navBg, boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}
+          className="sm:hidden absolute left-0 right-0 z-50 py-3 px-4"
+          style={{ background: colors.navBg, boxShadow: '0 4px 12px rgba(0,0,0,0.3)', borderTop: `1px solid ${colors.borderLight}` }}
         >
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-2">
             {tabs.map(tab => (
               <button
                 key={tab.key}
                 onClick={() => { onViewChange(tab.key); setShowMobileMenu(false); }}
-                className="px-3 py-2 rounded-md text-sm font-semibold text-left transition-all"
+                className="px-4 py-2.5 rounded-md text-sm font-semibold text-left transition-all"
                 style={{
                   background: !studyRoomsActive && !classScheduleActive && viewMode === tab.key ? colors.navAccent : 'transparent',
                   color: !studyRoomsActive && !classScheduleActive && viewMode === tab.key ? '#fff' : colors.navText,
                   border: 'none', cursor: 'pointer',
+                  lineHeight: 1.5,
                 }}
               >
                 {tab.label}
               </button>
             ))}
+            <div style={{ height: 1, background: colors.borderLight, margin: '4px 0' }} />
             <button
               onClick={() => { onOpenStudyRooms(); setShowMobileMenu(false); }}
-              className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-semibold text-left transition-all"
+              className="flex items-center gap-3 px-4 py-2.5 rounded-md text-sm font-semibold text-left transition-all"
               style={{
                 background: studyRoomsActive ? colors.navAccent : 'transparent',
                 color: studyRoomsActive ? '#fff' : colors.navText,
                 border: 'none', cursor: 'pointer',
+                lineHeight: 1.5,
               }}
             >
               <Users size={16} /> Rooms
             </button>
             <button
               onClick={() => { onOpenClassSchedule(); setShowMobileMenu(false); }}
-              className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-semibold text-left transition-all"
+              className="flex items-center gap-3 px-4 py-2.5 rounded-md text-sm font-semibold text-left transition-all"
               style={{
                 background: classScheduleActive ? colors.navAccent : 'transparent',
                 color: classScheduleActive ? '#fff' : colors.navText,
                 border: 'none', cursor: 'pointer',
+                lineHeight: 1.5,
               }}
             >
               <CalendarRange size={16} /> Class Schedule
