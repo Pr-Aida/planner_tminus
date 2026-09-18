@@ -1,10 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, X, Pencil, Trash2, MapPin, User, Clock, ChevronDown, ChevronUp, MoreVertical, Bell } from 'lucide-react';
+import { Plus, X, Pencil, Trash2, MapPin, User, Clock, ChevronDown, ChevronUp, MoreVertical, Bell, Check, Ban } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../lib/theme';
-import { SH_WEEKDAYS_FULL, GREG_WEEKDAYS_FULL, shToGregorian, gregorianToSh, dateKey, shDayOfWeek, gregDayOfWeek, todaySh, todayGreg, addDaysGreg } from '../lib/calendar';
-import type { CalendarMode, ReminderOffset } from '../types';
+import {
+  SH_WEEKDAYS_FULL, GREG_WEEKDAYS_FULL,
+  SH_MONTHS, GREG_MONTH_NAMES,
+  shToGregorian, gregorianToSh, dateKey, gregDateFromKey,
+  shDayOfWeek, gregDayOfWeek,
+  todaySh, todayGreg, addDaysGreg,
+  shDaysInMonth, gregMonthDays, isJalaliLeap,
+} from '../lib/calendar';
+import type { CalendarMode, ReminderOffset, ShDate, GregDate } from '../types';
 
 interface ClassEntry {
   id: string;
@@ -23,6 +30,16 @@ interface ClassEntry {
   updated_at: string;
 }
 
+interface LinkedReminder {
+  id: string;
+  date_key: string;
+  title: string;
+  note: string;
+  remind_offset: ReminderOffset;
+  status: string;
+  class_id: string | null;
+}
+
 interface Props {
   userId: string;
   calMode: CalendarMode;
@@ -32,13 +49,14 @@ interface Props {
 
 const COLOR_OPTIONS = ['#7B1C3E', '#1B2A4A', '#059669', '#B45309', '#2563EB', '#7C3AED', '#DC2626', '#0891B2'];
 
-const REMINDER_OPTIONS: { value: ReminderOffset; label: string }[] = [
-  { value: 0, label: 'At class time' },
-  { value: 0, label: 'On the day' },
-  { value: 1, label: '1 day before' },
-  { value: 3, label: '3 days before' },
-  { value: 7, label: '1 week before' },
-];
+const OFFSET_LABELS: Record<ReminderOffset, string> = {
+  7: '1 week before',
+  3: '3 days before',
+  1: '1 day before',
+  0: 'On the day',
+};
+
+type ReminderMode = 'none' | 'preset' | 'custom';
 
 function timeToMin(t: string): number {
   const [h, m] = t.split(':').map(Number);
@@ -67,8 +85,24 @@ function durationLabel(start: string, end: string): string {
 
 function reminderLabel(offset: ReminderOffset | null): string {
   if (offset === null) return 'None';
-  const opt = REMINDER_OPTIONS.find(o => o.value === offset);
-  return opt ? opt.label : 'None';
+  return OFFSET_LABELS[offset] || 'None';
+}
+
+function formatGregDate(g: GregDate): string {
+  return `${GREG_MONTH_NAMES[g.month - 1]} ${g.day}, ${g.year}`;
+}
+
+function formatShDate(sh: ShDate): string {
+  return `${SH_MONTHS[sh.month - 1].name} ${sh.day}, ${sh.year}`;
+}
+
+function gregToISODate(g: GregDate): string {
+  return `${g.year}-${String(g.month).padStart(2, '0')}-${String(g.day).padStart(2, '0')}`;
+}
+
+function isoDateToGreg(iso: string): GregDate {
+  const [y, m, d] = iso.split('-').map(Number);
+  return { year: y, month: m, day: d };
 }
 
 export default function ClassScheduleView({ userId, calMode, timezone, onClose }: Props) {
@@ -80,7 +114,10 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ cls: ClassEntry; reminders: LinkedReminder[] } | null>(null);
   const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  // Form state
   const [form, setForm] = useState({
     course_name: '',
     day_of_week: 0,
@@ -91,8 +128,15 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
     notes: '',
     color: COLOR_OPTIONS[0],
     weekly_repeat: true,
-    reminder_offset: null as ReminderOffset | null,
   });
+  const [reminderMode, setReminderMode] = useState<ReminderMode>('none');
+  const [reminderPreset, setReminderPreset] = useState<ReminderOffset>(1);
+  const [reminderTitle, setReminderTitle] = useState('');
+  const [reminderNote, setReminderNote] = useState('');
+  const [reminderCustomDate, setReminderCustomDate] = useState('');
+  const [reminderCustomTime, setReminderCustomTime] = useState('08:00');
+  const [reminderRepeat, setReminderRepeat] = useState<'every' | 'once'>('every');
+  const [linkedReminders, setLinkedReminders] = useState<LinkedReminder[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -118,6 +162,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
 
   useEffect(() => { loadClasses(); }, [loadClasses]);
 
+  // Close menu on outside click
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       const target = e.target as Node;
@@ -128,10 +173,23 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [menuOpenId]);
 
-  useEffect(() => { setMenuOpenId(null); }, []);
+  // Close menu when navigating away or collapsing
+  useEffect(() => {
+    if (expandedId && menuOpenId && expandedId !== menuOpenId) {
+      // menu can stay open even if card is expanded, that's fine
+    }
+  }, [expandedId, menuOpenId]);
 
   function resetForm() {
-    setForm({ course_name: '', day_of_week: 0, start_time: '08:30', end_time: '10:00', location: '', instructor: '', notes: '', color: COLOR_OPTIONS[0], weekly_repeat: true, reminder_offset: null });
+    setForm({ course_name: '', day_of_week: 0, start_time: '08:30', end_time: '10:00', location: '', instructor: '', notes: '', color: COLOR_OPTIONS[0], weekly_repeat: true });
+    setReminderMode('none');
+    setReminderPreset(1);
+    setReminderTitle('');
+    setReminderNote('');
+    setReminderCustomDate('');
+    setReminderCustomTime('08:00');
+    setReminderRepeat('every');
+    setLinkedReminders([]);
     setEditingId(null);
   }
 
@@ -140,7 +198,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
     setShowForm(true);
   }
 
-  function openEdit(cls: ClassEntry) {
+  async function openEdit(cls: ClassEntry) {
     setForm({
       course_name: cls.course_name,
       day_of_week: cls.day_of_week,
@@ -151,9 +209,52 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
       notes: cls.notes || '',
       color: cls.color || COLOR_OPTIONS[0],
       weekly_repeat: cls.weekly_repeat,
-      reminder_offset: cls.reminder_offset,
     });
     setEditingId(cls.id);
+
+    // Load linked reminders
+    const { data: remData } = await supabase
+      .from('planner_reminders')
+      .select('*')
+      .eq('class_id', cls.id);
+    const rems = (remData || []) as unknown as LinkedReminder[];
+    setLinkedReminders(rems);
+
+    // Determine reminder mode from existing data
+    if (cls.reminder_offset !== null && rems.length > 0) {
+      // Check if it's a preset or custom
+      // Preset reminders have date_key = class_date - offset, and remind_offset = offset
+      // Custom reminders have remind_offset = 0 and a specific date_key
+      const firstRem = rems[0];
+      if (cls.reminder_offset === firstRem.remind_offset && firstRem.remind_offset !== 0) {
+        setReminderMode('preset');
+        setReminderPreset(firstRem.remind_offset);
+      } else if (firstRem.remind_offset === 0) {
+        // Could be "on the day" preset or custom
+        if (cls.reminder_offset === 0) {
+          setReminderMode('preset');
+          setReminderPreset(0);
+        } else {
+          setReminderMode('custom');
+          const g = gregDateFromKey(firstRem.date_key);
+          setReminderCustomDate(gregToISODate(g));
+        }
+      } else {
+        setReminderMode('preset');
+        setReminderPreset(cls.reminder_offset);
+      }
+      setReminderTitle(firstRem.title);
+      setReminderNote(firstRem.note || '');
+      setReminderRepeat(cls.weekly_repeat ? 'every' : 'once');
+    } else if (cls.reminder_offset !== null) {
+      setReminderMode('preset');
+      setReminderPreset(cls.reminder_offset);
+      setReminderTitle(`${cls.course_name} — Class Reminder`);
+      setReminderRepeat(cls.weekly_repeat ? 'every' : 'once');
+    } else {
+      setReminderMode('none');
+    }
+
     setShowForm(true);
   }
 
@@ -170,47 +271,102 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
 
   function closeMenu() { setMenuOpenId(null); }
 
-  async function syncRemindersForClass(cls: ClassEntry) {
-    if (cls.reminder_offset === null) {
-      await supabase.from('planner_reminders').delete().eq('class_id', cls.id);
-      return;
-    }
-    const offset = cls.reminder_offset;
+  function toggleExpand(clsId: string) {
+    setExpandedId(prev => prev === clsId ? null : clsId);
+  }
+
+  // Compute the next occurrence of a class (as GregDate) given its day_of_week
+  function nextClassOccurrence(dow: number): GregDate {
     const now = calMode === 'shamsi' ? todaySh(timezone) : todayGreg(timezone);
     const todayGregDate = calMode === 'shamsi' ? shToGregorian(now) : now;
-
-    const dow = cls.day_of_week;
     let todayDow: number;
     if (calMode === 'shamsi') {
       todayDow = shDayOfWeek(now.year, now.month, now.day);
     } else {
       todayDow = gregDayOfWeek(now.year, now.month, now.day);
     }
-    let daysUntil = (dow - todayDow + 7) % 7;
-    let nextOccurrence = addDaysGreg(todayGregDate, daysUntil);
+    const daysUntil = (dow - todayDow + 7) % 7;
+    return addDaysGreg(todayGregDate, daysUntil);
+  }
 
-    const remindersToCreate: { date_key: string; title: string; remind_offset: ReminderOffset; class_id: string }[] = [];
-    const maxWeeks = cls.weekly_repeat ? 16 : 1;
-    for (let w = 0; w < maxWeeks; w++) {
-      const classDate = addDaysGreg(nextOccurrence, w * 7);
-      const reminderDate = addDaysGreg(classDate, -offset);
-      remindersToCreate.push({
-        date_key: dateKey(reminderDate),
-        title: `${cls.course_name} — ${timeLabel(cls.start_time)}`,
-        remind_offset: offset,
-        class_id: cls.id,
-      });
+  // Sync reminders for a class based on current form settings
+  async function syncRemindersForClass(cls: ClassEntry): Promise<void> {
+    // First, delete all existing reminders linked to this class
+    await supabase.from('planner_reminders').delete().eq('class_id', cls.id);
+
+    if (reminderMode === 'none') {
+      // Update class reminder_offset to null
+      await supabase.from('planner_classes').update({ reminder_offset: null }).eq('id', cls.id);
+      return;
     }
 
-    await supabase.from('planner_reminders').delete().eq('class_id', cls.id);
-    if (remindersToCreate.length > 0) {
-      await supabase.from('planner_reminders').insert(remindersToCreate);
+    const title = reminderTitle.trim() || `${cls.course_name} — Class Reminder`;
+    const note = reminderNote.trim();
+
+    if (reminderMode === 'preset') {
+      const offset = reminderPreset;
+      await supabase.from('planner_classes').update({ reminder_offset: offset }).eq('id', cls.id);
+
+      const maxWeeks = reminderRepeat === 'every' && cls.weekly_repeat ? 16 : 1;
+      const firstOccurrence = nextClassOccurrence(cls.day_of_week);
+      const remindersToCreate: { date_key: string; title: string; note: string; remind_offset: ReminderOffset; class_id: string }[] = [];
+
+      for (let w = 0; w < maxWeeks; w++) {
+        const classDate = addDaysGreg(firstOccurrence, w * 7);
+        const reminderDate = addDaysGreg(classDate, -offset);
+        remindersToCreate.push({
+          date_key: dateKey(reminderDate),
+          title,
+          note,
+          remind_offset: offset,
+          class_id: cls.id,
+        });
+      }
+
+      if (remindersToCreate.length > 0) {
+        await supabase.from('planner_reminders').insert(remindersToCreate);
+      }
+    } else if (reminderMode === 'custom') {
+      // Custom: specific date and time, offset = 0 (on that day)
+      await supabase.from('planner_classes').update({ reminder_offset: 0 }).eq('id', cls.id);
+
+      if (!reminderCustomDate) return;
+      const g = isoDateToGreg(reminderCustomDate);
+      const remindersToCreate: { date_key: string; title: string; note: string; remind_offset: ReminderOffset; class_id: string }[] = [];
+
+      if (reminderRepeat === 'every' && cls.weekly_repeat) {
+        // Create weekly reminders for 16 weeks starting from custom date
+        for (let w = 0; w < 16; w++) {
+          const remDate = addDaysGreg(g, w * 7);
+          remindersToCreate.push({
+            date_key: dateKey(remDate),
+            title: `${title} (${reminderCustomTime})`,
+            note,
+            remind_offset: 0,
+            class_id: cls.id,
+          });
+        }
+      } else {
+        remindersToCreate.push({
+          date_key: dateKey(g),
+          title: `${title} (${reminderCustomTime})`,
+          note,
+          remind_offset: 0,
+          class_id: cls.id,
+        });
+      }
+
+      if (remindersToCreate.length > 0) {
+        await supabase.from('planner_reminders').insert(remindersToCreate);
+      }
     }
   }
 
   async function handleSave() {
     if (!form.course_name.trim()) { setError('Class name is required.'); return; }
     if (timeToMin(form.end_time) <= timeToMin(form.start_time)) { setError('End time must be after start time.'); return; }
+    if (reminderMode === 'custom' && !reminderCustomDate) { setError('Please select a reminder date.'); return; }
+
     setSaving(true);
     setError(null);
 
@@ -224,52 +380,103 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
       notes: form.notes.trim() || null,
       color: form.color,
       weekly_repeat: form.weekly_repeat,
-      reminder_offset: form.reminder_offset,
     };
 
     if (editingId) {
-      const { data, error: updateError } = await supabase.from('planner_classes').update(payload).eq('id', editingId).select().single();
-      if (updateError) setError('Failed to update class.');
-      else {
-        const updated = data as unknown as ClassEntry;
-        await syncRemindersForClass(updated);
-        setShowForm(false); resetForm(); await loadClasses();
+      const { data, error: updateError } = await supabase
+        .from('planner_classes')
+        .update(payload)
+        .eq('id', editingId)
+        .select()
+        .single();
+      if (updateError) {
+        setError('Failed to update class.');
+        setSaving(false);
+        return;
       }
+      const updated = data as unknown as ClassEntry;
+      await syncRemindersForClass(updated);
+      setShowForm(false);
+      resetForm();
+      await loadClasses();
     } else {
-      const { data, error: insertError } = await supabase.from('planner_classes').insert({ ...payload, user_id: userId }).select().single();
-      if (insertError) setError('Failed to add class.');
-      else {
-        const created = data as unknown as ClassEntry;
-        await syncRemindersForClass(created);
-        setShowForm(false); resetForm(); await loadClasses();
+      const { data, error: insertError } = await supabase
+        .from('planner_classes')
+        .insert({ ...payload, user_id: userId })
+        .select()
+        .single();
+      if (insertError) {
+        setError('Failed to add class.');
+        setSaving(false);
+        return;
       }
+      const created = data as unknown as ClassEntry;
+      await syncRemindersForClass(created);
+      setShowForm(false);
+      resetForm();
+      await loadClasses();
     }
     setSaving(false);
   }
 
-  async function handleDelete(id: string) {
-    await supabase.from('planner_reminders').delete().eq('class_id', id);
-    const { error: deleteError } = await supabase.from('planner_classes').delete().eq('id', id);
-    if (deleteError) setError('Failed to delete class.');
-    else { setExpandedId(null); setMenuOpenId(null); await loadClasses(); }
+  async function handleDeleteClick(cls: ClassEntry) {
+    closeMenu();
+    // Fetch linked reminders
+    const { data: remData } = await supabase
+      .from('planner_reminders')
+      .select('*')
+      .eq('class_id', cls.id);
+    const rems = (remData || []) as unknown as LinkedReminder[];
+    setDeleteConfirm({ cls, reminders: rems });
   }
 
-  function toggleExpand(clsId: string) {
-    setExpandedId(prev => {
-      const next = prev === clsId ? null : clsId;
-      if (next === null) setMenuOpenId(null);
-      return next;
-    });
+  async function handleDeleteConfirm(deleteReminders: boolean) {
+    if (!deleteConfirm) return;
+    const { cls } = deleteConfirm;
+
+    if (deleteReminders) {
+      await supabase.from('planner_reminders').delete().eq('class_id', cls.id);
+    } else {
+      // Unlink reminders so they survive the class deletion
+      await supabase.from('planner_reminders').update({ class_id: null }).eq('class_id', cls.id);
+    }
+
+    const { error: deleteError } = await supabase.from('planner_classes').delete().eq('id', cls.id);
+    if (deleteError) {
+      setError('Failed to delete class.');
+    } else {
+      setExpandedId(null);
+      setMenuOpenId(null);
+      await loadClasses();
+    }
+    setDeleteConfirm(null);
   }
 
+  // Group classes by day
   const classesByDay: Record<number, ClassEntry[]> = {};
   for (let i = 0; i < 7; i++) classesByDay[i] = [];
   for (const cls of classes) {
     if (classesByDay[cls.day_of_week]) classesByDay[cls.day_of_week].push(cls);
   }
 
+  // Compute default custom date when switching to custom mode
+  function ensureCustomDateDefault() {
+    if (!reminderCustomDate) {
+      const nextOcc = nextClassOccurrence(form.day_of_week);
+      setReminderCustomDate(gregToISODate(nextOcc));
+    }
+  }
+
+  // Update reminder title when class name changes (if title is auto-generated or empty)
+  function updateReminderTitle(className: string) {
+    if (!reminderTitle || reminderTitle.startsWith(form.course_name)) {
+      setReminderTitle(`${className} — Class Reminder`);
+    }
+  }
+
   return (
     <div className="min-h-screen" style={{ background: colors.bg }}>
+      {/* Header */}
       <div className="max-w-6xl mx-auto px-4 md:px-6 pt-6 pb-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -300,47 +507,63 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
         )}
       </div>
 
+      {/* Add/Edit Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: colors.overlay }} onClick={() => setShowForm(false)}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: colors.overlay }}
+          onClick={() => { setShowForm(false); resetForm(); }}
+        >
           <div
             className="w-full max-w-md rounded-2xl overflow-hidden flex flex-col"
             style={{ background: colors.bgCard, boxShadow: `0 16px 48px ${colors.shadow}` }}
             onClick={e => e.stopPropagation()}
           >
+            {/* Modal header */}
             <div className="flex items-center justify-between px-5 py-3" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
               <h2 className="text-base font-bold" style={{ color: colors.textPrimary }}>
                 {editingId ? 'Edit Class' : 'Add Class'}
               </h2>
-              <button onClick={() => setShowForm(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: colors.textTertiary }}>
+              <button
+                onClick={() => { setShowForm(false); resetForm(); }}
+                style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: colors.textTertiary }}
+              >
                 <X size={18} />
               </button>
             </div>
 
+            {/* Form body */}
             <div className="px-5 py-4 space-y-3 overflow-y-auto" style={{ maxHeight: '70vh' }}>
+              {/* Class Name */}
               <div>
                 <label className="text-xs font-semibold mb-1 block" style={{ color: colors.textSecondary }}>Class Name</label>
                 <input
                   type="text"
                   value={form.course_name}
-                  onChange={e => setForm({ ...form, course_name: e.target.value })}
+                  onChange={e => {
+                    setForm({ ...form, course_name: e.target.value });
+                    updateReminderTitle(e.target.value);
+                  }}
                   placeholder="e.g. Fluid Mechanics"
                   className="w-full rounded-lg px-3 py-2 text-sm outline-none"
                   style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}
                 />
               </div>
 
+              {/* Day */}
               <div>
                 <label className="text-xs font-semibold mb-1 block" style={{ color: colors.textSecondary }}>Day</label>
                 <select
                   value={form.day_of_week}
                   onChange={e => setForm({ ...form, day_of_week: Number(e.target.value) })}
-                  className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                  className="w-full rounded-lg px-3 py-2 text-sm outline-none cursor-pointer"
                   style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}
                 >
                   {weekdayNames.map((name, i) => <option key={i} value={i}>{name}</option>)}
                 </select>
               </div>
 
+              {/* Start / End Time */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold mb-1 block" style={{ color: colors.textSecondary }}>Start Time</label>
@@ -364,6 +587,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
                 </div>
               </div>
 
+              {/* Location */}
               <div>
                 <label className="text-xs font-semibold mb-1 block" style={{ color: colors.textSecondary }}>Location / Room</label>
                 <input
@@ -376,6 +600,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
                 />
               </div>
 
+              {/* Instructor */}
               <div>
                 <label className="text-xs font-semibold mb-1 block" style={{ color: colors.textSecondary }}>Instructor</label>
                 <input
@@ -388,6 +613,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
                 />
               </div>
 
+              {/* Notes */}
               <div>
                 <label className="text-xs font-semibold mb-1 block" style={{ color: colors.textSecondary }}>Notes (optional)</label>
                 <textarea
@@ -400,6 +626,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
                 />
               </div>
 
+              {/* Color */}
               <div>
                 <label className="text-xs font-semibold mb-1.5 block" style={{ color: colors.textSecondary }}>Color</label>
                 <div className="flex gap-2 flex-wrap">
@@ -410,7 +637,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
                       className="rounded-full transition-all"
                       style={{
                         width: 28, height: 28, background: c, cursor: 'pointer',
-                        border: form.color === c ? '2px solid ' + colors.textPrimary : '2px solid transparent',
+                        border: form.color === c ? `2px solid ${colors.textPrimary}` : '2px solid transparent',
                         transform: form.color === c ? 'scale(1.1)' : 'scale(1)',
                       }}
                     />
@@ -418,6 +645,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
                 </div>
               </div>
 
+              {/* Weekly Repeat */}
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -428,28 +656,209 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
                 <span className="text-xs font-medium" style={{ color: colors.textSecondary }}>Repeats weekly</span>
               </label>
 
-              <div style={{ borderTop: `1px solid ${colors.borderLight}`, paddingTop: 12, marginTop: 4 }}>
-                <div className="flex items-center gap-1.5 mb-2">
-                  <Bell size={13} style={{ color: colors.accent }} />
-                  <span className="text-xs font-bold uppercase tracking-wide" style={{ color: colors.textSecondary }}>Reminder</span>
+              {/* ─── REMINDER SECTION ─── */}
+              <div style={{ borderTop: `1px solid ${colors.borderLight}`, paddingTop: 14, marginTop: 6 }}>
+                {/* Section header matching DayModal style */}
+                <div className="flex items-center gap-2 mb-3">
+                  <Bell size={14} color={colors.accent} />
+                  <span className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.accent }}>
+                    Reminder
+                  </span>
+                  <div className="flex-1 h-px" style={{ background: colors.accentLight }} />
                 </div>
-                <select
-                  value={form.reminder_offset === null ? -1 : form.reminder_offset}
-                  onChange={e => {
-                    const v = Number(e.target.value);
-                    setForm({ ...form, reminder_offset: v === -1 ? null : v as ReminderOffset });
-                  }}
-                  className="w-full rounded-lg px-3 py-2 text-sm outline-none cursor-pointer"
-                  style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}
-                >
-                  <option value={-1}>None</option>
-                  {REMINDER_OPTIONS.map((opt, i) => (
-                    <option key={i} value={opt.value}>{opt.label}</option>
+
+                {/* "Reminder for:" label */}
+                <div className="mb-3">
+                  <span className="text-[11px] font-medium" style={{ color: colors.textTertiary }}>Reminder for:</span>
+                  <span className="text-xs font-bold ml-1.5" style={{ color: colors.textPrimary }}>
+                    {form.course_name || 'Untitled Class'}
+                  </span>
+                </div>
+
+                {/* Reminder mode selector */}
+                <div className="flex gap-1.5 mb-3">
+                  {(['none', 'preset', 'custom'] as ReminderMode[]).map(mode => (
+                    <button
+                      key={mode}
+                      onClick={() => {
+                        setReminderMode(mode);
+                        if (mode === 'custom') ensureCustomDateDefault();
+                        if (mode === 'preset' && !reminderTitle) {
+                          setReminderTitle(`${form.course_name || 'Class'} — Class Reminder`);
+                        }
+                      }}
+                      className="flex-1 rounded-lg py-1.5 text-[11px] font-semibold capitalize transition-all"
+                      style={{
+                        background: reminderMode === mode ? colors.accent : colors.bgInput,
+                        color: reminderMode === mode ? '#fff' : colors.textSecondary,
+                        border: `1.5px solid ${reminderMode === mode ? colors.accent : colors.borderLight}`,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {mode === 'none' ? 'None' : mode === 'preset' ? 'Preset' : 'Custom'}
+                    </button>
                   ))}
-                </select>
+                </div>
+
+                {/* Preset mode */}
+                {reminderMode === 'preset' && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-[11px] font-semibold mb-1 block" style={{ color: colors.textSecondary }}>Reminder title</label>
+                      <input
+                        type="text"
+                        value={reminderTitle}
+                        onChange={e => setReminderTitle(e.target.value)}
+                        placeholder="Fluid Mechanics — Class Reminder"
+                        className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                        style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold mb-1 block" style={{ color: colors.textSecondary }}>Reminder timing</label>
+                      <select
+                        value={reminderPreset}
+                        onChange={e => setReminderPreset(Number(e.target.value) as ReminderOffset)}
+                        className="w-full rounded-lg px-3 py-2 text-sm outline-none cursor-pointer"
+                        style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}
+                      >
+                        <option value={0}>At class time / On the day</option>
+                        <option value={1}>1 day before</option>
+                        <option value={3}>3 days before</option>
+                        <option value={7}>1 week before</option>
+                      </select>
+                    </div>
+                    {form.weekly_repeat && (
+                      <div>
+                        <label className="text-[11px] font-semibold mb-1 block" style={{ color: colors.textSecondary }}>Repeat reminder</label>
+                        <select
+                          value={reminderRepeat}
+                          onChange={e => setReminderRepeat(e.target.value as 'every' | 'once')}
+                          className="w-full rounded-lg px-3 py-2 text-sm outline-none cursor-pointer"
+                          style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}
+                        >
+                          <option value="every">Every weekly occurrence</option>
+                          <option value="once">Next occurrence only</option>
+                        </select>
+                      </div>
+                    )}
+                    <div>
+                      <label className="text-[11px] font-semibold mb-1 block" style={{ color: colors.textSecondary }}>Notes (optional)</label>
+                      <textarea
+                        value={reminderNote}
+                        onChange={e => setReminderNote(e.target.value)}
+                        placeholder="Reminder notes..."
+                        rows={2}
+                        className="w-full rounded-lg px-3 py-2 text-sm outline-none resize-none"
+                        style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Custom mode */}
+                {reminderMode === 'custom' && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-[11px] font-semibold mb-1 block" style={{ color: colors.textSecondary }}>Reminder title</label>
+                      <input
+                        type="text"
+                        value={reminderTitle}
+                        onChange={e => setReminderTitle(e.target.value)}
+                        placeholder="Fluid Mechanics — Class Reminder"
+                        className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                        style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-semibold mb-1 block" style={{ color: colors.textSecondary }}>
+                          Date {calMode === 'shamsi' ? '(Shamsi)' : '(Gregorian)'}
+                        </label>
+                        <input
+                          type="date"
+                          value={reminderCustomDate}
+                          onChange={e => setReminderCustomDate(e.target.value)}
+                          className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                          style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}
+                        />
+                        {reminderCustomDate && calMode === 'shamsi' && (
+                          <p className="text-[10px] mt-1" style={{ color: colors.textTertiary }}>
+                            {formatShDate(gregorianToSh(isoDateToGreg(reminderCustomDate)))}
+                          </p>
+                        )}
+                        {reminderCustomDate && calMode === 'gregorian' && (
+                          <p className="text-[10px] mt-1" style={{ color: colors.textTertiary }}>
+                            {formatGregDate(isoDateToGreg(reminderCustomDate))}
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-semibold mb-1 block" style={{ color: colors.textSecondary }}>Time</label>
+                        <input
+                          type="time"
+                          value={reminderCustomTime}
+                          onChange={e => setReminderCustomTime(e.target.value)}
+                          className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                          style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}
+                        />
+                      </div>
+                    </div>
+                    {form.weekly_repeat && (
+                      <div>
+                        <label className="text-[11px] font-semibold mb-1 block" style={{ color: colors.textSecondary }}>Repeat reminder</label>
+                        <select
+                          value={reminderRepeat}
+                          onChange={e => setReminderRepeat(e.target.value as 'every' | 'once')}
+                          className="w-full rounded-lg px-3 py-2 text-sm outline-none cursor-pointer"
+                          style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}
+                        >
+                          <option value="every">Every weekly occurrence</option>
+                          <option value="once">This date only</option>
+                        </select>
+                      </div>
+                    )}
+                    <div>
+                      <label className="text-[11px] font-semibold mb-1 block" style={{ color: colors.textSecondary }}>Notes (optional)</label>
+                      <textarea
+                        value={reminderNote}
+                        onChange={e => setReminderNote(e.target.value)}
+                        placeholder="Reminder notes..."
+                        rows={2}
+                        className="w-full rounded-lg px-3 py-2 text-sm outline-none resize-none"
+                        style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Show existing linked reminders when editing */}
+                {editingId && linkedReminders.length > 0 && reminderMode !== 'none' && (
+                  <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${colors.borderLight}` }}>
+                    <p className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: colors.textTertiary }}>
+                      Linked reminders ({linkedReminders.length})
+                    </p>
+                    <div className="space-y-1.5 max-h-24 overflow-y-auto">
+                      {linkedReminders.slice(0, 5).map(r => (
+                        <div key={r.id} className="flex items-center justify-between rounded px-2 py-1" style={{ background: colors.bgSubtle }}>
+                          <span className="text-[11px] truncate" style={{ color: colors.textSecondary }}>{r.title}</span>
+                          <span className="text-[10px] ml-2 flex-shrink-0" style={{ color: colors.textTertiary }}>
+                            {r.remind_offset === 0 ? 'On day' : `${r.remind_offset}d before`}
+                          </span>
+                        </div>
+                      ))}
+                      {linkedReminders.length > 5 && (
+                        <p className="text-[10px] text-center" style={{ color: colors.textTertiary }}>
+                          +{linkedReminders.length - 5} more
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
+            {/* Modal footer */}
             <div className="flex gap-2 px-5 py-3" style={{ borderTop: `1px solid ${colors.borderLight}` }}>
               <button
                 onClick={handleSave}
@@ -460,7 +869,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
                 {saving ? 'Saving...' : editingId ? 'Save Changes' : 'Add Class'}
               </button>
               <button
-                onClick={() => setShowForm(false)}
+                onClick={() => { setShowForm(false); resetForm(); }}
                 className="flex-1 rounded-lg py-2 text-sm font-semibold transition-all"
                 style={{ background: colors.bgSubtle, border: `1px solid ${colors.borderLight}`, cursor: 'pointer', color: colors.textSecondary }}
               >
@@ -471,12 +880,14 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
         </div>
       )}
 
+      {/* Loading state */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <div className="w-8 h-8 border-3 rounded-full animate-spin" style={{ borderColor: colors.border, borderTopColor: colors.accent, borderWidth: 3 }} />
         </div>
       ) : (
         <div className="max-w-6xl mx-auto px-4 md:px-6 pb-16">
+          {/* Empty state */}
           {classes.length === 0 && !loading && (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ background: colors.bgSubtle }}>
@@ -494,6 +905,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
             </div>
           )}
 
+          {/* Weekly grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             {weekdayNames.map((dayName, dayIdx) => {
               const dayClasses = classesByDay[dayIdx] || [];
@@ -503,6 +915,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
                   className="rounded-xl overflow-hidden flex flex-col"
                   style={{ background: colors.bgCard, border: `1px solid ${colors.borderLight}`, boxShadow: `0 2px 8px ${colors.shadow}` }}
                 >
+                  {/* Day header */}
                   <div className="px-3 py-2.5 flex items-center justify-between" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
                     <h3 className="text-sm font-bold" style={{ color: colors.textPrimary }}>{dayName}</h3>
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: colors.bgSubtle, color: colors.textTertiary }}>
@@ -510,6 +923,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
                     </span>
                   </div>
 
+                  {/* Classes */}
                   <div className="flex-1 p-2 space-y-2 min-h-[60px]">
                     {dayClasses.length === 0 ? (
                       <p className="text-[11px] text-center py-3" style={{ color: colors.textTertiary }}>No classes</p>
@@ -544,19 +958,29 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-0.5 flex-shrink-0">
+                                    {/* Three-dot menu button — completely separate from expand/collapse */}
                                     <button
                                       ref={(el) => { menuButtonRefs.current[cls.id] = el; }}
                                       onClick={(e) => openMenu(cls.id, e)}
                                       className="flex items-center justify-center rounded p-0.5 transition-colors"
-                                      style={{ background: menuOpenId === cls.id ? colors.bgInput : 'transparent', border: 'none', cursor: 'pointer', color: colors.textTertiary }}
+                                      style={{
+                                        background: menuOpenId === cls.id ? colors.bgInput : 'transparent',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        color: colors.textTertiary,
+                                      }}
                                       aria-label="Class actions"
                                     >
                                       <MoreVertical size={14} />
                                     </button>
-                                    {isExpanded ? <ChevronUp size={14} style={{ color: colors.textTertiary }} /> : <ChevronDown size={14} style={{ color: colors.textTertiary }} />}
+                                    {/* Expand/collapse arrow — separate state */}
+                                    {isExpanded
+                                      ? <ChevronUp size={14} style={{ color: colors.textTertiary }} />
+                                      : <ChevronDown size={14} style={{ color: colors.textTertiary }} />}
                                   </div>
                                 </div>
 
+                                {/* Expanded details */}
                                 {isExpanded && (
                                   <div className="mt-2 pt-2 space-y-1.5" style={{ borderTop: `1px solid ${colors.borderLight}` }}>
                                     {cls.location && (
@@ -597,14 +1021,26 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
         </div>
       )}
 
+      {/* Three-dot menu — rendered via portal to avoid clipping */}
       {menuOpenId && menuPos && createPortal(
         <div
           className="fixed z-[9999] w-28 rounded-lg py-1"
-          style={{ background: colors.bgCard, boxShadow: `0 4px 16px ${colors.shadow}`, border: `1px solid ${colors.borderLight}`, left: menuPos.x, top: menuPos.y }}
+          style={{
+            background: colors.bgCard,
+            boxShadow: `0 4px 16px ${colors.shadow}`,
+            border: `1px solid ${colors.borderLight}`,
+            left: menuPos.x,
+            top: menuPos.y,
+          }}
           onClick={(e) => e.stopPropagation()}
         >
           <button
-            onClick={(e) => { e.stopPropagation(); closeMenu(); const cls = classes.find(c => c.id === menuOpenId); if (cls) openEdit(cls); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              const cls = classes.find(c => c.id === menuOpenId);
+              closeMenu();
+              if (cls) openEdit(cls);
+            }}
             className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-semibold text-left transition-colors"
             style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: colors.textSecondary }}
             onMouseEnter={(ev) => (ev.currentTarget.style.background = colors.bgHover)}
@@ -613,7 +1049,11 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
             <Pencil size={11} /> Edit
           </button>
           <button
-            onClick={(e) => { e.stopPropagation(); const id = menuOpenId; closeMenu(); handleDelete(id); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              const cls = classes.find(c => c.id === menuOpenId);
+              if (cls) handleDeleteClick(cls);
+            }}
             className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-semibold text-left transition-colors"
             style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: colors.error }}
             onMouseEnter={(ev) => (ev.currentTarget.style.background = colors.bgHover)}
@@ -623,6 +1063,78 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
           </button>
         </div>,
         document.body
+      )}
+
+      {/* Delete confirmation dialog */}
+      {deleteConfirm && (
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
+          style={{ background: colors.overlay }}
+          onClick={() => setDeleteConfirm(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl overflow-hidden"
+            style={{ background: colors.bgCard, boxShadow: `0 16px 48px ${colors.shadow}` }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 py-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: colors.errorBg }}>
+                  <Trash2 size={16} style={{ color: colors.error }} />
+                </div>
+                <h3 className="text-sm font-bold" style={{ color: colors.textPrimary }}>Delete this class?</h3>
+              </div>
+              <p className="text-xs mb-1" style={{ color: colors.textSecondary }}>
+                <span className="font-semibold">{deleteConfirm.cls.course_name}</span> — {weekdayNames[deleteConfirm.cls.day_of_week]} at {timeLabel(deleteConfirm.cls.start_time)}
+              </p>
+              {deleteConfirm.reminders.length > 0 ? (
+                <p className="text-[11px] mt-2" style={{ color: colors.textTertiary }}>
+                  This class has {deleteConfirm.reminders.length} linked reminder{deleteConfirm.reminders.length > 1 ? 's' : ''}. Choose what to delete:
+                </p>
+              ) : (
+                <p className="text-[11px] mt-2" style={{ color: colors.textTertiary }}>
+                  No linked reminders to worry about.
+                </p>
+              )}
+            </div>
+
+            <div className="px-5 py-3 space-y-2" style={{ borderTop: `1px solid ${colors.borderLight}` }}>
+              {deleteConfirm.reminders.length > 0 ? (
+                <>
+                  <button
+                    onClick={() => handleDeleteConfirm(true)}
+                    className="w-full rounded-lg py-2 text-xs font-bold text-white transition-all"
+                    style={{ background: colors.error, border: 'none', cursor: 'pointer' }}
+                  >
+                    Delete class and {deleteConfirm.reminders.length} reminder{deleteConfirm.reminders.length > 1 ? 's' : ''}
+                  </button>
+                  <button
+                    onClick={() => handleDeleteConfirm(false)}
+                    className="w-full rounded-lg py-2 text-xs font-semibold transition-all"
+                    style={{ background: colors.bgSubtle, border: `1px solid ${colors.borderLight}`, cursor: 'pointer', color: colors.textSecondary }}
+                  >
+                    Delete class only (keep reminders)
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => handleDeleteConfirm(true)}
+                  className="w-full rounded-lg py-2 text-xs font-bold text-white transition-all"
+                  style={{ background: colors.error, border: 'none', cursor: 'pointer' }}
+                >
+                  Delete class
+                </button>
+              )}
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="w-full rounded-lg py-2 text-xs font-semibold transition-all"
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: colors.textTertiary }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
