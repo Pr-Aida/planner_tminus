@@ -192,6 +192,7 @@ export interface UserProfile {
   clock2_label: string;
   clock2_visible: boolean;
   theme_pref: 'light' | 'dark';
+  time_format: '12h' | '24h';
 }
 
 export const TIMEZONES = [

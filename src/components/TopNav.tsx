@@ -7,6 +7,7 @@ import type { CalendarMode, ViewMode } from '../types';
 import { TIMEZONES } from '../types';
 import type { CountdownConfig } from './CountdownBar';
 import { useTheme } from '../lib/theme';
+import { useTimeFormat } from '../lib/timeFormat';
 
 // ─── Clock settings shape passed from App ────────────────────────────────────
 export interface ClockSettings {
@@ -149,7 +150,7 @@ interface Props {
 }
 
 // ─── Live clock hook ──────────────────────────────────────────────────────────
-function useClockTime(tz: string): string {
+function useClockTime(tz: string, timeFormat: '12h' | '24h'): string {
   const [time, setTime] = useState('');
   useEffect(() => {
     function tick() {
@@ -158,14 +159,14 @@ function useClockTime(tz: string): string {
           timeZone: tz,
           hour: '2-digit',
           minute: '2-digit',
-          hour12: true,
+          hour12: timeFormat === '12h',
         }));
       } catch { setTime('--:--'); }
     }
     tick();
     const id = setInterval(tick, 10000);
     return () => clearInterval(id);
-  }, [tz]);
+  }, [tz, timeFormat]);
   return time;
 }
 
@@ -174,9 +175,10 @@ interface ClockWidgetProps {
   tz: string;
   label: string;
   onEdit: () => void;
+  timeFormat: '12h' | '24h';
 }
-function ClockWidget({ tz, label, onEdit }: ClockWidgetProps) {
-  const time = useClockTime(tz);
+function ClockWidget({ tz, label, onEdit, timeFormat }: ClockWidgetProps) {
+  const time = useClockTime(tz, timeFormat);
   const [hover, setHover] = useState(false);
 
   return (
@@ -193,7 +195,7 @@ function ClockWidget({ tz, label, onEdit }: ClockWidgetProps) {
       <span className="text-[10px] md:text-xs font-bold" style={{ color: 'rgba(255,255,255,0.92)', letterSpacing: '0.04em', lineHeight: 1.2 }}>
         {time}
       </span>
-      <span className="hidden sm:block text-xs" style={{ color: 'rgba(255,255,255,0.45)', fontSize: '10px', lineHeight: 1.2 }}>
+      <span className="block text-xs" style={{ color: 'rgba(255,255,255,0.45)', fontSize: '10px', lineHeight: 1.2, whiteSpace: 'nowrap' }}>
         {label || tzShort(tz)}
       </span>
     </button>
@@ -449,12 +451,14 @@ interface ClocksAreaProps {
   onSaveClock1: (tz: string, label: string) => void;
   onSaveClock2: (tz: string, label: string) => void;
   onClockSettingsChange: (s: ClockSettings) => void;
+  timeFormat: '12h' | '24h';
 }
 
 function ClocksArea({
   clockSettings, timezone, eff1Tz, eff2Tz,
   showClock1, showClock2, showAddClock2,
   onSaveClock1, onSaveClock2, onClockSettingsChange,
+  timeFormat,
 }: ClocksAreaProps) {
   const [editing, setEditing] = useState<1 | 2 | null>(null);
   const clock1Ref = useRef<HTMLDivElement>(null);
@@ -469,6 +473,7 @@ function ClocksArea({
             tz={eff1Tz}
             label={clockSettings.clock1_label}
             onEdit={() => setEditing(prev => prev === 1 ? null : 1)}
+            timeFormat={timeFormat}
           />
           {editing === 1 && (
             <ClockEditor
@@ -495,6 +500,7 @@ function ClocksArea({
             tz={eff2Tz}
             label={clockSettings.clock2_label}
             onEdit={() => setEditing(prev => prev === 2 ? null : 2)}
+            timeFormat={timeFormat}
           />
           {editing === 2 && (
             <ClockEditor
@@ -569,6 +575,7 @@ export default function TopNav({
   clockSettings, onClockSettingsChange,
 }: Props) {
   const { colors } = useTheme();
+  const timeFormat = useTimeFormat();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -630,6 +637,7 @@ export default function TopNav({
       onSaveClock1={handleSaveClock1}
       onSaveClock2={handleSaveClock2}
       onClockSettingsChange={onClockSettingsChange}
+      timeFormat={timeFormat}
     />
   );
 

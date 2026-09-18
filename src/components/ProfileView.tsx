@@ -3,6 +3,7 @@ import { Camera, X, Check, Trash2, AlertTriangle, Sun, Moon, Sparkles, Gift } fr
 import { supabase } from '../lib/supabase';
 import { updateOwnUsername, validateUsername } from '../lib/auth';
 import { useTheme, type ThemeMode } from '../lib/theme';
+import { useTimeFormatValue, type TimeFormat } from '../lib/timeFormat';
 import type { UserProfile, CalendarMode } from '../types';
 import { TIMEZONES } from '../types';
 import FeedbackSection from './FeedbackSection';
@@ -34,6 +35,8 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
   const [calendarPref, setCalendarPref] = useState<CalendarMode>(profile.calendar_pref);
   const [timezonePref, setTimezonePref] = useState(profile.timezone_pref);
   const [themePref, setThemePref] = useState<ThemeMode>((profile.theme_pref as ThemeMode) || 'light');
+  const { timeFormat, setTimeFormat } = useTimeFormatValue();
+  const [timeFormatPref, setTimeFormatPref] = useState<TimeFormat>((profile.time_format as TimeFormat) || '12h');
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +59,7 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
     setCalendarPref(profile.calendar_pref);
     setTimezonePref(profile.timezone_pref);
     setThemePref((profile.theme_pref as ThemeMode) || 'light');
+    setTimeFormatPref((profile.time_format as TimeFormat) || '12h');
   }, [profile]);
 
   async function handleAvatarUpload(file: File) {
@@ -107,6 +111,7 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
         calendar_pref: calendarPref,
         timezone_pref: timezonePref,
         theme_pref: themePref,
+        time_format: timeFormatPref,
       };
 
       const { data, error: updErr } = await supabase
@@ -289,6 +294,25 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                     style={{ background: themePref === 'dark' ? colors.accent : 'transparent', color: themePref === 'dark' ? '#fff' : colors.textPrimary, border: 'none', cursor: 'pointer' }}
                   >
                     <Moon size={14} /> Dark
+                  </button>
+                </div>
+              </Field>
+
+              <Field label="Time Format">
+                <div className="flex rounded-lg overflow-hidden" style={{ border: `1.5px solid ${colors.borderLight}` }}>
+                  <button
+                    onClick={() => { setTimeFormatPref('12h'); setTimeFormat('12h'); }}
+                    className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold flex-1"
+                    style={{ background: timeFormatPref === '12h' ? colors.accent : 'transparent', color: timeFormatPref === '12h' ? '#fff' : colors.textPrimary, border: 'none', cursor: 'pointer' }}
+                  >
+                    12-hour (AM/PM)
+                  </button>
+                  <button
+                    onClick={() => { setTimeFormatPref('24h'); setTimeFormat('24h'); }}
+                    className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold flex-1"
+                    style={{ background: timeFormatPref === '24h' ? colors.accent : 'transparent', color: timeFormatPref === '24h' ? '#fff' : colors.textPrimary, border: 'none', cursor: 'pointer' }}
+                  >
+                    24-hour
                   </button>
                 </div>
               </Field>

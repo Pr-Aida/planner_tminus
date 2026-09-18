@@ -13,6 +13,7 @@ import {
   type FileType, type UploadedFile,
 } from '../lib/files';
 import { useTheme } from '../lib/theme';
+import { useTimeFormat, formatTime as fmtTime } from '../lib/timeFormat';
 
 interface Props {
   roomId: string;
@@ -27,6 +28,7 @@ const MAX_VOICE_SIZE = 5 * 1024 * 1024; // 5 MB
 
 export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }: Props) {
   const { colors } = useTheme();
+  const timeFormat = useTimeFormat();
   const accent = themeColor || colors.accent;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -313,8 +315,7 @@ export default function RoomChat({ roomId, userId, isOwnerOrAdmin, themeColor }:
   }
 
   function formatTime(iso: string): string {
-    const d = new Date(iso);
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return fmtTime(new Date(iso), timeFormat);
   }
 
   function formatDuration(seconds: number): string {

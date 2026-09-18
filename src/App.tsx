@@ -29,6 +29,7 @@ import JoinRoomView from './views/JoinRoomView';
 import RoomNotifications from './components/RoomNotifications';
 import ClassScheduleView from './views/ClassScheduleView';
 import { ThemeProvider, useTheme, type ThemeMode } from './lib/theme';
+import { TimeFormatProvider, type TimeFormat } from './lib/timeFormat';
 
 type AuthScreen = 'sign-in' | 'sign-up';
 type TourMode = 'onboarding' | 'whats-new';
@@ -76,6 +77,8 @@ export default function App() {
     } catch { /* ignore */ }
     return 'light';
   });
+
+  const [timeFormatPref, setTimeFormatPref] = useState<TimeFormat>('12h');
 
   // ─── Calendar & View State ──────────────────────────────────────────────
   const [calMode, setCalMode] = useState<CalendarMode>('shamsi');
@@ -218,6 +221,7 @@ export default function App() {
             clock2_visible: !!p.clock2_visible,
           });
           setThemePref((p.theme_pref as ThemeMode) || 'light');
+          setTimeFormatPref((p.time_format as TimeFormat) || '12h');
 
           if (!p.onboarding_completed) {
             // Brand new user — show full welcome onboarding screen first
@@ -767,6 +771,7 @@ export default function App() {
   const handleProfileSaved = useCallback((updated: UserProfile) => {
     setProfile(updated);
     setThemePref(updated.theme_pref || 'light');
+    setTimeFormatPref((updated.time_format as TimeFormat) || '12h');
   }, []);
 
   // ─── View sync (prefetch monthly) ────────────────────────────────────────
@@ -789,7 +794,9 @@ export default function App() {
   if (authLoading) {
     return (
       <ThemeProvider initialTheme={themePref}>
-        <AuthLoadingScreen />
+        <TimeFormatProvider initial={timeFormatPref}>
+          <AuthLoadingScreen />
+        </TimeFormatProvider>
       </ThemeProvider>
     );
   }
@@ -849,6 +856,7 @@ export default function App() {
 
   return (
     <ThemeProvider initialTheme={themePref}>
+    <TimeFormatProvider initial={timeFormatPref}>
     {showWelcomeOnboarding && (
       <OnboardingScreen onFinish={handleWelcomeFinish} onSkip={handleWelcomeSkip} />
     )}
@@ -964,6 +972,7 @@ export default function App() {
       }}
       profileLoading={profileLoading}
     />
+    </TimeFormatProvider>
     </ThemeProvider>
   );
 }

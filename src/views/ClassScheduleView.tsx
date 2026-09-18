@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Plus, X, Pencil, Trash2, MapPin, User, Clock, ChevronDown, ChevronUp, MoreVertical, Bell } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../lib/theme';
+import { useTimeFormat, formatMinutes as fmtMin } from '../lib/timeFormat';
 import {
   SH_WEEKDAYS_FULL, GREG_WEEKDAYS_FULL,
   SH_MONTHS, GREG_MONTH_NAMES,
@@ -62,18 +63,6 @@ function timeToMin(t: string): number {
   return h * 60 + m;
 }
 
-function minToLabel(min: number): string {
-  const h = Math.floor(min / 60) % 24;
-  const m = min % 60;
-  const period = h >= 12 ? 'PM' : 'AM';
-  const displayH = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return `${displayH}:${String(m).padStart(2, '0')} ${period}`;
-}
-
-function timeLabel(t: string): string {
-  return minToLabel(timeToMin(t));
-}
-
 function durationLabel(start: string, end: string): string {
   const diff = timeToMin(end) - timeToMin(start);
   if (diff <= 0) return '';
@@ -106,6 +95,8 @@ function isoDateToGreg(iso: string): GregDate {
 
 export default function ClassScheduleView({ userId, calMode, timezone, onClose }: Props) {
   const { colors } = useTheme();
+  const timeFormat = useTimeFormat();
+  const timeLabel = useCallback((t: string) => fmtMin(timeToMin(t), timeFormat), [timeFormat]);
   const [classes, setClasses] = useState<ClassEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);

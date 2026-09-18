@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, Trash2, Clock, Play, Pause, Square, Timer, Loader2, Pencil, X } from 'lucide-react';
 import type { Activity } from '../types';
 import { useTheme } from '../lib/theme';
+import { useTimeFormat, formatTimeRange as fmtRange } from '../lib/timeFormat';
 import { supabase } from '../lib/supabase';
 
 interface Props {
@@ -61,6 +62,7 @@ function formatTimeInput(seconds: number): { from: string; to: string } {
 
 export default function ActivitySection({ activities, dateKey, onAdd, onDelete, onUpdate }: Props) {
   const { colors } = useTheme();
+  const timeFormat = useTimeFormat();
   const [addMode, setAddMode] = useState<'menu' | 'timer' | 'manual' | null>(null);
   const [form, setForm] = useState<AddForm>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -705,7 +707,7 @@ function ActivityCard({ activity, onDelete, onEdit }: CardProps) {
               className="text-xs px-2 py-0.5 rounded-full"
               style={{ background: colors.bgHover, color: colors.textSecondary }}
             >
-              {activity.from} → {activity.to}
+              {fmtRange(activity.from, activity.to, timeFormat)}
               {duration && ` · ${duration}`}
             </span>
           )}
