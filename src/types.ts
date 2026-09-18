@@ -115,6 +115,7 @@ export interface Reminder {
   note: string;
   remind_offset: ReminderOffset;
   status: ReminderStatus;
+  class_id: string | null;
   created_at: string;
   updated_at: string;
 }

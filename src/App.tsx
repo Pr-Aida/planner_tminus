@@ -881,6 +881,7 @@ export default function App() {
       onOpenStudyRooms={() => setShowStudyRooms(true)}
       studyRoomsActive={showStudyRooms}
       onOpenClassSchedule={() => { setShowStudyRooms(false); setShowClassSchedule(true); }}
+      onCloseClassSchedule={() => setShowClassSchedule(false)}
       classScheduleActive={showClassSchedule && !showStudyRooms}
       notificationsNode={user ? (
         <div className="flex items-center gap-1.5">
@@ -1005,6 +1006,7 @@ interface MainAppContentProps {
   onOpenStudyRooms: () => void;
   studyRoomsActive: boolean;
   onOpenClassSchedule: () => void;
+  onCloseClassSchedule: () => void;
   classScheduleActive: boolean;
   notificationsNode?: React.ReactNode;
   timezone: string;
@@ -1118,8 +1120,6 @@ function MainAppContent(props: MainAppContentProps) {
         onClockSettingsChange={props.onClockSettingsChange}
       />
 
-      <HeroBanner imageDataUrl={props.coverImage} onImageChange={props.onCoverChange} />
-
       {props.showStudyRooms && props.studyRoomsUserId ? (
         <StudyRoomsView
           userId={props.studyRoomsUserId}
@@ -1130,9 +1130,12 @@ function MainAppContent(props: MainAppContentProps) {
         <ClassScheduleView
           userId={props.userId}
           calMode={props.calMode}
-          onClose={props.onOpenStudyRooms}
+          timezone={props.timezone}
+          onClose={props.onCloseClassSchedule}
         />
       ) : (
+      <>
+      <HeroBanner imageDataUrl={props.coverImage} onImageChange={props.onCoverChange} />
       <div className="max-w-5xl mx-auto px-4 md:px-6 pt-6 pb-16">
         <DateBar
           calMode={props.calMode}
@@ -1219,6 +1222,7 @@ function MainAppContent(props: MainAppContentProps) {
           />
         )}
       </div>
+      </>
       )}
 
       {props.profileLoading && !props.profile && (

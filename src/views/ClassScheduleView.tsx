@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, X, Pencil, Trash2, MapPin, User, Clock, ChevronDown, ChevronUp, MoreVertical } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Plus, X, Pencil, Trash2, MapPin, User, Clock, ChevronDown, ChevronUp, MoreVertical, Bell } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../lib/theme';
-import { SH_WEEKDAYS_FULL, GREG_WEEKDAYS_FULL } from '../lib/calendar';
-import type { CalendarMode } from '../types';
+import { SH_WEEKDAYS_FULL, GREG_WEEKDAYS_FULL, shToGregorian, gregorianToSh, dateKey, shDayOfWeek, gregDayOfWeek, todaySh, todayGreg, addDaysGreg } from '../lib/calendar';
+import type { CalendarMode, ReminderOffset } from '../types';
 
 interface ClassEntry {
   id: string;
@@ -17,6 +18,7 @@ interface ClassEntry {
   notes: string | null;
   color: string | null;
   weekly_repeat: boolean;
+  reminder_offset: ReminderOffset | null;
   created_at: string;
   updated_at: string;
 }
@@ -24,10 +26,19 @@ interface ClassEntry {
 interface Props {
   userId: string;
   calMode: CalendarMode;
+  timezone: string;
   onClose: () => void;
 }
 
 const COLOR_OPTIONS = ['#7B1C3E', '#1B2A4A', '#059669', '#B45309', '#2563EB', '#7C3AED', '#DC2626', '#0891B2'];
+
+const REMINDER_OPTIONS: { value: ReminderOffset; label: string }[] = [
+  { value: 0, label: 'At class time' },
+  { value: 0, label: 'On the day' },
+  { value: 1, label: '1 day before' },
+  { value: 3, label: '3 days before' },
+  { value: 7, label: '1 week before' },
+];
 
 function timeToMin(t: string): number {
   const [h, m] = t.split(':').map(Number);
@@ -54,7 +65,13 @@ function durationLabel(start: string, end: string): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-export default function ClassScheduleView({ userId, calMode, onClose }: Props) {
+function reminderLabel(offset: ReminderOffset | null): string {
+  if (offset === null) return 'None';
+  const opt = REMINDER_OPTIONS.find(o => o.value === offset);
+  return opt ? opt.label : 'None';
+}
+
+export default function ClassScheduleView({ userId, calMode, timezone, onClose }: Props) {
   const { colors } = useTheme();
   const [classes, setClasses] = useState<ClassEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,7 +79,8 @@ export default function ClassScheduleView({ userId, calMode, onClose }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [form, setForm] = useState({
     course_name: '',
     day_of_week: 0,
@@ -73,6 +91,7 @@ export default function ClassScheduleView({ userId, calMode, onClose }: Props) {
     notes: '',
     color: COLOR_OPTIONS[0],
     weekly_repeat: true,
+    reminder_offset: null as ReminderOffset | null,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,8 +118,20 @@ export default function ClassScheduleView({ userId, calMode, onClose }: Props) {
 
   useEffect(() => { loadClasses(); }, [loadClasses]);
 
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as Node;
+      const openBtn = menuOpenId ? menuButtonRefs.current[menuOpenId] : null;
+      if (openBtn && !openBtn.contains(target)) setMenuOpenId(null);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [menuOpenId]);
+
+  useEffect(() => { setMenuOpenId(null); }, []);
+
   function resetForm() {
-    setForm({ course_name: '', day_of_week: 0, start_time: '08:30', end_time: '10:00', location: '', instructor: '', notes: '', color: COLOR_OPTIONS[0], weekly_repeat: true });
+    setForm({ course_name: '', day_of_week: 0, start_time: '08:30', end_time: '10:00', location: '', instructor: '', notes: '', color: COLOR_OPTIONS[0], weekly_repeat: true, reminder_offset: null });
     setEditingId(null);
   }
 
@@ -120,9 +151,61 @@ export default function ClassScheduleView({ userId, calMode, onClose }: Props) {
       notes: cls.notes || '',
       color: cls.color || COLOR_OPTIONS[0],
       weekly_repeat: cls.weekly_repeat,
+      reminder_offset: cls.reminder_offset,
     });
     setEditingId(cls.id);
     setShowForm(true);
+  }
+
+  function openMenu(clsId: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    if (menuOpenId === clsId) { setMenuOpenId(null); return; }
+    setMenuOpenId(clsId);
+    const btn = menuButtonRefs.current[clsId];
+    if (btn) {
+      const rect = btn.getBoundingClientRect();
+      setMenuPos({ x: rect.right - 112, y: rect.bottom + 4 });
+    }
+  }
+
+  function closeMenu() { setMenuOpenId(null); }
+
+  async function syncRemindersForClass(cls: ClassEntry) {
+    if (cls.reminder_offset === null) {
+      await supabase.from('planner_reminders').delete().eq('class_id', cls.id);
+      return;
+    }
+    const offset = cls.reminder_offset;
+    const now = calMode === 'shamsi' ? todaySh(timezone) : todayGreg(timezone);
+    const todayGregDate = calMode === 'shamsi' ? shToGregorian(now) : now;
+
+    const dow = cls.day_of_week;
+    let todayDow: number;
+    if (calMode === 'shamsi') {
+      todayDow = shDayOfWeek(now.year, now.month, now.day);
+    } else {
+      todayDow = gregDayOfWeek(now.year, now.month, now.day);
+    }
+    let daysUntil = (dow - todayDow + 7) % 7;
+    let nextOccurrence = addDaysGreg(todayGregDate, daysUntil);
+
+    const remindersToCreate: { date_key: string; title: string; remind_offset: ReminderOffset; class_id: string }[] = [];
+    const maxWeeks = cls.weekly_repeat ? 16 : 1;
+    for (let w = 0; w < maxWeeks; w++) {
+      const classDate = addDaysGreg(nextOccurrence, w * 7);
+      const reminderDate = addDaysGreg(classDate, -offset);
+      remindersToCreate.push({
+        date_key: dateKey(reminderDate),
+        title: `${cls.course_name} — ${timeLabel(cls.start_time)}`,
+        remind_offset: offset,
+        class_id: cls.id,
+      });
+    }
+
+    await supabase.from('planner_reminders').delete().eq('class_id', cls.id);
+    if (remindersToCreate.length > 0) {
+      await supabase.from('planner_reminders').insert(remindersToCreate);
+    }
   }
 
   async function handleSave() {
@@ -141,33 +224,43 @@ export default function ClassScheduleView({ userId, calMode, onClose }: Props) {
       notes: form.notes.trim() || null,
       color: form.color,
       weekly_repeat: form.weekly_repeat,
+      reminder_offset: form.reminder_offset,
     };
 
     if (editingId) {
-      const { error: updateError } = await supabase.from('planner_classes').update(payload).eq('id', editingId);
+      const { data, error: updateError } = await supabase.from('planner_classes').update(payload).eq('id', editingId).select().single();
       if (updateError) setError('Failed to update class.');
-      else { setShowForm(false); resetForm(); await loadClasses(); }
+      else {
+        const updated = data as unknown as ClassEntry;
+        await syncRemindersForClass(updated);
+        setShowForm(false); resetForm(); await loadClasses();
+      }
     } else {
-      const { error: insertError } = await supabase.from('planner_classes').insert({ ...payload, user_id: userId });
+      const { data, error: insertError } = await supabase.from('planner_classes').insert({ ...payload, user_id: userId }).select().single();
       if (insertError) setError('Failed to add class.');
-      else { setShowForm(false); resetForm(); await loadClasses(); }
+      else {
+        const created = data as unknown as ClassEntry;
+        await syncRemindersForClass(created);
+        setShowForm(false); resetForm(); await loadClasses();
+      }
     }
     setSaving(false);
   }
 
   async function handleDelete(id: string) {
+    await supabase.from('planner_reminders').delete().eq('class_id', id);
     const { error: deleteError } = await supabase.from('planner_classes').delete().eq('id', id);
     if (deleteError) setError('Failed to delete class.');
-    else { setExpandedId(null); await loadClasses(); }
+    else { setExpandedId(null); setMenuOpenId(null); await loadClasses(); }
   }
 
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpenId(null);
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  function toggleExpand(clsId: string) {
+    setExpandedId(prev => {
+      const next = prev === clsId ? null : clsId;
+      if (next === null) setMenuOpenId(null);
+      return next;
+    });
+  }
 
   const classesByDay: Record<number, ClassEntry[]> = {};
   for (let i = 0; i < 7; i++) classesByDay[i] = [];
@@ -177,7 +270,6 @@ export default function ClassScheduleView({ userId, calMode, onClose }: Props) {
 
   return (
     <div className="min-h-screen" style={{ background: colors.bg }}>
-      {/* Header */}
       <div className="max-w-6xl mx-auto px-4 md:px-6 pt-6 pb-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -189,9 +281,7 @@ export default function ClassScheduleView({ userId, calMode, onClose }: Props) {
             >
               <X size={18} />
             </button>
-            <div>
-              <h1 className="text-xl font-bold" style={{ color: colors.textPrimary }}>Class Schedule</h1>
-            </div>
+            <h1 className="text-xl font-bold" style={{ color: colors.textPrimary }}>Class Schedule</h1>
           </div>
           <button
             onClick={openAdd}
@@ -210,7 +300,6 @@ export default function ClassScheduleView({ userId, calMode, onClose }: Props) {
         )}
       </div>
 
-      {/* Form Modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: colors.overlay }} onClick={() => setShowForm(false)}>
           <div
@@ -338,6 +427,27 @@ export default function ClassScheduleView({ userId, calMode, onClose }: Props) {
                 />
                 <span className="text-xs font-medium" style={{ color: colors.textSecondary }}>Repeats weekly</span>
               </label>
+
+              <div style={{ borderTop: `1px solid ${colors.borderLight}`, paddingTop: 12, marginTop: 4 }}>
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Bell size={13} style={{ color: colors.accent }} />
+                  <span className="text-xs font-bold uppercase tracking-wide" style={{ color: colors.textSecondary }}>Reminder</span>
+                </div>
+                <select
+                  value={form.reminder_offset === null ? -1 : form.reminder_offset}
+                  onChange={e => {
+                    const v = Number(e.target.value);
+                    setForm({ ...form, reminder_offset: v === -1 ? null : v as ReminderOffset });
+                  }}
+                  className="w-full rounded-lg px-3 py-2 text-sm outline-none cursor-pointer"
+                  style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}
+                >
+                  <option value={-1}>None</option>
+                  {REMINDER_OPTIONS.map((opt, i) => (
+                    <option key={i} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div className="flex gap-2 px-5 py-3" style={{ borderTop: `1px solid ${colors.borderLight}` }}>
@@ -361,155 +471,158 @@ export default function ClassScheduleView({ userId, calMode, onClose }: Props) {
         </div>
       )}
 
-      {/* Loading state */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <div className="w-8 h-8 border-3 rounded-full animate-spin" style={{ borderColor: colors.border, borderTopColor: colors.accent, borderWidth: 3 }} />
         </div>
       ) : (
-        <>
-          {/* Day cards */}
-          <div className="max-w-6xl mx-auto px-4 md:px-6 pb-16">
-            {classes.length === 0 && !loading && (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ background: colors.bgSubtle }}>
-                  <Clock size={28} style={{ color: colors.textTertiary }} />
-                </div>
-                <p className="text-sm font-medium mb-1" style={{ color: colors.textPrimary }}>No classes yet</p>
-                <p className="text-xs mb-4" style={{ color: colors.textSecondary }}>Add your first class to build your weekly schedule.</p>
-                <button
-                  onClick={openAdd}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all"
-                  style={{ background: colors.accent, border: 'none', cursor: 'pointer' }}
-                >
-                  <Plus size={16} /> Add Class
-                </button>
+        <div className="max-w-6xl mx-auto px-4 md:px-6 pb-16">
+          {classes.length === 0 && !loading && (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ background: colors.bgSubtle }}>
+                <Clock size={28} style={{ color: colors.textTertiary }} />
               </div>
-            )}
+              <p className="text-sm font-medium mb-1" style={{ color: colors.textPrimary }}>No classes yet</p>
+              <p className="text-xs mb-4" style={{ color: colors.textSecondary }}>Add your first class to build your weekly schedule.</p>
+              <button
+                onClick={openAdd}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all"
+                style={{ background: colors.accent, border: 'none', cursor: 'pointer' }}
+              >
+                <Plus size={16} /> Add Class
+              </button>
+            </div>
+          )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {weekdayNames.map((dayName, dayIdx) => {
-                const dayClasses = classesByDay[dayIdx] || [];
-                return (
-                  <div
-                    key={dayIdx}
-                    className="rounded-xl overflow-hidden flex flex-col"
-                    style={{ background: colors.bgCard, border: `1px solid ${colors.borderLight}`, boxShadow: `0 2px 8px ${colors.shadow}` }}
-                  >
-                    <div className="px-3 py-2.5 flex items-center justify-between" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
-                      <h3 className="text-sm font-bold" style={{ color: colors.textPrimary }}>{dayName}</h3>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: colors.bgSubtle, color: colors.textTertiary }}>
-                        {dayClasses.length}
-                      </span>
-                    </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {weekdayNames.map((dayName, dayIdx) => {
+              const dayClasses = classesByDay[dayIdx] || [];
+              return (
+                <div
+                  key={dayIdx}
+                  className="rounded-xl overflow-hidden flex flex-col"
+                  style={{ background: colors.bgCard, border: `1px solid ${colors.borderLight}`, boxShadow: `0 2px 8px ${colors.shadow}` }}
+                >
+                  <div className="px-3 py-2.5 flex items-center justify-between" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
+                    <h3 className="text-sm font-bold" style={{ color: colors.textPrimary }}>{dayName}</h3>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: colors.bgSubtle, color: colors.textTertiary }}>
+                      {dayClasses.length}
+                    </span>
+                  </div>
 
-                    <div className="flex-1 p-2 space-y-2 min-h-[60px]">
-                      {dayClasses.length === 0 ? (
-                        <p className="text-[11px] text-center py-3" style={{ color: colors.textTertiary }}>No classes</p>
-                      ) : (
-                        dayClasses
-                          .sort((a, b) => timeToMin(a.start_time) - timeToMin(b.start_time))
-                          .map(cls => {
-                            const isExpanded = expandedId === cls.id;
-                            const accentColor = cls.color || colors.accent;
-                            return (
+                  <div className="flex-1 p-2 space-y-2 min-h-[60px]">
+                    {dayClasses.length === 0 ? (
+                      <p className="text-[11px] text-center py-3" style={{ color: colors.textTertiary }}>No classes</p>
+                    ) : (
+                      dayClasses
+                        .sort((a, b) => timeToMin(a.start_time) - timeToMin(b.start_time))
+                        .map(cls => {
+                          const isExpanded = expandedId === cls.id;
+                          const accentColor = cls.color || colors.accent;
+                          return (
+                            <div
+                              key={cls.id}
+                              className="rounded-lg transition-all"
+                              style={{ border: `1px solid ${colors.borderLight}`, background: colors.bgSubtle }}
+                            >
                               <div
-                                key={cls.id}
-                                className="rounded-lg transition-all"
-                                style={{ border: `1px solid ${colors.borderLight}`, background: colors.bgSubtle }}
+                                className="px-2.5 py-2 cursor-pointer"
+                                onClick={() => toggleExpand(cls.id)}
+                                style={{ borderLeft: `3px solid ${accentColor}` }}
                               >
-                                <div
-                                  className="px-2.5 py-2 cursor-pointer"
-                                  onClick={() => {
-                                    const next = isExpanded ? null : cls.id;
-                                    setExpandedId(next);
-                                    if (next === null) setMenuOpenId(null);
-                                  }}
-                                  style={{ borderLeft: `3px solid ${accentColor}` }}
-                                >
-                                  <div className="flex items-start justify-between gap-1.5">
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-xs font-bold truncate" style={{ color: colors.textPrimary }}>{cls.course_name}</p>
-                                      <div className="flex items-center gap-1 mt-0.5">
-                                        <Clock size={10} style={{ color: colors.textTertiary }} />
-                                        <span className="text-[10px]" style={{ color: colors.textSecondary }}>
-                                          {timeLabel(cls.start_time)} – {timeLabel(cls.end_time)}
-                                        </span>
-                                        <span className="text-[10px] ml-0.5" style={{ color: colors.textTertiary }}>
-                                          ({durationLabel(cls.start_time, cls.end_time)})
+                                <div className="flex items-start justify-between gap-1.5">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-bold truncate" style={{ color: colors.textPrimary }}>{cls.course_name}</p>
+                                    <div className="flex items-center gap-1 mt-0.5">
+                                      <Clock size={10} style={{ color: colors.textTertiary }} />
+                                      <span className="text-[10px]" style={{ color: colors.textSecondary }}>
+                                        {timeLabel(cls.start_time)} – {timeLabel(cls.end_time)}
+                                      </span>
+                                      <span className="text-[10px] ml-0.5" style={{ color: colors.textTertiary }}>
+                                        ({durationLabel(cls.start_time, cls.end_time)})
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                                    <button
+                                      ref={(el) => { menuButtonRefs.current[cls.id] = el; }}
+                                      onClick={(e) => openMenu(cls.id, e)}
+                                      className="flex items-center justify-center rounded p-0.5 transition-colors"
+                                      style={{ background: menuOpenId === cls.id ? colors.bgInput : 'transparent', border: 'none', cursor: 'pointer', color: colors.textTertiary }}
+                                      aria-label="Class actions"
+                                    >
+                                      <MoreVertical size={14} />
+                                    </button>
+                                    {isExpanded ? <ChevronUp size={14} style={{ color: colors.textTertiary }} /> : <ChevronDown size={14} style={{ color: colors.textTertiary }} />}
+                                  </div>
+                                </div>
+
+                                {isExpanded && (
+                                  <div className="mt-2 pt-2 space-y-1.5" style={{ borderTop: `1px solid ${colors.borderLight}` }}>
+                                    {cls.location && (
+                                      <div className="flex items-center gap-1.5">
+                                        <MapPin size={11} style={{ color: colors.textTertiary }} />
+                                        <span className="text-[11px]" style={{ color: colors.textSecondary }}>{cls.location}</span>
+                                      </div>
+                                    )}
+                                    {cls.instructor && (
+                                      <div className="flex items-center gap-1.5">
+                                        <User size={11} style={{ color: colors.textTertiary }} />
+                                        <span className="text-[11px]" style={{ color: colors.textSecondary }}>{cls.instructor}</span>
+                                      </div>
+                                    )}
+                                    {cls.notes && (
+                                      <p className="text-[11px] pt-1" style={{ color: colors.textSecondary }}>{cls.notes}</p>
+                                    )}
+                                    {cls.reminder_offset !== null && (
+                                      <div className="flex items-center gap-1.5 pt-1">
+                                        <Bell size={11} style={{ color: colors.accent }} />
+                                        <span className="text-[11px] font-medium" style={{ color: colors.textSecondary }}>
+                                          Reminder: {reminderLabel(cls.reminder_offset)}
                                         </span>
                                       </div>
-                                    </div>
-                                    <div className="relative flex-shrink-0" ref={menuOpenId === cls.id ? menuRef : undefined}>
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === cls.id ? null : cls.id); }}
-                                        className="flex items-center justify-center rounded p-0.5 transition-colors"
-                                        style={{ background: menuOpenId === cls.id ? colors.bgInput : 'transparent', border: 'none', cursor: 'pointer', color: colors.textTertiary }}
-                                        aria-label="Class actions"
-                                      >
-                                        <MoreVertical size={14} />
-                                      </button>
-                                      {menuOpenId === cls.id && (
-                                        <div
-                                          className="absolute right-0 top-6 z-20 w-28 rounded-lg py-1"
-                                          style={{ background: colors.bgCard, boxShadow: `0 4px 16px ${colors.shadow}`, border: `1px solid ${colors.borderLight}` }}
-                                          onClick={(e) => e.stopPropagation()}
-                                        >
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); setMenuOpenId(null); openEdit(cls); }}
-                                            className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-semibold text-left transition-colors"
-                                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: colors.textSecondary }}
-                                            onMouseEnter={(ev) => (ev.currentTarget.style.background = colors.bgHover)}
-                                            onMouseLeave={(ev) => (ev.currentTarget.style.background = 'transparent')}
-                                          >
-                                            <Pencil size={11} /> Edit
-                                          </button>
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); setMenuOpenId(null); handleDelete(cls.id); }}
-                                            className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-semibold text-left transition-colors"
-                                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: colors.error }}
-                                            onMouseEnter={(ev) => (ev.currentTarget.style.background = colors.bgHover)}
-                                            onMouseLeave={(ev) => (ev.currentTarget.style.background = 'transparent')}
-                                          >
-                                            <Trash2 size={11} /> Delete
-                                          </button>
-                                        </div>
-                                      )}
-                                    </div>
-                                    {isExpanded ? <ChevronUp size={14} style={{ color: colors.textTertiary, flexShrink: 0 }} /> : <ChevronDown size={14} style={{ color: colors.textTertiary, flexShrink: 0 }} />}
+                                    )}
                                   </div>
-
-                                  {isExpanded && (
-                                    <div className="mt-2 pt-2 space-y-1.5" style={{ borderTop: `1px solid ${colors.borderLight}` }}>
-                                      {cls.location && (
-                                        <div className="flex items-center gap-1.5">
-                                          <MapPin size={11} style={{ color: colors.textTertiary }} />
-                                          <span className="text-[11px]" style={{ color: colors.textSecondary }}>{cls.location}</span>
-                                        </div>
-                                      )}
-                                      {cls.instructor && (
-                                        <div className="flex items-center gap-1.5">
-                                          <User size={11} style={{ color: colors.textTertiary }} />
-                                          <span className="text-[11px]" style={{ color: colors.textSecondary }}>{cls.instructor}</span>
-                                        </div>
-                                      )}
-                                      {cls.notes && (
-                                        <p className="text-[11px] pt-1" style={{ color: colors.textSecondary }}>{cls.notes}</p>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
+                                )}
                               </div>
-                            );
-                          })
-                      )}
-                    </div>
+                            </div>
+                          );
+                        })
+                    )}
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              );
+            })}
           </div>
-        </>
+        </div>
+      )}
+
+      {menuOpenId && menuPos && createPortal(
+        <div
+          className="fixed z-[9999] w-28 rounded-lg py-1"
+          style={{ background: colors.bgCard, boxShadow: `0 4px 16px ${colors.shadow}`, border: `1px solid ${colors.borderLight}`, left: menuPos.x, top: menuPos.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={(e) => { e.stopPropagation(); closeMenu(); const cls = classes.find(c => c.id === menuOpenId); if (cls) openEdit(cls); }}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-semibold text-left transition-colors"
+            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: colors.textSecondary }}
+            onMouseEnter={(ev) => (ev.currentTarget.style.background = colors.bgHover)}
+            onMouseLeave={(ev) => (ev.currentTarget.style.background = 'transparent')}
+          >
+            <Pencil size={11} /> Edit
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); const id = menuOpenId; closeMenu(); handleDelete(id); }}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-semibold text-left transition-colors"
+            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: colors.error }}
+            onMouseEnter={(ev) => (ev.currentTarget.style.background = colors.bgHover)}
+            onMouseLeave={(ev) => (ev.currentTarget.style.background = 'transparent')}
+          >
+            <Trash2 size={11} /> Delete
+          </button>
+        </div>,
+        document.body
       )}
     </div>
   );

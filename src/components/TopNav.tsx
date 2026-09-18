@@ -697,8 +697,8 @@ export default function TopNav({
                 data-tour={tab.tour}
                 className="px-3 md:px-4 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all duration-150"
                 style={{
-                  background: !studyRoomsActive && viewMode === tab.key ? colors.navAccent : 'transparent',
-                  color: !studyRoomsActive && viewMode === tab.key ? '#fff' : colors.navText,
+                  background: !studyRoomsActive && !classScheduleActive && viewMode === tab.key ? colors.navAccent : 'transparent',
+                  color: !studyRoomsActive && !classScheduleActive && viewMode === tab.key ? '#fff' : colors.navText,
                   border: 'none', cursor: 'pointer',
                 }}
               >
@@ -806,8 +806,8 @@ export default function TopNav({
                 onClick={() => { onViewChange(tab.key); setShowMobileMenu(false); }}
                 className="px-3 py-2 rounded-md text-sm font-semibold text-left transition-all"
                 style={{
-                  background: !studyRoomsActive && viewMode === tab.key ? colors.navAccent : 'transparent',
-                  color: !studyRoomsActive && viewMode === tab.key ? '#fff' : colors.navText,
+                  background: !studyRoomsActive && !classScheduleActive && viewMode === tab.key ? colors.navAccent : 'transparent',
+                  color: !studyRoomsActive && !classScheduleActive && viewMode === tab.key ? '#fff' : colors.navText,
                   border: 'none', cursor: 'pointer',
                 }}
               >
