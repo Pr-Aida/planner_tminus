@@ -697,6 +697,11 @@ export default function App() {
     await supabase.from('planner_reminders').delete().eq('id', id);
   }, []);
 
+  const reloadReminders = useCallback(async () => {
+    const { data } = await supabase.from('planner_reminders').select('*').order('date_key');
+    if (data) setReminders(data as Reminder[]);
+  }, []);
+
   // ─── Clock settings change + debounced DB save ────────────────────────────
   const handleClockSettingsChange = useCallback((s: ClockSettings) => {
     setClockSettings(s);
@@ -881,7 +886,7 @@ export default function App() {
       onOpenStudyRooms={() => setShowStudyRooms(true)}
       studyRoomsActive={showStudyRooms}
       onOpenClassSchedule={() => { setShowStudyRooms(false); setShowClassSchedule(true); }}
-      onCloseClassSchedule={() => setShowClassSchedule(false)}
+      onCloseClassSchedule={() => { setShowClassSchedule(false); reloadReminders(); }}
       classScheduleActive={showClassSchedule && !showStudyRooms}
       notificationsNode={user ? (
         <div className="flex items-center gap-1.5">

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, X, Pencil, Trash2, MapPin, User, Clock, ChevronDown, ChevronUp, MoreVertical, Bell, Check, Ban } from 'lucide-react';
+import { Plus, X, Pencil, Trash2, MapPin, User, Clock, ChevronDown, ChevronUp, MoreVertical, Bell } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../lib/theme';
 import {
@@ -9,7 +9,6 @@ import {
   shToGregorian, gregorianToSh, dateKey, gregDateFromKey,
   shDayOfWeek, gregDayOfWeek,
   todaySh, todayGreg, addDaysGreg,
-  shDaysInMonth, gregMonthDays, isJalaliLeap,
 } from '../lib/calendar';
 import type { CalendarMode, ReminderOffset, ShDate, GregDate } from '../types';
 
@@ -172,13 +171,6 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [menuOpenId]);
-
-  // Close menu when navigating away or collapsing
-  useEffect(() => {
-    if (expandedId && menuOpenId && expandedId !== menuOpenId) {
-      // menu can stay open even if card is expanded, that's fine
-    }
-  }, [expandedId, menuOpenId]);
 
   function resetForm() {
     setForm({ course_name: '', day_of_week: 0, start_time: '08:30', end_time: '10:00', location: '', instructor: '', notes: '', color: COLOR_OPTIONS[0], weekly_repeat: true });
