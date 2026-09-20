@@ -101,7 +101,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ cls: ClassEntry; reminders: LinkedReminder[] } | null>(null);
@@ -258,7 +258,12 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
   function closeMenu() { setMenuOpenId(null); }
 
   function toggleExpand(clsId: string) {
-    setExpandedId(prev => prev === clsId ? null : clsId);
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(clsId)) next.delete(clsId);
+      else next.add(clsId);
+      return next;
+    });
   }
 
   // Compute the next occurrence of a class (as GregDate) given its day_of_week
@@ -431,7 +436,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
     if (deleteError) {
       setError('Failed to delete class.');
     } else {
-      setExpandedId(null);
+      setExpandedIds(new Set());
       setMenuOpenId(null);
       await loadClasses();
     }
@@ -917,7 +922,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
                       dayClasses
                         .sort((a, b) => timeToMin(a.start_time) - timeToMin(b.start_time))
                         .map(cls => {
-                          const isExpanded = expandedId === cls.id;
+                          const isExpanded = expandedIds.has(cls.id);
                           const accentColor = cls.color || colors.accent;
                           return (
                             <div
