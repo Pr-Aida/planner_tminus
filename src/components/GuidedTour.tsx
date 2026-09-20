@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, X, Check, Sparkles, CalendarDays, BellRing, AlarmClock, Clock, Smartphone, Bell, Globe, type LucideIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, Check, Sparkles } from 'lucide-react';
 import { useTheme } from '../lib/theme';
 
 // ─── Version & What's New ─────────────────────────────────────────────────────
 // Bump APP_VERSION and add a new entry to WHATS_NEW_UPDATES whenever you ship
 // a meaningful change. Users whose last_seen_version is older than APP_VERSION
 // will automatically see the What's New tour on next login.
-export const APP_VERSION = '1.8';
+export const APP_VERSION = '1.7';
 
 export interface WhatsNewUpdate {
   version: string;
@@ -100,62 +100,6 @@ export const WHATS_NEW_UPDATES: WhatsNewUpdate[] = [
       },
     ],
   },
-  {
-    version: '1.8',
-    title: 'Class Schedule, Reminders & More',
-    summary: 'Plan your classes, sync reminders, choose your time format, and enjoy a better mobile experience.',
-    steps: [
-      {
-        target: 'tour-class-schedule',
-        icon: CalendarDays,
-        title: 'Class Schedule',
-        body: 'Plan and manage your university classes from a dedicated weekly schedule with time, location, instructor, notes, and color.',
-        badge: 'New',
-      },
-      {
-        target: 'tour-class-schedule',
-        icon: BellRing,
-        title: 'Class Reminders',
-        body: 'Create reminders directly from your classes and keep them synced with your main reminders — no need to set them up separately.',
-        badge: 'New',
-      },
-      {
-        target: 'tour-class-schedule',
-        icon: AlarmClock,
-        title: 'Custom Reminder Scheduling',
-        body: 'Configure class reminders with custom dates, days, times, and reminder timing options.',
-        badge: 'New',
-      },
-      {
-        target: 'tour-profile',
-        icon: Clock,
-        title: '12-Hour / 24-Hour Time Format',
-        body: 'Choose between 12-hour (AM/PM) and 24-hour time display in Profile → Preferences. Applies across the entire app.',
-        badge: 'New',
-      },
-      {
-        target: 'tour-study-rooms',
-        icon: Smartphone,
-        title: 'Improved Mobile Navigation',
-        body: 'Important sections like Class Schedule, Rooms, Notifications, and planner views are now easier to access on mobile.',
-        badge: 'Improved',
-      },
-      {
-        target: 'tour-study-rooms',
-        icon: Bell,
-        title: 'Mobile Notifications',
-        body: 'Notifications are now directly accessible from the mobile header.',
-        badge: 'New',
-      },
-      {
-        target: 'tour-class-schedule',
-        icon: Globe,
-        title: 'Global Calendar Integration',
-        body: 'Class Schedule and reminders follow your selected calendar system — Shamsi or Gregorian — without a separate setting.',
-        badge: 'New',
-      },
-    ],
-  },
 ];
 
 // ─── Tour Step ────────────────────────────────────────────────────────────────
@@ -166,7 +110,6 @@ export interface TourStep {
   requireView?: 'daily' | 'weekly' | 'monthly' | 'yearly';
   fallback?: string;       // alternate data-tour if target not found
   badge?: string;          // e.g. "New" | "Improved" — shown as a pill
-  icon?: LucideIcon;       // icon shown in What's New cards
   scrollBehavior?: 'center' | 'start' | 'nearest';
 }
 
@@ -479,109 +422,75 @@ export default function GuidedTour({
         <div className="p-5">
           {isIntro ? (
             // ─── Intro / splash screen ────────────────────────────────────────
-            isWhatsNew ? (
-              <div>
-                <div className="text-center mb-4">
-                  <div
-                    className="inline-flex items-center justify-center rounded-xl mb-3 overflow-hidden"
-                    style={{ width: 56, height: 56, background: '#D1FAE5' }}
-                  >
-                    <Sparkles size={28} color="#059669" />
-                  </div>
-                  <h2 className="text-lg font-extrabold mb-1" style={{ color: colors.textPrimary }}>
-                    {whatsNewTitle || "What's New"}
-                  </h2>
-                  {whatsNewSummary && (
-                    <p className="text-sm" style={{ color: colors.textSecondary }}>{whatsNewSummary}</p>
-                  )}
-                </div>
-                <div className="space-y-2 mb-4 max-h-[50vh] overflow-y-auto">
-                  {steps.map((s, i) => {
-                    const Icon = s.icon;
-                    return (
-                      <div key={i} className="flex items-start gap-3 p-3 rounded-xl" style={{ background: colors.bgInput }}>
-                        <div className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: '#D1FAE5' }}>
-                          {Icon && <Icon size={18} color="#059669" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <span className="text-sm font-bold" style={{ color: colors.textPrimary }}>{s.title}</span>
-                            {s.badge && (
-                              <span
-                                className="text-xs font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
-                                style={{
-                                  background: s.badge === 'New' ? '#D1FAE5' : '#FEF3C7',
-                                  color: s.badge === 'New' ? '#059669' : '#D97706',
-                                }}
-                              >
-                                {s.badge}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs leading-relaxed" style={{ color: colors.textSecondary }}>{s.body}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <button
-                  onClick={onFinish}
-                  className="w-full py-2.5 rounded-xl text-sm font-bold text-white transition-opacity"
-                  style={{ background: '#059669', border: 'none', cursor: 'pointer' }}
-                  onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
-                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-                >
-                  Got it
-                </button>
+            <div className="text-center">
+              <div
+                className="inline-flex items-center justify-center rounded-xl mb-4 overflow-hidden"
+                style={{
+                  width: 56, height: 56,
+                  background: isWhatsNew ? '#D1FAE5' : '#ffffff',
+                }}
+              >
+                {isWhatsNew
+                  ? <Sparkles size={28} color="#059669" />
+                  : <img src="/photo_2026-07-01_13-17-16%20copy.jpg" alt="T Minus logo" style={{ width: 52, height: 52, objectFit: 'contain' }} />
+                }
               </div>
-            ) : (
-              <div className="text-center">
-                <div
-                  className="inline-flex items-center justify-center rounded-xl mb-4 overflow-hidden"
-                  style={{ width: 56, height: 56, background: '#ffffff' }}
-                >
-                  <img src="/photo_2026-07-01_13-17-16%20copy.jpg" alt="T Minus logo" style={{ width: 52, height: 52, objectFit: 'contain' }} />
-                </div>
-                <h2 className="text-lg font-extrabold mb-1" style={{ color: colors.textPrimary }}>
-                  Welcome to T Minus
-                </h2>
+
+              <h2 className="text-lg font-extrabold mb-1" style={{ color: colors.textPrimary }}>
+                {isWhatsNew ? (whatsNewTitle || "What's New") : 'Welcome to T Minus'}
+              </h2>
+
+              {isWhatsNew && whatsNewSummary && (
+                <p className="text-sm mb-3" style={{ color: colors.textSecondary }}>{whatsNewSummary}</p>
+              )}
+
+              {!isWhatsNew && (
                 <p className="text-sm mb-4" style={{ color: colors.textSecondary, lineHeight: 1.6 }}>
                   Let's take a quick tour of your planner. We'll walk through each feature one by one, right where it lives in the interface.
                 </p>
-                <div className="flex items-center justify-center gap-1 mb-4 mt-3">
-                  {steps.map((_, i) => (
-                    <div
-                      key={i}
-                      className="rounded-full"
-                      style={{ width: 6, height: 6, background: 'rgba(123,28,62,0.3)' }}
-                    />
-                  ))}
-                </div>
-                <p className="text-xs mb-5" style={{ color: colors.textSecondary }}>
-                  {steps.length} {steps.length === 1 ? 'step' : 'steps'} · Takes about a minute
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={onSkip}
-                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors"
-                    style={{ background: colors.bgInput, color: colors.textSecondary, border: 'none', cursor: 'pointer' }}
-                    onMouseEnter={e => e.currentTarget.style.background = colors.bgHover}
-                    onMouseLeave={e => e.currentTarget.style.background = colors.bgInput}
-                  >
-                    Skip
-                  </button>
-                  <button
-                    onClick={next}
-                    className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-opacity"
-                    style={{ background: '#7B1C3E', border: 'none', cursor: 'pointer' }}
-                    onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
-                    onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-                  >
-                    Start Tour
-                  </button>
-                </div>
+              )}
+
+              <div className="flex items-center justify-center gap-1 mb-4 mt-3">
+                {steps.map((_, i) => (
+                  <div
+                    key={i}
+                    className="rounded-full"
+                    style={{
+                      width: 6, height: 6,
+                      background: isWhatsNew ? 'rgba(5,150,105,0.3)' : 'rgba(123,28,62,0.3)',
+                    }}
+                  />
+                ))}
               </div>
-            )
+
+              <p className="text-xs mb-5" style={{ color: colors.textSecondary }}>
+                {steps.length} {steps.length === 1 ? 'step' : 'steps'} · Takes about a minute
+              </p>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={onSkip}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors"
+                  style={{ background: colors.bgInput, color: colors.textSecondary, border: 'none', cursor: 'pointer' }}
+                  onMouseEnter={e => e.currentTarget.style.background = colors.bgHover}
+                  onMouseLeave={e => e.currentTarget.style.background = colors.bgInput}
+                >
+                  Skip
+                </button>
+                <button
+                  onClick={next}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-opacity"
+                  style={{
+                    background: isWhatsNew ? '#059669' : '#7B1C3E',
+                    border: 'none', cursor: 'pointer',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
+                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                >
+                  {isWhatsNew ? "See What's New" : "Start Tour"}
+                </button>
+              </div>
+            </div>
           ) : (
             // ─── Step card ────────────────────────────────────────────────────
             <>
