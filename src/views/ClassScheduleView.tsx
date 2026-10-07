@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, X, Pencil, Trash2, MapPin, User, Clock, ChevronDown, ChevronUp, MoreVertical, Bell } from 'lucide-react';
+import { Plus, X, Pencil, Trash2, MapPin, User, Clock, ChevronDown, ChevronUp, MoreVertical, Bell, Mail } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../lib/theme';
 import { useTimeFormat, formatMinutes as fmtMin } from '../lib/timeFormat';
@@ -127,6 +127,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
   const [reminderCustomDate, setReminderCustomDate] = useState('');
   const [reminderCustomTime, setReminderCustomTime] = useState('08:00');
   const [reminderRepeat, setReminderRepeat] = useState<'every' | 'once'>('every');
+  const [reminderEmailEnabled, setReminderEmailEnabled] = useState(false);
   const [linkedReminders, setLinkedReminders] = useState<LinkedReminder[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -175,6 +176,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
     setReminderCustomDate('');
     setReminderCustomTime('08:00');
     setReminderRepeat('every');
+    setReminderEmailEnabled(false);
     setLinkedReminders([]);
     setEditingId(null);
   }
@@ -300,7 +302,8 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
 
       const maxWeeks = reminderRepeat === 'every' && cls.weekly_repeat ? 16 : 1;
       const firstOccurrence = nextClassOccurrence(cls.day_of_week);
-      const remindersToCreate: { date_key: string; title: string; note: string; remind_offset: ReminderOffset; class_id: string }[] = [];
+
+      const remindersToCreate: { date_key: string; title: string; note: string; remind_offset: ReminderOffset; email_enabled: boolean; class_id: string }[] = [];
 
       for (let w = 0; w < maxWeeks; w++) {
         const classDate = addDaysGreg(firstOccurrence, w * 7);
@@ -310,6 +313,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
           title,
           note,
           remind_offset: offset,
+          email_enabled: reminderEmailEnabled,
           class_id: cls.id,
         });
       }
@@ -323,7 +327,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
 
       if (!reminderCustomDate) return;
       const g = isoDateToGreg(reminderCustomDate);
-      const remindersToCreate: { date_key: string; title: string; note: string; remind_offset: ReminderOffset; class_id: string }[] = [];
+      const remindersToCreate: { date_key: string; title: string; note: string; remind_offset: ReminderOffset; email_enabled: boolean; class_id: string }[] = [];
 
       if (reminderRepeat === 'every' && cls.weekly_repeat) {
         // Create weekly reminders for 16 weeks starting from custom date
@@ -334,6 +338,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
             title: `${title} (${reminderCustomTime})`,
             note,
             remind_offset: 0,
+            email_enabled: reminderEmailEnabled,
             class_id: cls.id,
           });
         }
@@ -343,6 +348,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
           title: `${title} (${reminderCustomTime})`,
           note,
           remind_offset: 0,
+          email_enabled: reminderEmailEnabled,
           class_id: cls.id,
         });
       }
@@ -690,6 +696,22 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
                     </button>
                   ))}
                 </div>
+
+                {/* Email notification toggle */}
+                {reminderMode !== 'none' && (
+                  <label className="flex items-center gap-2 mb-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={reminderEmailEnabled}
+                      onChange={e => setReminderEmailEnabled(e.target.checked)}
+                      className="w-3.5 h-3.5"
+                      style={{ accentColor: colors.accent }}
+                    />
+                    <span className="text-[11px] font-semibold flex items-center gap-1" style={{ color: colors.textPrimary }}>
+                      <Mail size={11} /> Also send via email
+                    </span>
+                  </label>
+                )}
 
                 {/* Preset mode */}
                 {reminderMode === 'preset' && (

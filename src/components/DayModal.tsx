@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Bell, Plus, Trash2, Check, RotateCcw, Ban } from 'lucide-react';
+import { X, Bell, Plus, Trash2, Check, RotateCcw, Ban, Mail } from 'lucide-react';
 import type { Reminder, ReminderStatus, ReminderOffset } from '../types';
 import { useTheme } from '../lib/theme';
 
@@ -10,9 +10,10 @@ interface Props {
   onSave: (note: string) => void;
   onClose: () => void;
   reminders: Reminder[];
-  onAddReminder: (title: string, offset: ReminderOffset) => void;
+  onAddReminder: (title: string, offset: ReminderOffset, emailEnabled: boolean) => void;
   onUpdateReminderStatus: (id: string, status: ReminderStatus) => void;
   onDeleteReminder: (id: string) => void;
+  emailRemindersEnabled?: boolean;
 }
 
 const OFFSET_LABELS: Record<ReminderOffset, string> = {
@@ -25,11 +26,13 @@ const OFFSET_LABELS: Record<ReminderOffset, string> = {
 export default function DayModal({
   open, title, initialNote, onSave, onClose,
   reminders, onAddReminder, onUpdateReminderStatus, onDeleteReminder,
+  emailRemindersEnabled,
 }: Props) {
   const { colors } = useTheme();
   const [note, setNote] = useState(initialNote);
   const [newReminder, setNewReminder] = useState('');
   const [newOffset, setNewOffset] = useState<ReminderOffset>(0);
+  const [newEmailEnabled, setNewEmailEnabled] = useState(false);
 
   const STATUS_META: Record<ReminderStatus, { label: string; color: string; bg: string }> = {
     pending: { label: 'Pending', color: colors.textPrimary, bg: colors.bgHover },
@@ -40,16 +43,17 @@ export default function DayModal({
   };
 
   useEffect(() => { setNote(initialNote); }, [initialNote]);
-  useEffect(() => { if (open) { setNewReminder(''); setNewOffset(0); } }, [open]);
+  useEffect(() => { if (open) { setNewReminder(''); setNewOffset(0); setNewEmailEnabled(false); } }, [open]);
 
   if (!open) return null;
 
   function handleAdd() {
     const t = newReminder.trim();
     if (!t) return;
-    onAddReminder(t, newOffset);
+    onAddReminder(t, newOffset, newEmailEnabled);
     setNewReminder('');
     setNewOffset(0);
+    setNewEmailEnabled(false);
   }
 
   return (
@@ -132,6 +136,31 @@ export default function DayModal({
             </button>
           </div>
 
+          {/* Notify via: In-app / Email checkboxes */}
+          <div className="flex items-center gap-4 mb-3">
+            <span className="text-xs font-semibold" style={{ color: colors.textSecondary }}>Notify me via:</span>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" checked readOnly className="w-3.5 h-3.5" style={{ accentColor: colors.accent }} />
+              <span className="text-xs" style={{ color: colors.textPrimary }}>In-app</span>
+            </label>
+            <label className={`flex items-center gap-1.5 ${emailRemindersEnabled === false ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
+              <input
+                type="checkbox"
+                checked={newEmailEnabled}
+                disabled={emailRemindersEnabled === false}
+                onChange={e => setNewEmailEnabled(e.target.checked)}
+                className="w-3.5 h-3.5"
+                style={{ accentColor: colors.accent }}
+              />
+              <span className="text-xs flex items-center gap-0.5" style={{ color: colors.textPrimary }}>
+                <Mail size={10} /> Email
+              </span>
+            </label>
+            {emailRemindersEnabled === false && (
+              <span className="text-xs" style={{ color: colors.textTertiary }}>(enable in Preferences)</span>
+            )}
+          </div>
+
           {/* Existing reminders */}
           {reminders.length === 0 ? (
             <p className="text-xs text-center py-3" style={{ color: '#9CA3AF' }}>
@@ -159,6 +188,16 @@ export default function DayModal({
                         <Trash2 size={12} color="#B91C1C" />
                       </button>
                     </div>
+
+                    {/* Email delivery status */}
+                    {r.email_enabled && (
+                      <div className="flex items-center gap-1 mt-1.5">
+                        <Mail size={10} color={r.email_sent ? '#059669' : colors.textTertiary} />
+                        <span className="text-xs" style={{ color: r.email_sent ? '#059669' : colors.textTertiary }}>
+                          {r.email_sent ? 'Email sent' : 'Email scheduled'}
+                        </span>
+                      </div>
+                    )}
 
                     {/* Check-in status buttons */}
                     <div className="flex flex-wrap gap-1.5 mt-2.5">

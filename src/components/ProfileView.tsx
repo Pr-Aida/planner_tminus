@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Camera, X, Check, Trash2, AlertTriangle, Sun, Moon, Sparkles, Gift } from 'lucide-react';
+import { Camera, X, Check, Trash2, AlertTriangle, Sun, Moon, Sparkles, Gift, Mail, Bell } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { updateOwnUsername, validateUsername } from '../lib/auth';
 import { useTheme, type ThemeMode } from '../lib/theme';
@@ -38,6 +38,10 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
   const { timeFormat, setTimeFormat } = useTimeFormatValue();
   const [timeFormatPref, setTimeFormatPref] = useState<TimeFormat>((profile.time_format as TimeFormat) || '12h');
 
+  // Email reminders
+  const [emailRemindersEnabled, setEmailRemindersEnabled] = useState(profile.email_reminders_enabled || false);
+  const [notificationEmail, setNotificationEmail] = useState(profile.notification_email || profile.recovery_email || '');
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -60,6 +64,8 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
     setTimezonePref(profile.timezone_pref);
     setThemePref((profile.theme_pref as ThemeMode) || 'light');
     setTimeFormatPref((profile.time_format as TimeFormat) || '12h');
+    setEmailRemindersEnabled(profile.email_reminders_enabled || false);
+    setNotificationEmail(profile.notification_email || profile.recovery_email || '');
   }, [profile]);
 
   async function handleAvatarUpload(file: File) {
@@ -112,6 +118,8 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
         timezone_pref: timezonePref,
         theme_pref: themePref,
         time_format: timeFormatPref,
+        email_reminders_enabled: emailRemindersEnabled,
+        notification_email: emailRemindersEnabled ? (notificationEmail.trim() || null) : null,
       };
 
       const { data, error: updErr } = await supabase
@@ -316,6 +324,52 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                   </button>
                 </div>
               </Field>
+
+              {/* Email Reminders */}
+              <div className="rounded-xl p-4" style={{ background: colors.bgInput, border: `1.5px solid ${colors.borderLight}` }}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Mail size={16} color={colors.accent} />
+                    <span className="text-sm font-semibold" style={{ color: colors.textPrimary }}>Email Reminders</span>
+                  </div>
+                  <button
+                    onClick={() => setEmailRemindersEnabled(v => !v)}
+                    className="relative w-10 h-5 rounded-full transition-colors"
+                    style={{ background: emailRemindersEnabled ? colors.accent : colors.border, border: 'none', cursor: 'pointer' }}
+                  >
+                    <span
+                      className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform"
+                      style={{ left: emailRemindersEnabled ? '20px' : '2px' }}
+                    />
+                  </button>
+                </div>
+                {emailRemindersEnabled ? (
+                  <>
+                    <p className="text-xs mb-2" style={{ color: colors.textSecondary }}>
+                      Get reminder emails delivered to your inbox. Toggle this on for any reminder when creating it.
+                    </p>
+                    <input
+                      type="email"
+                      value={notificationEmail}
+                      onChange={e => setNotificationEmail(e.target.value)}
+                      className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                      style={inputStyle}
+                      onFocus={onFocus}
+                      onBlur={onBlur}
+                      placeholder="your@email.com"
+                    />
+                    {!notificationEmail && (
+                      <p className="text-xs mt-1.5 flex items-center gap-1" style={{ color: colors.warning || '#B45309' }}>
+                        <Bell size={11} /> Add an email address to receive reminders.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-xs" style={{ color: colors.textSecondary }}>
+                    Enable this to receive email notifications for reminders you mark as "Email".
+                  </p>
+                )}
+              </div>
 
               <div className="pt-2 space-y-2">
                 <button onClick={onRestartTour} className="flex items-center gap-2 text-xs font-semibold" style={{ color: colors.accent, background: 'none', border: 'none', cursor: 'pointer' }}>

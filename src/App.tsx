@@ -683,9 +683,9 @@ export default function App() {
   }, []);
 
   // ─── Reminder CRUD ────────────────────────────────────────────────────────
-  const handleAddReminder = useCallback(async (dateKeyStr: string, title: string, offset: ReminderOffset) => {
+  const handleAddReminder = useCallback(async (dateKeyStr: string, title: string, offset: ReminderOffset, emailEnabled: boolean) => {
     const { data } = await supabase.from('planner_reminders')
-      .insert({ date_key: dateKeyStr, title, remind_offset: offset })
+      .insert({ date_key: dateKeyStr, title, remind_offset: offset, email_enabled: emailEnabled })
       .select()
       .single();
     if (data) setReminders(prev => [...prev, data as Reminder].sort((a, b) => a.date_key.localeCompare(b.date_key)));
@@ -954,6 +954,7 @@ export default function App() {
       reminders={reminders}
       onAddReminder={handleAddReminder}
       onDeleteReminder={handleDeleteReminder}
+      emailRemindersEnabled={profile?.email_reminders_enabled}
       viewShYearForYear={viewShYearForYear}
       viewGregYearForYear={viewGregYearForYear}
       onViewShYearChangeForYear={setViewShYearForYear}
@@ -1070,8 +1071,9 @@ interface MainAppContentProps {
   monthlyNote: string;
   onMonthlyNoteChange: (key: string, note: string) => void;
   reminders: Reminder[];
-  onAddReminder: (dateKey: string, title: string, offset: ReminderOffset) => void;
+  onAddReminder: (dateKey: string, title: string, offset: ReminderOffset, emailEnabled: boolean) => void;
   onDeleteReminder: (id: string) => void;
+  emailRemindersEnabled?: boolean;
   viewShYearForYear: number;
   viewGregYearForYear: number;
   onViewShYearChangeForYear: (y: number) => void;
@@ -1215,6 +1217,7 @@ function MainAppContent(props: MainAppContentProps) {
             onAddReminder={props.onAddReminder}
             onUpdateReminderStatus={props.onUpdateReminderStatus}
             onDeleteReminder={props.onDeleteReminder}
+            emailRemindersEnabled={props.emailRemindersEnabled}
             timezone={props.timezone}
             selectedShDate={props.shDate}
             selectedGregDate={props.gregDate}

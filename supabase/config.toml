@@ -1,0 +1,8 @@
+[functions.account]
+verify_jwt = false
+
+[functions.send-feedback]
+verify_jwt = false
+
+[functions.send-reminder-emails]
+verify_jwt = false

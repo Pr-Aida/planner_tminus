@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, Bell } from 'lucide-react';
 import { useTheme } from '../lib/theme';
-import type { CalendarMode, DailyData, Habit, Reminder, ReminderOffset, ReminderStatus } from '../types';
+import type { CalendarMode, DailyData, Habit, Reminder, ReminderOffset, ReminderStatus, ShDate, GregDate } from '../types';
 import {
   SH_MONTHS, SH_WEEKDAYS_SHORT, shDayOfWeek, shDateKey, shDaysInMonth, todaySh,
   GREG_MONTH_NAMES, GREG_WEEKDAYS_SHORT,
@@ -29,12 +29,13 @@ interface Props {
   onMonthlyNoteChange: (key: string, note: string) => void;
   // Reminders
   reminders: Reminder[];
-  onAddReminder: (dateKeyStr: string, title: string, offset: ReminderOffset) => void;
+  onAddReminder: (dateKeyStr: string, title: string, offset: ReminderOffset, emailEnabled: boolean) => void;
   onUpdateReminderStatus: (id: string, status: ReminderStatus) => void;
   onDeleteReminder: (id: string) => void;
   timezone?: string;
   selectedShDate?: ShDate;
   selectedGregDate?: GregDate;
+  emailRemindersEnabled?: boolean;
 }
 
 interface ModalState {
@@ -50,7 +51,7 @@ export default function MonthlyView({
   getDayData, getDayNote, setDayNote,
   habits, monthlyNote, onMonthlyNoteChange,
   reminders, onAddReminder, onUpdateReminderStatus, onDeleteReminder,
-  timezone, selectedShDate, selectedGregDate,
+  timezone, selectedShDate, selectedGregDate, emailRemindersEnabled,
 }: Props) {
   const [modal, setModal] = useState<ModalState>({ open: false, dateKeyStr: '', title: '' });
 
@@ -98,9 +99,10 @@ export default function MonthlyView({
           onSave={saveModal}
           onClose={closeModal}
           reminders={modalReminders}
-          onAddReminder={(title, offset) => onAddReminder(modal.dateKeyStr, title, offset)}
+          onAddReminder={(title, offset, emailEnabled) => onAddReminder(modal.dateKeyStr, title, offset, emailEnabled)}
           onUpdateReminderStatus={onUpdateReminderStatus}
           onDeleteReminder={onDeleteReminder}
+          emailRemindersEnabled={emailRemindersEnabled}
         />
       </>
     );
@@ -136,9 +138,10 @@ export default function MonthlyView({
         onSave={saveModal}
         onClose={closeModal}
         reminders={modalReminders}
-        onAddReminder={(title, offset) => onAddReminder(modal.dateKeyStr, title, offset)}
+        onAddReminder={(title, offset, emailEnabled) => onAddReminder(modal.dateKeyStr, title, offset, emailEnabled)}
         onUpdateReminderStatus={onUpdateReminderStatus}
         onDeleteReminder={onDeleteReminder}
+        emailRemindersEnabled={emailRemindersEnabled}
       />
     </>
   );
