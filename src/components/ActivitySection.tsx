@@ -658,6 +658,7 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
             activity={act}
             onDelete={() => onDelete(act.id)}
             onEdit={() => handleEditActivity(act)}
+            timeFormat={timeFormat}
           />
         ))}
         {activities.length === 0 && !addMode && !loadingTimer && (
@@ -674,9 +675,10 @@ interface CardProps {
   activity: Activity;
   onDelete: () => void;
   onEdit: () => void;
+  timeFormat: '12h' | '24h';
 }
 
-function ActivityCard({ activity, onDelete, onEdit }: CardProps) {
+function ActivityCard({ activity, onDelete, onEdit, timeFormat }: CardProps) {
   const { colors } = useTheme();
   const duration = (() => {
     if (!activity.from || !activity.to) return null;

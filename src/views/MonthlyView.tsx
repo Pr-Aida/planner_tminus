@@ -29,13 +29,12 @@ interface Props {
   onMonthlyNoteChange: (key: string, note: string) => void;
   // Reminders
   reminders: Reminder[];
-  onAddReminder: (dateKeyStr: string, title: string, offset: ReminderOffset, emailEnabled: boolean) => void;
+  onAddReminder: (dateKeyStr: string, title: string, offset: ReminderOffset) => void;
   onUpdateReminderStatus: (id: string, status: ReminderStatus) => void;
   onDeleteReminder: (id: string) => void;
   timezone?: string;
   selectedShDate?: ShDate;
   selectedGregDate?: GregDate;
-  emailRemindersEnabled?: boolean;
 }
 
 interface ModalState {
@@ -51,7 +50,7 @@ export default function MonthlyView({
   getDayData, getDayNote, setDayNote,
   habits, monthlyNote, onMonthlyNoteChange,
   reminders, onAddReminder, onUpdateReminderStatus, onDeleteReminder,
-  timezone, selectedShDate, selectedGregDate, emailRemindersEnabled,
+  timezone, selectedShDate, selectedGregDate,
 }: Props) {
   const [modal, setModal] = useState<ModalState>({ open: false, dateKeyStr: '', title: '' });
 
@@ -99,10 +98,9 @@ export default function MonthlyView({
           onSave={saveModal}
           onClose={closeModal}
           reminders={modalReminders}
-          onAddReminder={(title, offset, emailEnabled) => onAddReminder(modal.dateKeyStr, title, offset, emailEnabled)}
+          onAddReminder={(title, offset) => onAddReminder(modal.dateKeyStr, title, offset)}
           onUpdateReminderStatus={onUpdateReminderStatus}
           onDeleteReminder={onDeleteReminder}
-          emailRemindersEnabled={emailRemindersEnabled}
         />
       </>
     );
@@ -138,10 +136,9 @@ export default function MonthlyView({
         onSave={saveModal}
         onClose={closeModal}
         reminders={modalReminders}
-        onAddReminder={(title, offset, emailEnabled) => onAddReminder(modal.dateKeyStr, title, offset, emailEnabled)}
+        onAddReminder={(title, offset) => onAddReminder(modal.dateKeyStr, title, offset)}
         onUpdateReminderStatus={onUpdateReminderStatus}
         onDeleteReminder={onDeleteReminder}
-        emailRemindersEnabled={emailRemindersEnabled}
       />
     </>
   );
