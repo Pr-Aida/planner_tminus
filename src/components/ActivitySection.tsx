@@ -1,9 +1,24 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Plus, Trash2, Clock, Play, Pause, Square, Timer, Loader2, Pencil, X } from 'lucide-react';
 import type { Activity } from '../types';
 import { useTheme } from '../lib/theme';
 import { useTimeFormat, formatTimeRange as fmtRange } from '../lib/timeFormat';
-import { supabase } from '../lib/supabase';
+import {
+  type DraftForm,
+  type TimerRecord,
+  emptyDraftForm,
+  fetchDraft,
+  fetchTimer,
+  getSignedInUserId,
+  isEmptyDraftForm,
+  isSameDraftForm,
+  removeDraft,
+  removeTimer,
+  saveDraft,
+  saveTimer,
+  subscribeToActivitySync,
+  timerElapsedSeconds,
+} from '../lib/activitySync';
 
 interface Props {
   activities: Activity[];
@@ -13,44 +28,16 @@ interface Props {
   onUpdate: (id: string, act: Omit<Activity, 'id'>) => void;
 }
 
-interface AddForm {
-  name: string;
-  from: string;
-  to: string;
-  note: string;
+type AddMode = 'menu' | 'timer' | 'manual' | null;
+
+interface SyncedDraft {
+  dateKey: string;
+  updatedAt: string;
+  form: DraftForm;
 }
 
-interface TimerState {
-  id: string;
-  activity_name: string;
-  activity_note: string | null;
-  started_at: string;
-  accumulated_seconds: number;
-  is_paused: boolean;
-  paused_at: string | null;
-}
-
-const emptyForm: AddForm = { name: '', from: '', to: '', note: '' };
-
-function parseDraftForm(value: unknown): AddForm | null {
-  if (!value || typeof value !== 'object') return null;
-  const v = value as Record<string, unknown>;
-  const text = (field: unknown) => (typeof field === 'string' ? field : '');
-  return { name: text(v.name), from: text(v.from), to: text(v.to), note: text(v.note) };
-}
-
-function isEmptyForm(form: AddForm): boolean {
-  return !form.name && !form.from && !form.to && !form.note;
-}
-
-async function deleteDraftRow(dateKey: string) {
-  const { error } = await supabase
-    .from('activity_drafts')
-    .delete()
-    .eq('date_key', dateKey)
-    .eq('mode', 'manual');
-  if (error) throw error;
-}
+const DRAFT_SAVE_DELAY_MS = 800;
+const SYNC_ERROR_MESSAGE = "Changes couldn't be synced. Check your connection; they'll be retried.";
 
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -83,46 +70,58 @@ function formatTimeInput(seconds: number): { from: string; to: string } {
 export default function ActivitySection({ activities, dateKey, onAdd, onDelete, onUpdate }: Props) {
   const { colors } = useTheme();
   const timeFormat = useTimeFormat();
-  const [addMode, setAddMode] = useState<'menu' | 'timer' | 'manual' | null>(null);
-  const [form, setForm] = useState<AddForm>(emptyForm);
+  const [addMode, setAddMode] = useState<AddMode>(null);
+  const [form, setForm] = useState<DraftForm>(emptyDraftForm);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [loadedDateKey, setLoadedDateKey] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
-  // Timer state
-  const [timerState, setTimerState] = useState<TimerState | null>(null);
+  const [timerState, setTimerState] = useState<TimerRecord | null>(null);
   const [loadingTimer, setLoadingTimer] = useState(true);
   const [timerName, setTimerName] = useState('');
   const [timerNote, setTimerNote] = useState('');
   const [saving, setSaving] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
-  // Poll elapsed time
-  const elapsedRef = useRef(elapsed);
-  elapsedRef.current = elapsed;
+  const dateKeyRef = useRef(dateKey);
+  dateKeyRef.current = dateKey;
+  const addModeRef = useRef(addMode);
+  addModeRef.current = addMode;
+  const editingIdRef = useRef(editingId);
+  editingIdRef.current = editingId;
 
-  // Unfinished Manual Activity draft, synced to Supabase per planner day
-  const [loadedDateKey, setLoadedDateKey] = useState<string | null>(null);
-  const pendingDraftRef = useRef<{ dateKey: string; form: AddForm } | null>(null);
+  const syncedDraftRef = useRef<SyncedDraft | null>(null);
+  const editVersionRef = useRef(0);
+  const pendingDraftRef = useRef<{ dateKey: string; form: DraftForm } | null>(null);
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const draftInFlightRef = useRef(0);
 
   function enqueueDraftTask(task: () => Promise<void>) {
+    draftInFlightRef.current += 1;
     draftQueueRef.current = draftQueueRef.current
       .then(task)
-      .catch(err => { console.error('Activity draft sync failed', err); });
+      .catch(err => {
+        console.error('Activity draft sync failed', err);
+        setSyncError(SYNC_ERROR_MESSAGE);
+      })
+      .finally(() => {
+        draftInFlightRef.current -= 1;
+      });
   }
 
-  async function writeDraft(dateKey: string, form: AddForm) {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
-    if (isEmptyForm(form)) {
-      await deleteDraftRow(dateKey);
+  async function persistDraft(dk: string, draft: DraftForm) {
+    const synced = syncedDraftRef.current;
+    if (synced && synced.dateKey === dk && isSameDraftForm(synced.form, draft)) return;
+    const userId = await getSignedInUserId();
+    if (!userId) return;
+    if (isEmptyDraftForm(draft)) {
+      await removeDraft(dk);
+      syncedDraftRef.current = null;
       return;
     }
-    const { error } = await supabase.from('activity_drafts').upsert(
-      { user_id: session.user.id, date_key: dateKey, mode: 'manual', payload: form, updated_at: new Date().toISOString() },
-      { onConflict: 'user_id,date_key,mode' },
-    );
-    if (error) throw error;
+    const updatedAt = await saveDraft(userId, dk, draft);
+    syncedDraftRef.current = { dateKey: dk, updatedAt, form: draft };
   }
 
   function cancelPendingDraft() {
@@ -136,51 +135,97 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
     draftTimerRef.current = null;
     const pending = pendingDraftRef.current;
     pendingDraftRef.current = null;
-    if (pending) enqueueDraftTask(() => writeDraft(pending.dateKey, pending.form));
+    if (pending) enqueueDraftTask(() => persistDraft(pending.dateKey, pending.form));
   }
 
-  function queueDraftSave(dateKey: string, form: AddForm) {
-    pendingDraftRef.current = { dateKey, form };
+  function queueDraftSave(dk: string, draft: DraftForm) {
+    editVersionRef.current += 1;
+    pendingDraftRef.current = { dateKey: dk, form: draft };
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
-    draftTimerRef.current = setTimeout(flushPendingDraft, 800);
+    draftTimerRef.current = setTimeout(flushPendingDraft, DRAFT_SAVE_DELAY_MS);
   }
 
-  function discardDraft(dateKey: string) {
+  function discardDraft(dk: string) {
     cancelPendingDraft();
-    enqueueDraftTask(() => deleteDraftRow(dateKey));
+    syncedDraftRef.current = null;
+    enqueueDraftTask(() => removeDraft(dk));
   }
+
+  async function applyRemoteDraft(dk: string) {
+    const versionAtStart = editVersionRef.current;
+    let remote: Awaited<ReturnType<typeof fetchDraft>>;
+    try {
+      remote = await fetchDraft(dk);
+    } catch (err) {
+      console.error('Could not load activity draft', err);
+      setSyncError(SYNC_ERROR_MESSAGE);
+      return;
+    }
+    if (dateKeyRef.current !== dk) return;
+    setLoadedDateKey(dk);
+    if (
+      pendingDraftRef.current ||
+      draftInFlightRef.current > 0 ||
+      editingIdRef.current ||
+      editVersionRef.current !== versionAtStart
+    ) {
+      return;
+    }
+    setSyncError(null);
+
+    const synced = syncedDraftRef.current?.dateKey === dk ? syncedDraftRef.current : null;
+
+    if (!remote) {
+      if (synced && addModeRef.current === 'manual') {
+        setForm(emptyDraftForm);
+        setAddMode(null);
+      }
+      syncedDraftRef.current = null;
+      return;
+    }
+
+    if (synced && Date.parse(remote.updatedAt) <= Date.parse(synced.updatedAt)) {
+      return;
+    }
+
+    syncedDraftRef.current = { dateKey: dk, updatedAt: remote.updatedAt, form: remote.form };
+    setForm(remote.form);
+    setAddMode(prev => (prev === null || prev === 'menu' ? 'manual' : prev));
+  }
+
+  async function refreshTimer() {
+    try {
+      const userId = await getSignedInUserId();
+      if (!userId) return;
+      const timer = await fetchTimer(userId);
+      setTimerState(timer);
+      if (timer) {
+        setTimerName(timer.activity_name);
+        setTimerNote(timer.activity_note ?? '');
+      }
+      setSyncError(null);
+    } catch (err) {
+      console.error('Could not load activity timer', err);
+      setSyncError(SYNC_ERROR_MESSAGE);
+    } finally {
+      setLoadingTimer(false);
+    }
+  }
+
+  const refreshRef = useRef<() => void>(() => {});
+  refreshRef.current = () => {
+    void refreshTimer();
+    void applyRemoteDraft(dateKeyRef.current);
+  };
 
   useEffect(() => {
-    let cancelled = false;
     setLoadedDateKey(null);
-    setForm(emptyForm);
+    setForm(emptyDraftForm);
     setEditingId(null);
     setAddMode(null);
-
-    (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (cancelled || !session) return;
-      const { data, error } = await supabase
-        .from('activity_drafts')
-        .select('payload')
-        .eq('date_key', dateKey)
-        .eq('mode', 'manual')
-        .maybeSingle();
-      if (cancelled) return;
-      if (error) {
-        console.error('Could not load activity draft', error);
-        return;
-      }
-      const draft = data ? parseDraftForm(data.payload) : null;
-      if (draft && !isEmptyForm(draft)) {
-        setForm(draft);
-        setAddMode(prev => (prev === null || prev === 'menu' ? 'manual' : prev));
-      }
-      setLoadedDateKey(dateKey);
-    })();
-
+    syncedDraftRef.current = null;
+    void applyRemoteDraft(dateKey);
     return () => {
-      cancelled = true;
       flushPendingDraft();
     };
   }, [dateKey]);
@@ -190,206 +235,122 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
     queueDraftSave(dateKey, form);
   }, [form, addMode, editingId, loadedDateKey, dateKey]);
 
-  // Load timer state on mount
   useEffect(() => {
-    async function loadTimerState() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        setLoadingTimer(false);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('activity_timer_state')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .maybeSingle();
-
-      if (!error && data) {
-        setTimerState(data as TimerState);
-        setTimerName(data.activity_name);
-        setTimerNote(data.activity_note || '');
-
-        // Calculate current elapsed if running
-        if (!data.is_paused) {
-          const start = new Date(data.started_at).getTime();
-          const now = Date.now();
-          const accumulated = data.accumulated_seconds || 0;
-          setElapsed(accumulated + Math.floor((now - start) / 1000));
-        } else {
-          setElapsed(data.accumulated_seconds || 0);
-        }
-      }
-      setLoadingTimer(false);
-    }
-    loadTimerState();
+    void refreshTimer();
   }, []);
 
-  // Update elapsed time every second when running
+  useEffect(() => {
+    let disposed = false;
+    let unsubscribe: (() => void) | undefined;
+    (async () => {
+      const userId = await getSignedInUserId();
+      if (!userId || disposed) return;
+      unsubscribe = subscribeToActivitySync(userId, () => refreshRef.current());
+    })();
+    return () => {
+      disposed = true;
+      unsubscribe?.();
+    };
+  }, []);
+
   useEffect(() => {
     if (!timerState || timerState.is_paused) return;
-
-    const interval = setInterval(() => {
-      const start = new Date(timerState.started_at).getTime();
-      const accumulated = timerState.accumulated_seconds || 0;
-      const now = Date.now();
-      setElapsed(accumulated + Math.floor((now - start) / 1000));
-    }, 1000);
-
+    setNowMs(Date.now());
+    const interval = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(interval);
   }, [timerState]);
 
-  // Save timer state to database
-  const saveTimerState = useCallback(async (state: Partial<TimerState> & { activity_name: string }) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return null;
-
-    const existing = timerState?.id;
-
-    if (existing) {
-      const { data, error } = await supabase
-        .from('activity_timer_state')
-        .update({
-          ...state,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existing)
-        .select()
-        .single();
-      if (!error && data) return data as TimerState;
-    } else {
-      const { data, error } = await supabase
-        .from('activity_timer_state')
-        .insert({
-          user_id: session.user.id,
-          ...state,
-        })
-        .select()
-        .single();
-      if (!error && data) return data as TimerState;
+  async function runTimerAction(
+    action: (userId: string, latest: TimerRecord | null) => Promise<void>,
+  ) {
+    setSaving(true);
+    try {
+      const userId = await getSignedInUserId();
+      if (!userId) return;
+      const latest = await fetchTimer(userId);
+      setTimerState(latest);
+      await action(userId, latest);
+      setSyncError(null);
+    } catch (err) {
+      console.error('Activity timer sync failed', err);
+      setSyncError(SYNC_ERROR_MESSAGE);
+    } finally {
+      setSaving(false);
     }
-    return null;
-  }, [timerState]);
+  }
 
-  // Delete timer state
-  const deleteTimerState = useCallback(async () => {
-    if (!timerState?.id) return;
-    await supabase
-      .from('activity_timer_state')
-      .delete()
-      .eq('id', timerState.id);
-  }, [timerState]);
+  async function writeTimer(userId: string, fields: Omit<TimerRecord, 'id'>) {
+    const saved = await saveTimer(userId, fields);
+    setTimerState(saved);
+  }
 
-  // Timer controls
   async function handleStartTimer() {
     if (!timerName.trim()) return;
-    setSaving(true);
-
-    // Calculate accumulated time if resuming from pause
-    let accumulated = 0;
-    if (timerState?.is_paused) {
-      accumulated = timerState.accumulated_seconds || 0;
-    }
-
-    const newState = await saveTimerState({
-      activity_name: timerName.trim(),
-      activity_note: timerNote.trim(),
-      started_at: new Date().toISOString(),
-      accumulated_seconds: accumulated,
-      is_paused: false,
-      paused_at: null,
-    });
-
-    if (newState) {
-      setTimerState(newState);
+    await runTimerAction(async userId => {
+      await writeTimer(userId, {
+        activity_name: timerName.trim(),
+        activity_note: timerNote.trim(),
+        started_at: new Date().toISOString(),
+        accumulated_seconds: 0,
+        is_paused: false,
+        paused_at: null,
+      });
       setAddMode(null);
-    }
-    setSaving(false);
+    });
   }
 
   async function handlePauseTimer() {
-    if (!timerState) return;
-    setSaving(true);
-
-    // Calculate accumulated time up to now
-    const start = new Date(timerState.started_at).getTime();
-    const now = Date.now();
-    const accumulated = timerState.accumulated_seconds + Math.floor((now - start) / 1000);
-
-    const newState = await saveTimerState({
-      activity_name: timerState.activity_name,
-      activity_note: timerState.activity_note || '',
-      started_at: timerState.started_at,
-      accumulated_seconds: accumulated,
-      is_paused: true,
-      paused_at: new Date().toISOString(),
+    await runTimerAction(async (userId, latest) => {
+      if (!latest || latest.is_paused) return;
+      await writeTimer(userId, {
+        activity_name: latest.activity_name,
+        activity_note: latest.activity_note,
+        started_at: latest.started_at,
+        accumulated_seconds: timerElapsedSeconds(latest, Date.now()),
+        is_paused: true,
+        paused_at: new Date().toISOString(),
+      });
     });
-
-    if (newState) {
-      setTimerState(newState);
-      setElapsed(accumulated);
-    }
-    setSaving(false);
   }
 
   async function handleResumeTimer() {
-    if (!timerState) return;
-    setSaving(true);
-
-    // Start fresh with accumulated time preserved
-    const newState = await saveTimerState({
-      activity_name: timerState.activity_name,
-      activity_note: timerState.activity_note || '',
-      started_at: new Date().toISOString(),
-      accumulated_seconds: timerState.accumulated_seconds,
-      is_paused: false,
-      paused_at: null,
+    await runTimerAction(async (userId, latest) => {
+      if (!latest || !latest.is_paused) return;
+      await writeTimer(userId, {
+        activity_name: latest.activity_name,
+        activity_note: latest.activity_note,
+        started_at: new Date().toISOString(),
+        accumulated_seconds: latest.accumulated_seconds,
+        is_paused: false,
+        paused_at: null,
+      });
     });
-
-    if (newState) {
-      setTimerState(newState);
-    }
-    setSaving(false);
   }
 
   async function handleEndTimer() {
-    if (!timerState) return;
-    setSaving(true);
+    await runTimerAction(async (userId, latest) => {
+      if (!latest) return;
+      const finalSeconds = timerElapsedSeconds(latest, Date.now());
 
-    // Calculate final accumulated time
-    let finalSeconds: number;
-    if (timerState.is_paused) {
-      finalSeconds = timerState.accumulated_seconds;
-    } else {
-      const start = new Date(timerState.started_at).getTime();
-      const now = Date.now();
-      finalSeconds = timerState.accumulated_seconds + Math.floor((now - start) / 1000);
-    }
+      if (finalSeconds > 0) {
+        const timeRange = formatTimeInput(finalSeconds);
+        const timerNoteText = latest.activity_note?.trim();
+        const durationLabel = `${Math.floor(finalSeconds / 60)} minutes (timer)`;
+        setForm({
+          name: latest.activity_name,
+          from: timeRange.from,
+          to: timeRange.to,
+          note: timerNoteText ? `${durationLabel} — ${timerNoteText}` : durationLabel,
+        });
+        setEditingId(null);
+        setAddMode('manual');
+      }
 
-    // Only add if there's meaningful time (> 0 seconds)
-    if (finalSeconds > 0) {
-      const timeRange = formatTimeInput(finalSeconds);
-      const timerNoteText = timerState.activity_note?.trim();
-      const durationLabel = `${Math.floor(finalSeconds / 60)} minutes (timer)`;
-
-      // Pre-fill the manual form with timer data for editing before saving
-      setForm({
-        name: timerState.activity_name,
-        from: timeRange.from,
-        to: timeRange.to,
-        note: timerNoteText ? `${durationLabel} — ${timerNoteText}` : durationLabel,
-      });
-      setEditingId(null);
-      setAddMode('manual');
-    }
-
-    // Clear timer state
-    await deleteTimerState();
-    setTimerState(null);
-    setTimerName('');
-    setTimerNote('');
-    setElapsed(0);
-    setSaving(false);
+      await removeTimer(userId);
+      setTimerState(null);
+      setTimerName('');
+      setTimerNote('');
+    });
   }
 
   function handleSaveForm() {
@@ -400,7 +361,7 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
       onAdd({ name: form.name.trim(), from: form.from, to: form.to, note: form.note.trim() });
     }
     discardDraft(dateKey);
-    setForm(emptyForm);
+    setForm(emptyDraftForm);
     setEditingId(null);
     setAddMode(null);
   }
@@ -413,10 +374,12 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
 
   function handleCancelForm() {
     discardDraft(dateKey);
-    setForm(emptyForm);
+    setForm(emptyDraftForm);
     setEditingId(null);
     setAddMode(null);
   }
+
+  const elapsedSeconds = timerState ? timerElapsedSeconds(timerState, nowMs) : 0;
 
   const inputStyle: React.CSSProperties = {
     border: `1.5px solid ${colors.borderLight}`,
@@ -441,7 +404,7 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
         </span>
         <div className="flex-1 h-px ml-3" style={{ background: colors.accentLight }} />
         <button
-          onClick={() => { if (editingId) { setForm(emptyForm); setEditingId(null); } setAddMode('menu'); }}
+          onClick={() => { if (editingId) { setForm(emptyDraftForm); setEditingId(null); } setAddMode('menu'); }}
           className="ml-3 flex items-center justify-center rounded-lg w-7 h-7 transition-opacity hover:opacity-80"
           style={{ background: colors.heroBg, border: 'none', cursor: 'pointer' }}
           title="Add activity"
@@ -449,6 +412,12 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
           <Plus size={14} color="#fff" />
         </button>
       </div>
+
+      {syncError && (
+        <p className="text-xs mb-3 leading-relaxed" style={{ color: colors.warning }}>
+          {syncError}
+        </p>
+      )}
 
       {/* Active timer display — always visible when a timer is running/paused */}
       {!loadingTimer && timerState && (
@@ -490,7 +459,7 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
                 color: timerState.is_paused ? colors.textSecondary : colors.accent,
               }}
             >
-              {formatDuration(elapsed)}
+              {formatDuration(elapsedSeconds)}
             </div>
 
             {/* Timer controls */}
@@ -578,7 +547,7 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
               Activity Timer
             </button>
             <button
-              onClick={() => { if (editingId) { setForm(emptyForm); setEditingId(null); } setAddMode('manual'); }}
+              onClick={() => { if (editingId) { setForm(emptyDraftForm); setEditingId(null); } setAddMode('manual'); }}
               className="flex-1 flex flex-col items-center gap-2 py-4 rounded-lg text-xs font-bold transition-opacity hover:opacity-80"
               style={{
                 background: colors.bgCard,
