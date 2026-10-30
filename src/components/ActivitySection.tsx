@@ -32,6 +32,26 @@ interface TimerState {
 
 const emptyForm: AddForm = { name: '', from: '', to: '', note: '' };
 
+function parseDraftForm(value: unknown): AddForm | null {
+  if (!value || typeof value !== 'object') return null;
+  const v = value as Record<string, unknown>;
+  const text = (field: unknown) => (typeof field === 'string' ? field : '');
+  return { name: text(v.name), from: text(v.from), to: text(v.to), note: text(v.note) };
+}
+
+function isEmptyForm(form: AddForm): boolean {
+  return !form.name && !form.from && !form.to && !form.note;
+}
+
+async function deleteDraftRow(dateKey: string) {
+  const { error } = await supabase
+    .from('activity_drafts')
+    .delete()
+    .eq('date_key', dateKey)
+    .eq('mode', 'manual');
+  if (error) throw error;
+}
+
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -78,6 +98,97 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
   // Poll elapsed time
   const elapsedRef = useRef(elapsed);
   elapsedRef.current = elapsed;
+
+  // Unfinished Manual Activity draft, synced to Supabase per planner day
+  const [loadedDateKey, setLoadedDateKey] = useState<string | null>(null);
+  const pendingDraftRef = useRef<{ dateKey: string; form: AddForm } | null>(null);
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  function enqueueDraftTask(task: () => Promise<void>) {
+    draftQueueRef.current = draftQueueRef.current
+      .then(task)
+      .catch(err => { console.error('Activity draft sync failed', err); });
+  }
+
+  async function writeDraft(dateKey: string, form: AddForm) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    if (isEmptyForm(form)) {
+      await deleteDraftRow(dateKey);
+      return;
+    }
+    const { error } = await supabase.from('activity_drafts').upsert(
+      { user_id: session.user.id, date_key: dateKey, mode: 'manual', payload: form, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id,date_key,mode' },
+    );
+    if (error) throw error;
+  }
+
+  function cancelPendingDraft() {
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = null;
+    pendingDraftRef.current = null;
+  }
+
+  function flushPendingDraft() {
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = null;
+    const pending = pendingDraftRef.current;
+    pendingDraftRef.current = null;
+    if (pending) enqueueDraftTask(() => writeDraft(pending.dateKey, pending.form));
+  }
+
+  function queueDraftSave(dateKey: string, form: AddForm) {
+    pendingDraftRef.current = { dateKey, form };
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(flushPendingDraft, 800);
+  }
+
+  function discardDraft(dateKey: string) {
+    cancelPendingDraft();
+    enqueueDraftTask(() => deleteDraftRow(dateKey));
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadedDateKey(null);
+    setForm(emptyForm);
+    setEditingId(null);
+    setAddMode(null);
+
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (cancelled || !session) return;
+      const { data, error } = await supabase
+        .from('activity_drafts')
+        .select('payload')
+        .eq('date_key', dateKey)
+        .eq('mode', 'manual')
+        .maybeSingle();
+      if (cancelled) return;
+      if (error) {
+        console.error('Could not load activity draft', error);
+        return;
+      }
+      const draft = data ? parseDraftForm(data.payload) : null;
+      if (draft && !isEmptyForm(draft)) {
+        setForm(draft);
+        setAddMode(prev => (prev === null || prev === 'menu' ? 'manual' : prev));
+      }
+      setLoadedDateKey(dateKey);
+    })();
+
+    return () => {
+      cancelled = true;
+      flushPendingDraft();
+    };
+  }, [dateKey]);
+
+  useEffect(() => {
+    if (loadedDateKey !== dateKey || addMode !== 'manual' || editingId) return;
+    queueDraftSave(dateKey, form);
+  }, [form, addMode, editingId, loadedDateKey, dateKey]);
 
   // Load timer state on mount
   useEffect(() => {
@@ -288,6 +399,7 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
     } else {
       onAdd({ name: form.name.trim(), from: form.from, to: form.to, note: form.note.trim() });
     }
+    discardDraft(dateKey);
     setForm(emptyForm);
     setEditingId(null);
     setAddMode(null);
@@ -300,6 +412,7 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
   }
 
   function handleCancelForm() {
+    discardDraft(dateKey);
     setForm(emptyForm);
     setEditingId(null);
     setAddMode(null);
@@ -328,7 +441,7 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
         </span>
         <div className="flex-1 h-px ml-3" style={{ background: colors.accentLight }} />
         <button
-          onClick={() => { setAddMode('menu'); setForm(emptyForm); setEditingId(null); }}
+          onClick={() => { if (editingId) { setForm(emptyForm); setEditingId(null); } setAddMode('menu'); }}
           className="ml-3 flex items-center justify-center rounded-lg w-7 h-7 transition-opacity hover:opacity-80"
           style={{ background: colors.heroBg, border: 'none', cursor: 'pointer' }}
           title="Add activity"
@@ -465,7 +578,7 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
               Activity Timer
             </button>
             <button
-              onClick={() => { setForm(emptyForm); setEditingId(null); setAddMode('manual'); }}
+              onClick={() => { if (editingId) { setForm(emptyForm); setEditingId(null); } setAddMode('manual'); }}
               className="flex-1 flex flex-col items-center gap-2 py-4 rounded-lg text-xs font-bold transition-opacity hover:opacity-80"
               style={{
                 background: colors.bgCard,
