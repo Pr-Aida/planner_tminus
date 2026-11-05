@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
-import { Plus, Trash2, Check, Pencil, Save, EyeOff, CalendarDays, Layers } from 'lucide-react';
+import { Plus, Trash2, Check, Pencil, Save, EyeOff, Eye, CalendarDays, Layers, ChevronDown, ChevronUp } from 'lucide-react';
 import type { Habit, HabitType, HabitOverride, TempHabit } from '../types';
 import { evalMinuteExpr } from '../lib/expr';
 import { useTheme } from '../lib/theme';
@@ -17,6 +17,7 @@ interface Props {
   onUpdateHabitUnit: (id: string, unit: string | null) => Promise<void>;
   onToggleHabit: (id: string, value: boolean | number) => void;
   onHideHabitForDay: (id: string) => void;
+  onToggleHabitHidden: (id: string, hidden: boolean) => void;
   onRemoveExtraHabit: (id: string) => void;
   onSaveTemplate: () => void;
 }
@@ -30,23 +31,28 @@ interface AddForm {
 export default function HabitSection({
   habits, habitValues, overrides,
   onAddHabitToTemplate, onAddHabitToDay, onDeleteHabit, onRenameHabit, onUpdateHabitUnit,
-  onToggleHabit, onHideHabitForDay, onRemoveExtraHabit, onSaveTemplate,
+  onToggleHabit, onHideHabitForDay, onToggleHabitHidden, onRemoveExtraHabit, onSaveTemplate,
 }: Props) {
   const { colors } = useTheme();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<AddForm>({ name: '', type: 'checkbox', unit: '' });
   const [saving, setSaving] = useState(false);
   const [scope, setScope] = useState<'day' | 'template'>('day');
+  const [showHidden, setShowHidden] = useState(false);
 
   const hiddenSet = useMemo(() => new Set(overrides.hidden), [overrides.hidden]);
 
+  // Globally hidden habits (single source of truth: the `hidden` column).
+  const visibleHabits = useMemo(() => habits.filter(h => !h.hidden), [habits]);
+  const hiddenHabits = useMemo(() => habits.filter(h => h.hidden), [habits]);
+
   const effectiveHabits: EffectiveHabit[] = useMemo(() => {
-    const fromTemplate = habits
+    const fromTemplate = visibleHabits
       .filter(h => !hiddenSet.has(h.id))
       .map(h => ({ ...h, isExtra: false }));
     const extras = overrides.extras.map(e => ({ ...e, isExtra: true }));
     return [...fromTemplate, ...extras];
-  }, [habits, hiddenSet, overrides.extras]);
+  }, [visibleHabits, hiddenSet, overrides.extras]);
 
   async function handleAdd() {
     if (!form.name.trim()) return;
@@ -110,7 +116,9 @@ export default function HabitSection({
             onRename={habit.isExtra ? undefined : (newName => onRenameHabit(habit.id, newName))}
             onUpdateUnit={habit.isExtra ? undefined : (unit => onUpdateHabitUnit(habit.id, unit))}
             onHideForDay={habit.isExtra ? undefined : () => onHideHabitForDay(habit.id)}
+            onToggleHidden={habit.isExtra ? undefined : (hidden => onToggleHabitHidden(habit.id, hidden))}
             isExtra={habit.isExtra}
+            isHidden={false}
             isLast={idx === effectiveHabits.length - 1 && !showForm}
             tourAttr={idx === 0 ? (habit.habit_type === 'checkbox' ? 'tour-habit-checkbox' : 'tour-habit-time') : undefined}
           />
@@ -121,6 +129,41 @@ export default function HabitSection({
           </p>
         )}
       </div>
+
+      {/* Hidden habits management */}
+      {hiddenHabits.length > 0 && (
+        <div className="mt-2">
+          <button
+            onClick={() => setShowHidden(v => !v)}
+            className="flex items-center gap-1.5 text-xs font-semibold transition-opacity hover:opacity-80 py-1.5"
+            style={{ color: colors.textTertiary, background: 'transparent', border: 'none', cursor: 'pointer' }}
+          >
+            {showHidden ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            <EyeOff size={12} />
+            Hidden Habits ({hiddenHabits.length})
+          </button>
+          {showHidden && (
+            <div className="mt-1" style={{ borderTop: `1px solid ${colors.borderLight}` }}>
+              {hiddenHabits.map((habit, idx) => (
+                <HabitRow
+                  key={habit.id}
+                  habit={{ ...habit, isExtra: false } as EffectiveHabit}
+                  value={undefined}
+                  onToggle={() => {}}
+                  onDelete={() => onDeleteHabit(habit.id)}
+                  onRename={newName => onRenameHabit(habit.id, newName)}
+                  onUpdateUnit={unit => onUpdateHabitUnit(habit.id, unit)}
+                  onHideForDay={undefined}
+                  onToggleHidden={hidden => onToggleHabitHidden(habit.id, hidden)}
+                  isExtra={false}
+                  isHidden
+                  isLast={idx === hiddenHabits.length - 1}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Add form */}
       {showForm && (
@@ -243,12 +286,14 @@ interface HabitRowProps {
   onRename?: (newName: string) => void;
   onUpdateUnit?: (unit: string | null) => void;
   onHideForDay?: () => void;
+  onToggleHidden?: (hidden: boolean) => void;
   isExtra: boolean;
+  isHidden: boolean;
   isLast: boolean;
   tourAttr?: string;
 }
 
-function HabitRow({ habit, value, onToggle, onDelete, onRename, onUpdateUnit, onHideForDay, isExtra, isLast, tourAttr }: HabitRowProps) {
+function HabitRow({ habit, value, onToggle, onDelete, onRename, onUpdateUnit, onHideForDay, onToggleHidden, isExtra, isHidden, isLast, tourAttr }: HabitRowProps) {
   const { colors } = useTheme();
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(habit.name);
@@ -322,10 +367,10 @@ function HabitRow({ habit, value, onToggle, onDelete, onRename, onUpdateUnit, on
     <div
       className="flex items-center gap-3 py-2.5 group"
       data-tour={tourAttr}
-      style={{ borderBottom: isLast ? 'none' : `1px solid ${colors.borderLight}` }}
+      style={{ borderBottom: isLast ? 'none' : `1px solid ${colors.borderLight}`, opacity: isHidden ? 0.6 : 1 }}
     >
       {/* Checkbox or time input */}
-      {habit.habit_type === 'checkbox' ? (
+      {!isHidden && habit.habit_type === 'checkbox' ? (
         <button
           onClick={() => onToggle(!isDone)}
           className="flex-shrink-0 flex items-center justify-center rounded-md transition-all"
@@ -333,7 +378,7 @@ function HabitRow({ habit, value, onToggle, onDelete, onRename, onUpdateUnit, on
         >
           {isDone && <Check size={13} color="#fff" strokeWidth={3} />}
         </button>
-      ) : (
+      ) : !isHidden && habit.habit_type === 'value' ? (
         <div className="flex flex-col flex-shrink-0" style={{ gap: 2 }}>
           <div className="flex items-center gap-1.5">
             <input
@@ -373,6 +418,10 @@ function HabitRow({ habit, value, onToggle, onDelete, onRename, onUpdateUnit, on
             </span>
           )}
         </div>
+      ) : (
+        <div className="flex-shrink-0 flex items-center justify-center" style={{ width: 24, height: 24 }}>
+          <EyeOff size={14} color={colors.textTertiary} />
+        </div>
       )}
 
       {/* Name (or edit input) */}
@@ -388,12 +437,17 @@ function HabitRow({ habit, value, onToggle, onDelete, onRename, onUpdateUnit, on
       ) : (
         <span
           className="flex-1 text-sm font-medium min-w-0"
-          style={{ color: colors.textPrimary, textDecoration: habit.habit_type === 'checkbox' && isDone ? 'line-through' : 'none', opacity: habit.habit_type === 'checkbox' && isDone ? 0.5 : 1 }}
+          style={{ color: colors.textPrimary, textDecoration: !isHidden && habit.habit_type === 'checkbox' && isDone ? 'line-through' : 'none', opacity: !isHidden && habit.habit_type === 'checkbox' && isDone ? 0.5 : 1 }}
         >
           {habit.name}
           {isExtra && (
             <span className="ml-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider" style={{ background: colors.warningBg, color: colors.warning }}>
               Today only
+            </span>
+          )}
+          {isHidden && (
+            <span className="ml-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider" style={{ background: colors.accentLight, color: colors.accent }}>
+              Hidden
             </span>
           )}
         </span>
@@ -414,16 +468,28 @@ function HabitRow({ habit, value, onToggle, onDelete, onRename, onUpdateUnit, on
               <Pencil size={12} />
             </button>
           )}
-          {!isExtra && onHideForDay && (
+          {!isExtra && onToggleHidden && (
+            <button
+              onClick={() => onToggleHidden(!isHidden)}
+              className="p-1 rounded transition-colors"
+              style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textTertiary }}
+              onMouseEnter={e => (e.currentTarget.style.color = isHidden ? colors.accent : colors.warning)}
+              onMouseLeave={e => (e.currentTarget.style.color = colors.textTertiary)}
+              title={isHidden ? 'Unhide habit' : 'Hide habit'}
+            >
+              {isHidden ? <Eye size={12} /> : <EyeOff size={12} />}
+            </button>
+          )}
+          {!isHidden && !isExtra && onHideForDay && (
             <button
               onClick={onHideForDay}
               className="p-1 rounded transition-colors"
               style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textTertiary }}
-              onMouseEnter={e => (e.currentTarget.style.color = colors.warning)}
+              onMouseEnter={e => (e.currentTarget.style.color = colors.textSecondary)}
               onMouseLeave={e => (e.currentTarget.style.color = colors.textTertiary)}
               title="Hide for this day only"
             >
-              <EyeOff size={12} />
+              <CalendarDays size={12} />
             </button>
           )}
           <button
@@ -432,7 +498,7 @@ function HabitRow({ habit, value, onToggle, onDelete, onRename, onUpdateUnit, on
             style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textTertiary }}
             onMouseEnter={e => (e.currentTarget.style.color = isExtra ? colors.warning : colors.accent)}
             onMouseLeave={e => (e.currentTarget.style.color = colors.textTertiary)}
-            title={isExtra ? 'Remove from this day' : 'Delete from template'}
+            title={isExtra ? 'Remove from this day' : 'Delete habit'}
           >
             <Trash2 size={12} />
           </button>
