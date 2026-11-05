@@ -632,15 +632,29 @@ export default function App() {
     setHabits(prev => prev.filter(h => h.id !== id));
   }, []);
 
-  const handleRenameHabit = useCallback(async (id: string, newName: string) => {
-    await supabase.from('planner_habits').update({ name: newName }).eq('id', id);
-    setHabits(prev => prev.map(h => h.id === id ? { ...h, name: newName } : h));
-  }, []);
-
   const handleUpdateHabitUnit = useCallback(async (id: string, unit: string | null) => {
     await supabase.from('planner_habits').update({ unit }).eq('id', id);
     setHabits(prev => prev.map(h => h.id === id ? { ...h, unit } : h));
   }, []);
+
+  const handleEditHabit = useCallback(async (id: string, name: string, type: HabitType, unit: string | null) => {
+    await supabase.from('planner_habits').update({ name, habit_type: type, unit }).eq('id', id);
+    setHabits(prev => prev.map(h => h.id === id ? { ...h, name, habit_type: type, unit } : h));
+  }, []);
+
+  const handleEditExtraHabit = useCallback((id: string, name: string, type: HabitType, unit: string | null) => {
+    setDayCache(prev => {
+      const existing = prev.get(currentKey) || emptyDay(currentKey);
+      const extras = (existing.habit_overrides?.extras || []).map(e =>
+        e.id === id ? { ...e, name, habit_type: type, unit } : e
+      );
+      const overrides = { ...(existing.habit_overrides || { hidden: [], extras: [] }), extras };
+      const updated = { ...existing, habit_overrides: overrides, date_key: currentKey };
+      pendingSave.current.set(currentKey, updated);
+      scheduleSave();
+      return new Map(prev).set(currentKey, updated);
+    });
+  }, [currentKey]);
 
   const handleAddHabitToDay = useCallback((name: string, type: HabitType, unit: string | null) => {
     setDayCache(prev => {
@@ -943,8 +957,9 @@ export default function App() {
       onAddHabitToTemplate={handleAddHabit}
       onAddHabitToDay={handleAddHabitToDay}
       onDeleteHabit={handleDeleteHabit}
-      onRenameHabit={handleRenameHabit}
       onUpdateHabitUnit={handleUpdateHabitUnit}
+      onEditHabit={handleEditHabit}
+      onEditExtraHabit={handleEditExtraHabit}
       onHideHabitForDay={handleHideHabitForDay}
       onUnhideHabitForDay={handleUnhideHabitForDay}
       onRemoveExtraHabit={handleRemoveExtraHabit}
@@ -1059,11 +1074,12 @@ interface MainAppContentProps {
   isToday: boolean;
   currentDayReminders: Reminder[];
   onDataChange: (patch: Partial<DailyData>) => void;
-  onAddHabitToTemplate: (name: string, type: HabitType, unit: string | null) => void;
+  onAddHabitToTemplate: (name: string, type: HabitType, unit: string | null) => Promise<void>;
   onAddHabitToDay: (name: string, type: HabitType, unit: string | null) => void;
-  onDeleteHabit: (id: string) => void;
-  onRenameHabit: (id: string, name: string) => void;
-  onUpdateHabitUnit: (id: string, unit: string | null) => void;
+  onDeleteHabit: (id: string) => Promise<void>;
+  onUpdateHabitUnit: (id: string, unit: string | null) => Promise<void>;
+  onEditHabit: (id: string, name: string, type: HabitType, unit: string | null) => Promise<void>;
+  onEditExtraHabit: (id: string, name: string, type: HabitType, unit: string | null) => void;
   onHideHabitForDay: (id: string) => void;
   onUnhideHabitForDay: (id: string) => void;
   onRemoveExtraHabit: (id: string) => void;
@@ -1188,8 +1204,9 @@ function MainAppContent(props: MainAppContentProps) {
             onAddHabitToTemplate={props.onAddHabitToTemplate}
             onAddHabitToDay={props.onAddHabitToDay}
             onDeleteHabit={props.onDeleteHabit}
-            onRenameHabit={props.onRenameHabit}
             onUpdateHabitUnit={props.onUpdateHabitUnit}
+            onEditHabit={props.onEditHabit}
+            onEditExtraHabit={props.onEditExtraHabit}
             onHideHabitForDay={props.onHideHabitForDay}
             onUnhideHabitForDay={props.onUnhideHabitForDay}
             onRemoveExtraHabit={props.onRemoveExtraHabit}

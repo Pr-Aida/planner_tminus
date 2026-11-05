@@ -16,8 +16,9 @@ interface Props {
   onAddHabitToTemplate: (name: string, type: HabitType, unit: string | null) => Promise<void>;
   onAddHabitToDay: (name: string, type: HabitType, unit: string | null) => void;
   onDeleteHabit: (id: string) => Promise<void>;
-  onRenameHabit: (id: string, newName: string) => Promise<void>;
   onUpdateHabitUnit: (id: string, unit: string | null) => Promise<void>;
+  onEditHabit: (id: string, name: string, type: HabitType, unit: string | null) => Promise<void>;
+  onEditExtraHabit: (id: string, name: string, type: HabitType, unit: string | null) => void;
   onHideHabitForDay: (id: string) => void;
   onUnhideHabitForDay: (id: string) => void;
   onRemoveExtraHabit: (id: string) => void;
@@ -25,7 +26,7 @@ interface Props {
   onUpdateReminderStatus: (id: string, status: ReminderStatus) => void;
 }
 
-export default function DailyView({ data, habits, dateKey, isToday, reminders, onDataChange, onAddHabitToTemplate, onAddHabitToDay, onDeleteHabit, onRenameHabit, onUpdateHabitUnit, onHideHabitForDay, onUnhideHabitForDay, onRemoveExtraHabit, onSaveTemplate, onUpdateReminderStatus }: Props) {
+export default function DailyView({ data, habits, dateKey, isToday, reminders, onDataChange, onAddHabitToTemplate, onAddHabitToDay, onDeleteHabit, onUpdateHabitUnit, onEditHabit, onEditExtraHabit, onHideHabitForDay, onUnhideHabitForDay, onRemoveExtraHabit, onSaveTemplate, onUpdateReminderStatus }: Props) {
   const { colors } = useTheme();
   // Compute summary stats
   const { totalMinutes, namedActivities } = useMemo(() => {
@@ -178,8 +179,9 @@ export default function DailyView({ data, habits, dateKey, isToday, reminders, o
         onAddHabitToTemplate={onAddHabitToTemplate}
         onAddHabitToDay={onAddHabitToDay}
         onDeleteHabit={onDeleteHabit}
-        onRenameHabit={onRenameHabit}
         onUpdateHabitUnit={onUpdateHabitUnit}
+        onEditHabit={onEditHabit}
+        onEditExtraHabit={onEditExtraHabit}
         onToggleHabit={handleToggleHabit}
         onHideHabitForDay={onHideHabitForDay}
         onUnhideHabitForDay={onUnhideHabitForDay}

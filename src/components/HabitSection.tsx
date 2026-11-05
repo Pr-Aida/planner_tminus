@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
-import { Plus, Trash2, Check, Pencil, Save, EyeOff, Eye, CalendarDays, Layers, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Trash2, Check, Pencil, Save, EyeOff, Eye, CalendarDays, Layers, ChevronDown, ChevronUp, X } from 'lucide-react';
 import type { Habit, HabitType, HabitOverride, TempHabit } from '../types';
 import { evalMinuteExpr } from '../lib/expr';
 import { useTheme } from '../lib/theme';
@@ -13,8 +13,9 @@ interface Props {
   onAddHabitToTemplate: (name: string, type: HabitType, unit: string | null) => Promise<void>;
   onAddHabitToDay: (name: string, type: HabitType, unit: string | null) => void;
   onDeleteHabit: (id: string) => Promise<void>;
-  onRenameHabit: (id: string, newName: string) => Promise<void>;
   onUpdateHabitUnit: (id: string, unit: string | null) => Promise<void>;
+  onEditHabit: (id: string, name: string, type: HabitType, unit: string | null) => Promise<void>;
+  onEditExtraHabit: (id: string, name: string, type: HabitType, unit: string | null) => void;
   onToggleHabit: (id: string, value: boolean | number) => void;
   onHideHabitForDay: (id: string) => void;
   onUnhideHabitForDay: (id: string) => void;
@@ -30,7 +31,7 @@ interface AddForm {
 
 export default function HabitSection({
   habits, habitValues, overrides,
-  onAddHabitToTemplate, onAddHabitToDay, onDeleteHabit, onRenameHabit, onUpdateHabitUnit,
+  onAddHabitToTemplate, onAddHabitToDay, onDeleteHabit, onUpdateHabitUnit, onEditHabit, onEditExtraHabit,
   onToggleHabit, onHideHabitForDay, onUnhideHabitForDay, onRemoveExtraHabit, onSaveTemplate,
 }: Props) {
   const { colors } = useTheme();
@@ -39,20 +40,25 @@ export default function HabitSection({
   const [saving, setSaving] = useState(false);
   const [scope, setScope] = useState<'day' | 'template'>('day');
   const [showHidden, setShowHidden] = useState(false);
+  const [editTarget, setEditTarget] = useState<EffectiveHabit | null>(null);
+  const [editForm, setEditForm] = useState<AddForm>({ name: '', type: 'checkbox', unit: '' });
+  const [editSaving, setEditSaving] = useState(false);
 
   const dayHiddenSet = useMemo(() => new Set(overrides.hidden), [overrides.hidden]);
 
   // Habits hidden only for this day.
-  const hiddenHabits = useMemo(
-    () => habits.filter(h => dayHiddenSet.has(h.id)),
-    [habits, dayHiddenSet]
-  );
+  const hiddenHabits: EffectiveHabit[] = useMemo(() => [
+    ...habits.filter(h => dayHiddenSet.has(h.id)).map(h => ({ ...h, isExtra: false })),
+    ...overrides.extras.filter(e => dayHiddenSet.has(e.id)).map(e => ({ ...e, isExtra: true })),
+  ], [habits, overrides.extras, dayHiddenSet]);
 
   const effectiveHabits: EffectiveHabit[] = useMemo(() => {
     const fromTemplate = habits
       .filter(h => !dayHiddenSet.has(h.id))
       .map(h => ({ ...h, isExtra: false }));
-    const extras = overrides.extras.map(e => ({ ...e, isExtra: true }));
+    const extras = overrides.extras
+      .filter(e => !dayHiddenSet.has(e.id))
+      .map(e => ({ ...e, isExtra: true }));
     return [...fromTemplate, ...extras];
   }, [habits, dayHiddenSet, overrides.extras]);
 
@@ -72,6 +78,34 @@ export default function HabitSection({
   function handleCancel() {
     setShowForm(false);
     setForm({ name: '', type: 'checkbox', unit: '' });
+  }
+
+  function openEdit(habit: EffectiveHabit) {
+    setEditTarget(habit);
+    setEditForm({
+      name: habit.name,
+      type: habit.habit_type,
+      unit: habit.unit || '',
+    });
+  }
+
+  function handleCancelEdit() {
+    setEditTarget(null);
+  }
+
+  async function handleSaveEdit() {
+    if (!editTarget || !editForm.name.trim()) return;
+    setEditSaving(true);
+    const name = editForm.name.trim();
+    const type = editForm.type;
+    const unit = type === 'value' ? (editForm.unit.trim() || 'min') : null;
+    if (editTarget.isExtra) {
+      onEditExtraHabit(editTarget.id, name, type, unit);
+    } else {
+      await onEditHabit(editTarget.id, name, type, unit);
+    }
+    setEditTarget(null);
+    setEditSaving(false);
   }
 
   return (
@@ -115,9 +149,9 @@ export default function HabitSection({
             value={habitValues[habit.id]}
             onToggle={v => onToggleHabit(habit.id, v)}
             onDelete={habit.isExtra ? () => onRemoveExtraHabit(habit.id) : () => onDeleteHabit(habit.id)}
-            onRename={habit.isExtra ? undefined : (newName => onRenameHabit(habit.id, newName))}
             onUpdateUnit={habit.isExtra ? undefined : (unit => onUpdateHabitUnit(habit.id, unit))}
-            onHideForDay={habit.isExtra ? undefined : () => onHideHabitForDay(habit.id)}
+            onEdit={() => openEdit(habit)}
+            onHideForDay={() => onHideHabitForDay(habit.id)}
             isExtra={habit.isExtra}
             isHidden={false}
             isLast={idx === effectiveHabits.length - 1 && !showForm && hiddenHabits.length === 0}
@@ -148,14 +182,13 @@ export default function HabitSection({
               {hiddenHabits.map((habit, idx) => (
                 <HabitRow
                   key={habit.id}
-                  habit={{ ...habit, isExtra: false } as EffectiveHabit}
+                  habit={habit}
                   value={undefined}
                   onToggle={() => {}}
-                  onDelete={() => onDeleteHabit(habit.id)}
-                  onRename={newName => onRenameHabit(habit.id, newName)}
-                  onUpdateUnit={unit => onUpdateHabitUnit(habit.id, unit)}
+                  onDelete={habit.isExtra ? () => onRemoveExtraHabit(habit.id) : () => onDeleteHabit(habit.id)}
+                  onEdit={() => openEdit(habit)}
                   onUnhideForDay={() => onUnhideHabitForDay(habit.id)}
-                  isExtra={false}
+                  isExtra={habit.isExtra}
                   isHidden
                   isLast={idx === hiddenHabits.length - 1}
                 />
@@ -272,6 +305,117 @@ export default function HabitSection({
           </div>
         </div>
       )}
+
+      {/* Edit habit modal */}
+      {editTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: colors.overlay }}
+          onMouseDown={e => { if (e.target === e.currentTarget) handleCancelEdit(); }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="w-full max-w-md rounded-xl p-6"
+            style={{ background: colors.bgCard, boxShadow: `0 12px 40px ${colors.shadow}` }}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.accent }}>
+                {editTarget.isExtra ? 'Edit habit (this day only)' : 'Edit habit'}
+              </span>
+              <button
+                onClick={handleCancelEdit}
+                className="p-1 rounded transition-opacity hover:opacity-70"
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: colors.textTertiary }}
+                title="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <input
+              autoFocus
+              type="text"
+              value={editForm.name}
+              onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+              placeholder="Habit name"
+              className="w-full rounded-lg px-4 py-2.5 text-sm outline-none mb-3"
+              style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, fontFamily: 'inherit', color: colors.textPrimary }}
+              onFocus={e => (e.target.style.borderColor = colors.heroBg)}
+              onBlur={e => (e.target.style.borderColor = colors.borderLight)}
+              onKeyDown={e => e.key === 'Enter' && handleSaveEdit()}
+            />
+
+            <div className="flex rounded-lg overflow-hidden mb-3" style={{ border: `1.5px solid ${colors.borderLight}` }}>
+              <button
+                onClick={() => setEditForm(f => ({ ...f, type: 'checkbox' }))}
+                className="flex-1 py-2 text-xs font-semibold transition-all"
+                style={{ background: editForm.type === 'checkbox' ? colors.heroBg : colors.bgInput, color: editForm.type === 'checkbox' ? '#fff' : colors.textSecondary, border: 'none', cursor: 'pointer' }}
+              >
+                Checkbox
+              </button>
+              <button
+                onClick={() => setEditForm(f => ({ ...f, type: 'value' }))}
+                className="flex-1 py-2 text-xs font-semibold transition-all"
+                style={{ background: editForm.type === 'value' ? colors.heroBg : colors.bgInput, color: editForm.type === 'value' ? '#fff' : colors.textSecondary, border: 'none', cursor: 'pointer' }}
+              >
+                With Time (min)
+              </button>
+            </div>
+
+            {editForm.type === 'value' && (
+              <>
+                <div className="flex gap-2 mb-2">
+                  {['min', 'pages'].map(u => (
+                    <button
+                      key={u}
+                      type="button"
+                      onClick={() => setEditForm(f => ({ ...f, unit: u }))}
+                      className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
+                      style={{
+                        background: editForm.unit === u ? colors.heroBg : colors.bgInput,
+                        color: editForm.unit === u ? '#fff' : colors.textSecondary,
+                        border: `1.5px solid ${editForm.unit === u ? colors.heroBg : colors.borderLight}`,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {u === 'min' ? 'Minutes' : 'Pages'}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={editForm.unit}
+                  onChange={e => setEditForm(f => ({ ...f, unit: e.target.value }))}
+                  placeholder="Unit label (default: min)"
+                  className="w-full rounded-lg px-4 py-2.5 text-sm outline-none mb-3"
+                  style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, fontFamily: 'inherit', color: colors.textPrimary }}
+                  onFocus={e => (e.target.style.borderColor = colors.heroBg)}
+                  onBlur={e => (e.target.style.borderColor = colors.borderLight)}
+                />
+              </>
+            )}
+
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={handleSaveEdit}
+                disabled={editSaving || !editForm.name.trim()}
+                className="flex-1 py-2.5 rounded-lg text-xs font-bold text-white transition-opacity"
+                style={{ background: colors.heroBg, border: 'none', cursor: editSaving || !editForm.name.trim() ? 'not-allowed' : 'pointer', opacity: editSaving || !editForm.name.trim() ? 0.6 : 1 }}
+              >
+                Save Changes
+              </button>
+              <button
+                onClick={handleCancelEdit}
+                className="flex-1 py-2.5 rounded-lg text-xs font-semibold transition-colors"
+                style={{ background: colors.bgHover, color: colors.textPrimary, border: 'none', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -283,8 +427,8 @@ interface HabitRowProps {
   value: boolean | number | undefined;
   onToggle: (v: boolean | number) => void;
   onDelete: () => void;
-  onRename?: (newName: string) => void;
   onUpdateUnit?: (unit: string | null) => void;
+  onEdit?: () => void;
   onHideForDay?: () => void;
   onUnhideForDay?: () => void;
   isExtra: boolean;
@@ -293,11 +437,8 @@ interface HabitRowProps {
   tourAttr?: string;
 }
 
-function HabitRow({ habit, value, onToggle, onDelete, onRename, onUpdateUnit, onHideForDay, onUnhideForDay, isExtra, isHidden, isLast, tourAttr }: HabitRowProps) {
+function HabitRow({ habit, value, onToggle, onDelete, onUpdateUnit, onEdit, onHideForDay, onUnhideForDay, isExtra, isHidden, isLast, tourAttr }: HabitRowProps) {
   const { colors } = useTheme();
-  const [editing, setEditing] = useState(false);
-  const [editName, setEditName] = useState(habit.name);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   const isDone = habit.habit_type === 'checkbox' ? !!value : false;
   const numVal = habit.habit_type === 'value' ? (typeof value === 'number' ? value : 0) : 0;
@@ -314,23 +455,6 @@ function HabitRow({ habit, value, onToggle, onDelete, onRename, onUpdateUnit, on
     setTimeDraft(numVal ? String(numVal) : '');
     setTimeError('');
   }, [numVal]);
-
-  function startEdit() {
-    setEditName(habit.name);
-    setEditing(true);
-    setTimeout(() => inputRef.current?.select(), 0);
-  }
-
-  function commitEdit() {
-    const trimmed = editName.trim();
-    if (trimmed && trimmed !== habit.name && onRename) onRename(trimmed);
-    setEditing(false);
-  }
-
-  function handleEditKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') commitEdit();
-    if (e.key === 'Escape') { setEditing(false); setEditName(habit.name); }
-  }
 
   function commitTime() {
     const draft = timeDraft.trim();
@@ -425,45 +549,33 @@ function HabitRow({ habit, value, onToggle, onDelete, onRename, onUpdateUnit, on
       )}
 
       {/* Name (or edit input) */}
-      {editing ? (
-        <input
-          ref={inputRef} type="text" value={editName}
-          onChange={e => setEditName(e.target.value)}
-          onBlur={commitEdit} onKeyDown={handleEditKeyDown}
-          className="flex-1 text-sm font-medium rounded px-1 outline-none"
-          style={{ border: `1.5px solid ${colors.heroBg}`, color: colors.textPrimary, fontFamily: 'inherit', background: colors.bgSubtle, minWidth: 0 }}
-          autoFocus
-        />
-      ) : (
-        <span
-          className="flex-1 text-sm font-medium min-w-0"
-          style={{ color: colors.textPrimary, textDecoration: !isHidden && habit.habit_type === 'checkbox' && isDone ? 'line-through' : 'none', opacity: !isHidden && habit.habit_type === 'checkbox' && isDone ? 0.5 : 1 }}
-        >
-          {habit.name}
-          {isExtra && (
-            <span className="ml-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider" style={{ background: colors.warningBg, color: colors.warning }}>
-              Today only
-            </span>
-          )}
-          {isHidden && (
-            <span className="ml-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider" style={{ background: colors.accentLight, color: colors.accent }}>
-              Hidden today
-            </span>
-          )}
-        </span>
-      )}
+      <span
+        className="flex-1 text-sm font-medium min-w-0"
+        style={{ color: colors.textPrimary, textDecoration: !isHidden && habit.habit_type === 'checkbox' && isDone ? 'line-through' : 'none', opacity: !isHidden && habit.habit_type === 'checkbox' && isDone ? 0.5 : 1 }}
+      >
+        {habit.name}
+        {isExtra && (
+          <span className="ml-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider" style={{ background: colors.warningBg, color: colors.warning }}>
+            Today only
+          </span>
+        )}
+        {isHidden && (
+          <span className="ml-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider" style={{ background: colors.accentLight, color: colors.accent }}>
+            Hidden today
+          </span>
+        )}
+      </span>
 
       {/* Action buttons (visible on hover) */}
-      {!editing && (
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-          {onRename && (
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+          {onEdit && (
             <button
-              onClick={startEdit}
+              onClick={onEdit}
               className="p-1 rounded transition-colors"
               style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textTertiary }}
               onMouseEnter={e => (e.currentTarget.style.color = colors.textPrimary)}
               onMouseLeave={e => (e.currentTarget.style.color = colors.textTertiary)}
-              title="Rename habit"
+              title="Edit habit"
             >
               <Pencil size={12} />
             </button>
@@ -480,7 +592,7 @@ function HabitRow({ habit, value, onToggle, onDelete, onRename, onUpdateUnit, on
               <Eye size={12} />
             </button>
           )}
-          {!isHidden && !isExtra && onHideForDay && (
+          {!isHidden && onHideForDay && (
             <button
               onClick={onHideForDay}
               className="p-1 rounded transition-colors"
@@ -503,7 +615,6 @@ function HabitRow({ habit, value, onToggle, onDelete, onRename, onUpdateUnit, on
             <Trash2 size={12} />
           </button>
         </div>
-      )}
     </div>
   );
 }
