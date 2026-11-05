@@ -665,6 +665,19 @@ export default function App() {
     });
   }, [currentKey]);
 
+  // Restore a habit that was hidden only for the current day.
+  const handleUnhideHabitForDay = useCallback((id: string) => {
+    setDayCache(prev => {
+      const existing = prev.get(currentKey) || emptyDay(currentKey);
+      const dayHidden = existing.habit_overrides?.hidden || [];
+      const overrides = { ...(existing.habit_overrides || { hidden: [], extras: [] }), hidden: dayHidden.filter(h => h !== id) };
+      const updated = { ...existing, habit_overrides: overrides, date_key: currentKey };
+      pendingSave.current.set(currentKey, updated);
+      scheduleSave();
+      return new Map(prev).set(currentKey, updated);
+    });
+  }, [currentKey]);
+
   // Global, per-habit visibility toggle (synced across devices).
   const handleToggleHabitHidden = useCallback(async (id: string, hidden: boolean) => {
     setHabits(prev => prev.map(h => h.id === id ? { ...h, hidden } : h));
@@ -939,6 +952,7 @@ export default function App() {
       onRenameHabit={handleRenameHabit}
       onUpdateHabitUnit={handleUpdateHabitUnit}
       onHideHabitForDay={handleHideHabitForDay}
+      onUnhideHabitForDay={handleUnhideHabitForDay}
       onToggleHabitHidden={handleToggleHabitHidden}
       onRemoveExtraHabit={handleRemoveExtraHabit}
       onSaveTemplate={handleSaveTemplate}
@@ -1058,6 +1072,7 @@ interface MainAppContentProps {
   onRenameHabit: (id: string, name: string) => void;
   onUpdateHabitUnit: (id: string, unit: string | null) => void;
   onHideHabitForDay: (id: string) => void;
+  onUnhideHabitForDay: (id: string) => void;
   onToggleHabitHidden: (id: string, hidden: boolean) => void;
   onRemoveExtraHabit: (id: string) => void;
   onSaveTemplate: () => void;
@@ -1184,6 +1199,7 @@ function MainAppContent(props: MainAppContentProps) {
             onRenameHabit={props.onRenameHabit}
             onUpdateHabitUnit={props.onUpdateHabitUnit}
             onHideHabitForDay={props.onHideHabitForDay}
+            onUnhideHabitForDay={props.onUnhideHabitForDay}
             onToggleHabitHidden={props.onToggleHabitHidden}
             onRemoveExtraHabit={props.onRemoveExtraHabit}
             onSaveTemplate={props.onSaveTemplate}

@@ -19,13 +19,14 @@ interface Props {
   onRenameHabit: (id: string, newName: string) => Promise<void>;
   onUpdateHabitUnit: (id: string, unit: string | null) => Promise<void>;
   onHideHabitForDay: (id: string) => void;
+  onUnhideHabitForDay: (id: string) => void;
   onToggleHabitHidden: (id: string, hidden: boolean) => void;
   onRemoveExtraHabit: (id: string) => void;
   onSaveTemplate: () => void;
   onUpdateReminderStatus: (id: string, status: ReminderStatus) => void;
 }
 
-export default function DailyView({ data, habits, dateKey, isToday, reminders, onDataChange, onAddHabitToTemplate, onAddHabitToDay, onDeleteHabit, onRenameHabit, onUpdateHabitUnit, onHideHabitForDay, onToggleHabitHidden, onRemoveExtraHabit, onSaveTemplate, onUpdateReminderStatus }: Props) {
+export default function DailyView({ data, habits, dateKey, isToday, reminders, onDataChange, onAddHabitToTemplate, onAddHabitToDay, onDeleteHabit, onRenameHabit, onUpdateHabitUnit, onHideHabitForDay, onUnhideHabitForDay, onToggleHabitHidden, onRemoveExtraHabit, onSaveTemplate, onUpdateReminderStatus }: Props) {
   const { colors } = useTheme();
   // Compute summary stats
   const { totalMinutes, namedActivities } = useMemo(() => {
@@ -182,6 +183,7 @@ export default function DailyView({ data, habits, dateKey, isToday, reminders, o
         onUpdateHabitUnit={onUpdateHabitUnit}
         onToggleHabit={handleToggleHabit}
         onHideHabitForDay={onHideHabitForDay}
+        onUnhideHabitForDay={onUnhideHabitForDay}
         onToggleHabitHidden={onToggleHabitHidden}
         onRemoveExtraHabit={onRemoveExtraHabit}
         onSaveTemplate={onSaveTemplate}
