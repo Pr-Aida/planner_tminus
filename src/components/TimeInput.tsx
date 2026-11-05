@@ -7,18 +7,18 @@ interface Props {
   value: string;
   onChange: (hhmm: string) => void;
   className?: string;
-  showIcon?: boolean;
 }
 
-const DEFAULT_TIME = '08:00';
-const ITEM_HEIGHT = 36;
-const COLUMN_HEIGHT = ITEM_HEIGHT * 5;
+const ITEM_HEIGHT = 32;
+const VISIBLE_ITEMS = 5;
+const COLUMN_HEIGHT = ITEM_HEIGHT * VISIBLE_ITEMS;
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
 function splitHHmm(hhmm: string): { hour: number; minute: number } {
+  if (!hhmm) return { hour: 8, minute: 0 };
   const [h, m] = hhmm.split(':').map(Number);
-  return { hour: h, minute: m };
+  return { hour: h || 0, minute: m || 0 };
 }
 
 function hourOptions(fmt: TimeFormat): number[] {
@@ -27,30 +27,30 @@ function hourOptions(fmt: TimeFormat): number[] {
     : Array.from({ length: 24 }, (_, i) => i);
 }
 
-export default function TimeInput({ value, onChange, className = '', showIcon = true }: Props) {
+export default function TimeInput({ value, onChange, className = '', }: Props) {
   const { colors } = useTheme();
   const timeFormat = useTimeFormat();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const formatted = formatTimeForInput(value, timeFormat);
-  const { hour: hour24, minute } = splitHHmm(value || DEFAULT_TIME);
+  const { hour: hour24, minute } = splitHHmm(value);
   const isPm = hour24 >= 12;
   const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
 
   useEffect(() => {
     if (!open) return;
-    function onPointerDown(e: MouseEvent | TouchEvent) {
+    function onDown(e: MouseEvent | TouchEvent) {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') setOpen(false);
     }
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('touchstart', onPointerDown);
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('touchstart', onDown, { passive: true });
     document.addEventListener('keydown', onKey);
     return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('touchstart', onPointerDown);
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('touchstart', onDown);
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
@@ -68,31 +68,46 @@ export default function TimeInput({ value, onChange, className = '', showIcon = 
     onChange(`${pad((hour12 % 12) + (pm ? 12 : 0))}:${pad(minute)}`);
   }
 
-  const columnStyle = { border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput };
+  function clear() {
+    onChange('');
+    setOpen(false);
+  }
+
+  const columnStyle: CSSProperties = {
+    border: `1px solid ${colors.borderLight}`,
+    background: colors.bgInput,
+  };
 
   return (
     <div ref={rootRef} className={`relative ${className}`}>
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        className="w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-left"
-        style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, cursor: 'pointer' }}
+      <div
+        className="flex items-center rounded-lg px-3 gap-2"
+        style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput }}
       >
         <span
-          className="flex-1 min-w-0 text-sm truncate"
+          className="flex-1 min-w-0 text-sm py-2.5 truncate"
           style={{ color: value ? colors.textPrimary : colors.textTertiary }}
         >
           {formatted || (timeFormat === '24h' ? 'HH:mm' : 'h:mm AM')}
         </span>
-        {showIcon && <Clock size={14} color={colors.textTertiary} />}
-      </button>
+        <button
+          type="button"
+          onClick={() => setOpen(o => !o)}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          className="p-0.5 rounded transition-colors flex-shrink-0"
+          style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: open ? colors.accent : colors.textTertiary }}
+          title="Select time"
+        >
+          <Clock size={14} />
+        </button>
+        <Clock size={14} color={colors.textTertiary} className="flex-shrink-0" />
+      </div>
 
       {open && (
         <div
           role="dialog"
-          className="absolute left-0 top-full mt-2 z-50 rounded-xl p-3 shadow-lg"
+          className="absolute left-0 top-full mt-1 z-50 rounded-xl p-3 shadow-lg"
           style={{ background: colors.bgCard, border: `1px solid ${colors.borderLight}`, width: 'max-content' }}
         >
           <div className="flex gap-2">
@@ -129,14 +144,24 @@ export default function TimeInput({ value, onChange, className = '', showIcon = 
               />
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="mt-3 w-full py-2 rounded-lg text-xs font-bold text-white"
-            style={{ background: colors.heroBg, border: 'none', cursor: 'pointer' }}
-          >
-            Done
-          </button>
+          <div className="flex gap-2 mt-3">
+            <button
+              type="button"
+              onClick={clear}
+              className="flex-1 py-2 rounded-lg text-xs font-bold"
+              style={{ background: colors.bgHover, color: colors.textPrimary, border: `1px solid ${colors.borderLight}`, cursor: 'pointer' }}
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="flex-1 py-2 rounded-lg text-xs font-bold text-white"
+              style={{ background: colors.heroBg, border: 'none', cursor: 'pointer' }}
+            >
+              Done
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -160,7 +185,7 @@ function ScrollColumn({ label, options, selected, onSelect, style, accent, textC
   useEffect(() => {
     const list = listRef.current;
     if (!list || selectedIndex < 0) return;
-    list.scrollTop = selectedIndex * ITEM_HEIGHT - COLUMN_HEIGHT / 2 + ITEM_HEIGHT / 2;
+    list.scrollTop = selectedIndex * ITEM_HEIGHT - ITEM_HEIGHT * 2;
   }, [selectedIndex]);
 
   return (
@@ -170,8 +195,8 @@ function ScrollColumn({ label, options, selected, onSelect, style, accent, textC
       </span>
       <div
         ref={listRef}
-        className="w-16 overflow-y-auto rounded-lg py-2"
-        style={{ ...style, height: COLUMN_HEIGHT + 16 }}
+        className="w-14 overflow-y-auto rounded-lg"
+        style={{ ...style, height: COLUMN_HEIGHT, scrollBehavior: 'smooth' }}
       >
         {options.map(o => {
           const active = o.value === selected;
@@ -180,7 +205,7 @@ function ScrollColumn({ label, options, selected, onSelect, style, accent, textC
               key={o.value}
               type="button"
               onClick={() => onSelect(o.value)}
-              className="w-full flex items-center justify-center text-sm font-semibold rounded-md"
+              className="w-full flex items-center justify-center text-xs font-semibold rounded-md"
               style={{
                 height: ITEM_HEIGHT,
                 background: active ? accent : 'transparent',
