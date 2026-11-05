@@ -25,22 +25,6 @@ export function formatTimeForInput(hhmm: string, fmt: TimeFormat = '12h'): strin
   return formatMinutes(timeToMin(hhmm), fmt);
 }
 
-export function parseTime(text: string): string | null {
-  const match = text.trim().match(/^(\d{1,2})(?::(\d{2}))?\s*([aApP])?[mM]?$/);
-  if (!match) return null;
-  let h = Number(match[1]);
-  const m = match[2] ? Number(match[2]) : 0;
-  const period = match[3]?.toLowerCase();
-  if (m > 59) return null;
-  if (period) {
-    if (h < 1 || h > 12) return null;
-    if (period === 'a' && h === 12) h = 0;
-    else if (period === 'p' && h !== 12) h += 12;
-  } else if (h > 23) {
-    return null;
-  }
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
 
 export function formatTimeRange(from: string, to: string, fmt: TimeFormat = '12h'): string {
   const fromMin = timeToMin(from);

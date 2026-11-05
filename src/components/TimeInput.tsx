@@ -1,53 +1,38 @@
-import { useEffect, useState } from 'react';
 import { Clock } from 'lucide-react';
 import { useTheme } from '../lib/theme';
-import { useTimeFormat, formatTimeForInput, parseTime } from '../lib/timeFormat';
+import { useTimeFormat, formatTimeForInput } from '../lib/timeFormat';
 
 interface Props {
   value: string;
   onChange: (hhmm: string) => void;
   className?: string;
+  showIcon?: boolean;
 }
 
-export default function TimeInput({ value, onChange, className = '' }: Props) {
+export default function TimeInput({ value, onChange, className = '', showIcon = true }: Props) {
   const { colors } = useTheme();
   const timeFormat = useTimeFormat();
   const formatted = formatTimeForInput(value, timeFormat);
-  const [draft, setDraft] = useState(formatted);
-
-  useEffect(() => { setDraft(formatted); }, [formatted]);
-
-  function commit() {
-    if (!draft.trim()) {
-      setDraft(formatted);
-      return;
-    }
-    const parsed = parseTime(draft);
-    if (parsed) {
-      onChange(parsed);
-      setDraft(formatTimeForInput(parsed, timeFormat));
-    } else {
-      setDraft(formatted);
-    }
-  }
 
   return (
     <div
-      className={`flex items-center rounded-lg px-3 gap-2 ${className}`}
+      className={`relative flex items-center gap-2 rounded-lg px-3 py-2.5 ${className}`}
       style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput }}
     >
+      <span
+        className="flex-1 min-w-0 text-sm pointer-events-none truncate"
+        style={{ color: value ? colors.textPrimary : colors.textTertiary }}
+      >
+        {formatted || (timeFormat === '24h' ? 'HH:mm' : 'h:mm AM')}
+      </span>
+      {showIcon && <Clock size={14} color={colors.textTertiary} />}
       <input
-        type="text"
-        inputMode={timeFormat === '24h' ? 'numeric' : 'text'}
-        value={draft}
-        placeholder={timeFormat === '24h' ? 'HH:mm' : 'h:mm AM'}
-        onChange={e => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={e => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
-        className="flex-1 min-w-0 text-sm py-2.5 outline-none bg-transparent"
-        style={{ color: draft ? colors.textPrimary : colors.textTertiary, border: 'none', fontFamily: 'inherit' }}
+        type="time"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+        style={{ border: 'none', background: 'transparent' }}
       />
-      <Clock size={14} color={colors.textTertiary} />
     </div>
   );
 }

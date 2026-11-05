@@ -562,7 +562,8 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
                 <div>
                   <label className="text-xs font-semibold mb-1 block" style={{ color: colors.textSecondary }}>Start Time</label>
                   <TimeInput
-                    className="w-full"
+                    className="w-full py-2"
+                    showIcon={false}
                     value={form.start_time}
                     onChange={start_time => setForm({ ...form, start_time })}
                   />
@@ -570,7 +571,8 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
                 <div>
                   <label className="text-xs font-semibold mb-1 block" style={{ color: colors.textSecondary }}>End Time</label>
                   <TimeInput
-                    className="w-full"
+                    className="w-full py-2"
+                    showIcon={false}
                     value={form.end_time}
                     onChange={end_time => setForm({ ...form, end_time })}
                   />
@@ -786,7 +788,8 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
                       <div>
                         <label className="text-[11px] font-semibold mb-1 block" style={{ color: colors.textSecondary }}>Time</label>
                         <TimeInput
-                          className="w-full"
+                          className="w-full py-2"
+                          showIcon={false}
                           value={reminderCustomTime}
                           onChange={setReminderCustomTime}
                         />
