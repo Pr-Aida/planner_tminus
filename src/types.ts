@@ -126,7 +126,6 @@ export interface Habit {
   habit_type: HabitType;
   unit: string | null;
   sort_order: number;
-  hidden: boolean;
 }
 
 export interface Activity {

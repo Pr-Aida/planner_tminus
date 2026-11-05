@@ -678,12 +678,6 @@ export default function App() {
     });
   }, [currentKey]);
 
-  // Global, per-habit visibility toggle (synced across devices).
-  const handleToggleHabitHidden = useCallback(async (id: string, hidden: boolean) => {
-    setHabits(prev => prev.map(h => h.id === id ? { ...h, hidden } : h));
-    await supabase.from('planner_habits').update({ hidden }).eq('id', id);
-  }, []);
-
   const handleRemoveExtraHabit = useCallback((id: string) => {
     setDayCache(prev => {
       const existing = prev.get(currentKey) || emptyDay(currentKey);
@@ -953,7 +947,6 @@ export default function App() {
       onUpdateHabitUnit={handleUpdateHabitUnit}
       onHideHabitForDay={handleHideHabitForDay}
       onUnhideHabitForDay={handleUnhideHabitForDay}
-      onToggleHabitHidden={handleToggleHabitHidden}
       onRemoveExtraHabit={handleRemoveExtraHabit}
       onSaveTemplate={handleSaveTemplate}
       onUpdateReminderStatus={handleUpdateReminderStatus}
@@ -1073,7 +1066,6 @@ interface MainAppContentProps {
   onUpdateHabitUnit: (id: string, unit: string | null) => void;
   onHideHabitForDay: (id: string) => void;
   onUnhideHabitForDay: (id: string) => void;
-  onToggleHabitHidden: (id: string, hidden: boolean) => void;
   onRemoveExtraHabit: (id: string) => void;
   onSaveTemplate: () => void;
   onUpdateReminderStatus: (id: string, status: ReminderStatus) => void;
@@ -1200,7 +1192,6 @@ function MainAppContent(props: MainAppContentProps) {
             onUpdateHabitUnit={props.onUpdateHabitUnit}
             onHideHabitForDay={props.onHideHabitForDay}
             onUnhideHabitForDay={props.onUnhideHabitForDay}
-            onToggleHabitHidden={props.onToggleHabitHidden}
             onRemoveExtraHabit={props.onRemoveExtraHabit}
             onSaveTemplate={props.onSaveTemplate}
             onUpdateReminderStatus={props.onUpdateReminderStatus}

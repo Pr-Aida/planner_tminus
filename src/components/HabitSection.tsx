@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
-import { Plus, Trash2, Check, Pencil, Save, EyeOff, Eye, CalendarDays, Layers, ChevronDown, ChevronUp, CalendarCheck } from 'lucide-react';
+import { Plus, Trash2, Check, Pencil, Save, EyeOff, Eye, CalendarDays, Layers, ChevronDown, ChevronUp } from 'lucide-react';
 import type { Habit, HabitType, HabitOverride, TempHabit } from '../types';
 import { evalMinuteExpr } from '../lib/expr';
 import { useTheme } from '../lib/theme';
@@ -18,7 +18,6 @@ interface Props {
   onToggleHabit: (id: string, value: boolean | number) => void;
   onHideHabitForDay: (id: string) => void;
   onUnhideHabitForDay: (id: string) => void;
-  onToggleHabitHidden: (id: string, hidden: boolean) => void;
   onRemoveExtraHabit: (id: string) => void;
   onSaveTemplate: () => void;
 }
@@ -32,7 +31,7 @@ interface AddForm {
 export default function HabitSection({
   habits, habitValues, overrides,
   onAddHabitToTemplate, onAddHabitToDay, onDeleteHabit, onRenameHabit, onUpdateHabitUnit,
-  onToggleHabit, onHideHabitForDay, onUnhideHabitForDay, onToggleHabitHidden, onRemoveExtraHabit, onSaveTemplate,
+  onToggleHabit, onHideHabitForDay, onUnhideHabitForDay, onRemoveExtraHabit, onSaveTemplate,
 }: Props) {
   const { colors } = useTheme();
   const [showForm, setShowForm] = useState(false);
@@ -43,21 +42,15 @@ export default function HabitSection({
 
   const dayHiddenSet = useMemo(() => new Set(overrides.hidden), [overrides.hidden]);
 
-  // Habits hidden globally (single source of truth: the `hidden` column).
-  const globalHiddenHabits = useMemo(() => habits.filter(h => h.hidden), [habits]);
-
-  // Habits hidden only for this day (not globally hidden).
-  const dayHiddenHabits = useMemo(
-    () => habits.filter(h => !h.hidden && dayHiddenSet.has(h.id)),
+  // Habits hidden only for this day.
+  const hiddenHabits = useMemo(
+    () => habits.filter(h => dayHiddenSet.has(h.id)),
     [habits, dayHiddenSet]
   );
 
-  const hasAnyHidden = globalHiddenHabits.length > 0 || dayHiddenHabits.length > 0;
-
-  // Visible habits: not globally hidden AND not hidden for this day.
   const effectiveHabits: EffectiveHabit[] = useMemo(() => {
     const fromTemplate = habits
-      .filter(h => !h.hidden && !dayHiddenSet.has(h.id))
+      .filter(h => !dayHiddenSet.has(h.id))
       .map(h => ({ ...h, isExtra: false }));
     const extras = overrides.extras.map(e => ({ ...e, isExtra: true }));
     return [...fromTemplate, ...extras];
@@ -125,10 +118,9 @@ export default function HabitSection({
             onRename={habit.isExtra ? undefined : (newName => onRenameHabit(habit.id, newName))}
             onUpdateUnit={habit.isExtra ? undefined : (unit => onUpdateHabitUnit(habit.id, unit))}
             onHideForDay={habit.isExtra ? undefined : () => onHideHabitForDay(habit.id)}
-            onToggleHidden={habit.isExtra ? undefined : (hidden => onToggleHabitHidden(habit.id, hidden))}
             isExtra={habit.isExtra}
             isHidden={false}
-            isLast={idx === effectiveHabits.length - 1 && !showForm && !hasAnyHidden}
+            isLast={idx === effectiveHabits.length - 1 && !showForm && hiddenHabits.length === 0}
             tourAttr={idx === 0 ? (habit.habit_type === 'checkbox' ? 'tour-habit-checkbox' : 'tour-habit-time') : undefined}
           />
         ))}
@@ -139,8 +131,8 @@ export default function HabitSection({
         )}
       </div>
 
-      {/* Hidden habits management */}
-      {hasAnyHidden && (
+      {/* Hidden for today management */}
+      {hiddenHabits.length > 0 && (
         <div className="mt-2">
           <button
             onClick={() => setShowHidden(v => !v)}
@@ -149,12 +141,11 @@ export default function HabitSection({
           >
             {showHidden ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
             <EyeOff size={12} />
-            Hidden Habits ({globalHiddenHabits.length + dayHiddenHabits.length})
+            Hidden for today ({hiddenHabits.length})
           </button>
           {showHidden && (
             <div className="mt-1" style={{ borderTop: `1px solid ${colors.borderLight}` }}>
-              {/* Hidden for today only */}
-              {dayHiddenHabits.map((habit, idx) => (
+              {hiddenHabits.map((habit, idx) => (
                 <HabitRow
                   key={habit.id}
                   habit={{ ...habit, isExtra: false } as EffectiveHabit}
@@ -164,26 +155,9 @@ export default function HabitSection({
                   onRename={newName => onRenameHabit(habit.id, newName)}
                   onUpdateUnit={unit => onUpdateHabitUnit(habit.id, unit)}
                   onUnhideForDay={() => onUnhideHabitForDay(habit.id)}
-                  onToggleHidden={hidden => onToggleHabitHidden(habit.id, hidden)}
                   isExtra={false}
-                  hiddenState="day"
-                  isLast={idx === dayHiddenHabits.length - 1 && globalHiddenHabits.length === 0}
-                />
-              ))}
-              {/* Hidden globally */}
-              {globalHiddenHabits.map((habit, idx) => (
-                <HabitRow
-                  key={habit.id}
-                  habit={{ ...habit, isExtra: false } as EffectiveHabit}
-                  value={undefined}
-                  onToggle={() => {}}
-                  onDelete={() => onDeleteHabit(habit.id)}
-                  onRename={newName => onRenameHabit(habit.id, newName)}
-                  onUpdateUnit={unit => onUpdateHabitUnit(habit.id, unit)}
-                  onToggleHidden={hidden => onToggleHabitHidden(habit.id, hidden)}
-                  isExtra={false}
-                  hiddenState="global"
-                  isLast={idx === globalHiddenHabits.length - 1}
+                  isHidden
+                  isLast={idx === hiddenHabits.length - 1}
                 />
               ))}
             </div>
@@ -304,8 +278,6 @@ export default function HabitSection({
 
 // ─── Habit Row ────────────────────────────────────────────────────────────────
 
-type HiddenState = false | 'day' | 'global';
-
 interface HabitRowProps {
   habit: EffectiveHabit;
   value: boolean | number | undefined;
@@ -315,26 +287,17 @@ interface HabitRowProps {
   onUpdateUnit?: (unit: string | null) => void;
   onHideForDay?: () => void;
   onUnhideForDay?: () => void;
-  onToggleHidden?: (hidden: boolean) => void;
   isExtra: boolean;
-  hiddenState: HiddenState;
+  isHidden: boolean;
   isLast: boolean;
   tourAttr?: string;
 }
 
-function HabitRow({
-  habit, value, onToggle, onDelete, onRename, onUpdateUnit,
-  onHideForDay, onUnhideForDay, onToggleHidden,
-  isExtra, hiddenState, isLast, tourAttr,
-}: HabitRowProps) {
+function HabitRow({ habit, value, onToggle, onDelete, onRename, onUpdateUnit, onHideForDay, onUnhideForDay, isExtra, isHidden, isLast, tourAttr }: HabitRowProps) {
   const { colors } = useTheme();
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(habit.name);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const isHidden = hiddenState !== false;
-  const isDayHidden = hiddenState === 'day';
-  const isGlobalHidden = hiddenState === 'global';
 
   const isDone = habit.habit_type === 'checkbox' ? !!value : false;
   const numVal = habit.habit_type === 'value' ? (typeof value === 'number' ? value : 0) : 0;
@@ -482,14 +445,9 @@ function HabitRow({
               Today only
             </span>
           )}
-          {isDayHidden && (
-            <span className="ml-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider" style={{ background: colors.warningBg, color: colors.warning }}>
-              Hidden today
-            </span>
-          )}
-          {isGlobalHidden && (
+          {isHidden && (
             <span className="ml-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider" style={{ background: colors.accentLight, color: colors.accent }}>
-              Hidden globally
+              Hidden today
             </span>
           )}
         </span>
@@ -510,9 +468,7 @@ function HabitRow({
               <Pencil size={12} />
             </button>
           )}
-
-          {/* Unhide for today (day-hidden habits only) */}
-          {isDayHidden && onUnhideForDay && (
+          {isHidden && onUnhideForDay && (
             <button
               onClick={onUnhideForDay}
               className="p-1 rounded transition-colors"
@@ -521,50 +477,21 @@ function HabitRow({
               onMouseLeave={e => (e.currentTarget.style.color = colors.textTertiary)}
               title="Unhide for today"
             >
-              <CalendarCheck size={12} />
-            </button>
-          )}
-
-          {/* Hide / unhide globally */}
-          {!isExtra && onToggleHidden && !isGlobalHidden && (
-            <button
-              onClick={() => onToggleHidden(true)}
-              className="p-1 rounded transition-colors"
-              style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textTertiary }}
-              onMouseEnter={e => (e.currentTarget.style.color = colors.warning)}
-              onMouseLeave={e => (e.currentTarget.style.color = colors.textTertiary)}
-              title="Hide habit globally"
-            >
-              <EyeOff size={12} />
-            </button>
-          )}
-          {!isExtra && onToggleHidden && isGlobalHidden && (
-            <button
-              onClick={() => onToggleHidden(false)}
-              className="p-1 rounded transition-colors"
-              style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textTertiary }}
-              onMouseEnter={e => (e.currentTarget.style.color = colors.accent)}
-              onMouseLeave={e => (e.currentTarget.style.color = colors.textTertiary)}
-              title="Unhide habit"
-            >
               <Eye size={12} />
             </button>
           )}
-
-          {/* Hide for this day only (visible habits only) */}
           {!isHidden && !isExtra && onHideForDay && (
             <button
               onClick={onHideForDay}
               className="p-1 rounded transition-colors"
               style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textTertiary }}
-              onMouseEnter={e => (e.currentTarget.style.color = colors.textSecondary)}
+              onMouseEnter={e => (e.currentTarget.style.color = colors.warning)}
               onMouseLeave={e => (e.currentTarget.style.color = colors.textTertiary)}
               title="Hide for this day only"
             >
-              <CalendarDays size={12} />
+              <EyeOff size={12} />
             </button>
           )}
-
           <button
             onClick={onDelete}
             className="p-1 rounded transition-colors"
