@@ -159,7 +159,7 @@ function useClockTime(tz: string, timeFormat: '12h' | '24h'): string {
           timeZone: tz,
           hour: '2-digit',
           minute: '2-digit',
-          hour12: timeFormat === '12h',
+          hourCycle: timeFormat === '12h' ? 'h12' : 'h23',
         }));
       } catch { setTime('--:--'); }
     }

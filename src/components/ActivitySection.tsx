@@ -3,6 +3,7 @@ import { Plus, Trash2, Clock, Play, Pause, Square, Timer, Loader2, Pencil, X } f
 import type { Activity } from '../types';
 import { useTheme } from '../lib/theme';
 import { useTimeFormat, formatTimeRange as fmtRange } from '../lib/timeFormat';
+import TimeInput from './TimeInput';
 import {
   type DraftForm,
   type TimerRecord,
@@ -665,32 +666,16 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
 
           {/* Time inputs */}
           <div className="flex gap-3 mb-3">
-            <div
-              className="flex-1 flex items-center rounded-lg px-3 gap-2"
-              style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput }}
-            >
-              <input
-                type="time"
-                value={form.from}
-                onChange={e => setForm(f => ({ ...f, from: e.target.value }))}
-                className="flex-1 text-sm py-2.5 outline-none bg-transparent"
-                style={{ color: form.from ? colors.textPrimary : colors.textTertiary, border: 'none', fontFamily: 'inherit' }}
-              />
-              <Clock size={14} color={colors.textTertiary} />
-            </div>
-            <div
-              className="flex-1 flex items-center rounded-lg px-3 gap-2"
-              style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput }}
-            >
-              <input
-                type="time"
-                value={form.to}
-                onChange={e => setForm(f => ({ ...f, to: e.target.value }))}
-                className="flex-1 text-sm py-2.5 outline-none bg-transparent"
-                style={{ color: form.to ? colors.textPrimary : colors.textTertiary, border: 'none', fontFamily: 'inherit' }}
-              />
-              <Clock size={14} color={colors.textTertiary} />
-            </div>
+            <TimeInput
+              className="flex-1"
+              value={form.from}
+              onChange={from => setForm(f => ({ ...f, from }))}
+            />
+            <TimeInput
+              className="flex-1"
+              value={form.to}
+              onChange={to => setForm(f => ({ ...f, to }))}
+            />
           </div>
 
           {/* Note */}

@@ -4,6 +4,7 @@ import { Plus, X, Pencil, Trash2, MapPin, User, Clock, ChevronDown, ChevronUp, M
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../lib/theme';
 import { useTimeFormat, formatMinutes as fmtMin } from '../lib/timeFormat';
+import TimeInput from '../components/TimeInput';
 import {
   SH_WEEKDAYS_FULL, GREG_WEEKDAYS_FULL,
   SH_MONTHS, GREG_MONTH_NAMES,
@@ -560,22 +561,18 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold mb-1 block" style={{ color: colors.textSecondary }}>Start Time</label>
-                  <input
-                    type="time"
+                  <TimeInput
+                    className="w-full"
                     value={form.start_time}
-                    onChange={e => setForm({ ...form, start_time: e.target.value })}
-                    className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-                    style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}
+                    onChange={start_time => setForm({ ...form, start_time })}
                   />
                 </div>
                 <div>
                   <label className="text-xs font-semibold mb-1 block" style={{ color: colors.textSecondary }}>End Time</label>
-                  <input
-                    type="time"
+                  <TimeInput
+                    className="w-full"
                     value={form.end_time}
-                    onChange={e => setForm({ ...form, end_time: e.target.value })}
-                    className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-                    style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}
+                    onChange={end_time => setForm({ ...form, end_time })}
                   />
                 </div>
               </div>
@@ -788,12 +785,10 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
                       </div>
                       <div>
                         <label className="text-[11px] font-semibold mb-1 block" style={{ color: colors.textSecondary }}>Time</label>
-                        <input
-                          type="time"
+                        <TimeInput
+                          className="w-full"
                           value={reminderCustomTime}
-                          onChange={e => setReminderCustomTime(e.target.value)}
-                          className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-                          style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}
+                          onChange={setReminderCustomTime}
                         />
                       </div>
                     </div>
