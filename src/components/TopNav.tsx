@@ -606,6 +606,7 @@ export default function TopNav({
     { key: 'weekly', label: 'Weekly', tour: 'tour-view-weekly' },
     { key: 'monthly', label: 'Monthly', tour: 'tour-view-monthly' },
     { key: 'yearly', label: 'Yearly', tour: 'tour-view-yearly' },
+    { key: 'progress', label: 'Progress', tour: 'tour-view-progress' },
   ];
 
   const eff1Tz = clockSettings.clock1_tz === 'auto' ? timezone : (clockSettings.clock1_tz || timezone);

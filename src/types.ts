@@ -1,5 +1,5 @@
 export type CalendarMode = 'shamsi' | 'gregorian';
-export type ViewMode = 'daily' | 'weekly' | 'monthly' | 'yearly';
+export type ViewMode = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'progress';
 export type HabitType = 'checkbox' | 'value';
 
 // ─── Study Rooms ─────────────────────────────────────────────────────────────
@@ -159,6 +159,59 @@ export interface DailyData {
 export interface MonthlyNote {
   month_key: string;
   note: string;
+}
+
+// ─── Progress System ─────────────────────────────────────────────────────────
+
+export type ProgressStage = 'learn' | 'practice' | 'review';
+
+export interface ProgressProject {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  color: string | null;
+  icon: string | null;
+  deadline_date: string | null; // ISO date YYYY-MM-DD
+  target_study_minutes: number | null;
+  archived: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProgressResource {
+  id: string;
+  project_id: string;
+  user_id: string;
+  name: string;
+  unit: string;
+  total: number;
+  completed: number;
+  stage: ProgressStage | null;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProgressContribution {
+  id: string;
+  activity_id: string;
+  project_id: string;
+  resource_id: string | null;
+  user_id: string;
+  units_added: number;
+  date_key: string;
+  duration_minutes: number;
+  created_at: string;
+}
+
+// Link stored on an Activity to associate it with a project/resource.
+// This extends the Activity note field concept; stored as a JSONB column.
+export interface ActivityProgressLink {
+  project_id: string;
+  resource_id: string | null;
+  units_added: number;
 }
 
 export interface ShDate {
