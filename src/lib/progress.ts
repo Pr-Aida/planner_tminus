@@ -34,6 +34,26 @@ function pickDominantUnit(resources: ProgressResource[]): string | null {
   return best;
 }
 
+// Only contributions tied to a resource in this project count. Legacy rows with no
+// resource (and no real linked Activity) cannot be attributed and are excluded.
+export function attributableContributions(
+  resources: ProgressResource[],
+  contributions: ProgressContribution[]
+): ProgressContribution[] {
+  const resourceIds = new Set(resources.map(r => r.id));
+  return contributions.filter(c => !!c.resource_id && resourceIds.has(c.resource_id));
+}
+
+export function computeOverallPct(resources: ProgressResource[]): number | null {
+  const withTarget = resources.filter(r => Number.isFinite(r.total) && r.total > 0);
+  if (withTarget.length === 0) return null;
+  const sum = withTarget.reduce((s, r) => {
+    const pct = Math.min(1, Math.max(0, r.completed / r.total));
+    return s + pct;
+  }, 0);
+  return Math.round((sum / withTarget.length) * 100);
+}
+
 export function computeProjectStats(
   resources: ProgressResource[],
   contributions: ProgressContribution[],
@@ -46,16 +66,17 @@ export function computeProjectStats(
     total: Number.isFinite(r.total) ? r.total : 0,
     completed: Number.isFinite(r.completed) ? r.completed : 0,
   }));
-  const safeContribs = contributions.map(c => ({
+  const safeContribs = attributableContributions(resources, contributions).map(c => ({
     ...c,
     units_added: Number.isFinite(c.units_added) ? c.units_added : 0,
     duration_minutes: Number.isFinite(c.duration_minutes) ? c.duration_minutes : 0,
   }));
 
-  const totalUnits = safeResources.reduce((s, r) => s + r.total, 0);
-  const completedUnits = safeResources.reduce((s, r) => s + r.completed, 0);
+  const targeted = safeResources.filter(r => r.total > 0);
+  const totalUnits = targeted.reduce((s, r) => s + r.total, 0);
+  const completedUnits = targeted.reduce((s, r) => s + r.completed, 0);
   const remainingUnits = Math.max(0, totalUnits - completedUnits);
-  const overallPct = totalUnits > 0 ? Math.min(100, Math.max(0, Math.round((completedUnits / totalUnits) * 100))) : 0;
+  const overallPct = computeOverallPct(safeResources) ?? 0;
 
   const studiedMinutes = safeContribs.reduce((s, c) => s + c.duration_minutes, 0);
 

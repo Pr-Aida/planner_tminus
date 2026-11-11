@@ -6,13 +6,14 @@ export interface ProgressInsights {
   goal: { unit: string; target: number; done: number; pct: number; complete: boolean } | null;
   forecast: { finishDate: string; deltaDays: number | null } | null;
   paceTrend: { unit: string; current: number; previous: number; direction: 'up' | 'down' | 'steady' } | null;
-  momentum: { level: 'strong' | 'stable' | 'low'; activeDays: number } | null;
+  momentum: { level: 'strong' | 'stable'; activeDays: number } | null;
   bestPace: { unit: string; unitsPerHour: number } | null;
   fastest: { unit: string; amount: number; minutes: number } | null;
 }
 
 const DAY_MS = 86400000;
 const MIN_SESSIONS = 3;
+const MIN_ACTIVE_DAYS = 3;
 
 function parseKey(key: string): number {
   const [y, m, d] = key.split('-').map(Number);
@@ -101,11 +102,11 @@ export function computeInsights(
   let forecast: ProgressInsights['forecast'] = null;
   if (unit && remaining > 0) {
     const windowStart = shiftDate(todayKey, -13);
-    const recent = contributions
-      .filter(c => unitOf(c) === unit && inRange(c, windowStart, todayKey))
-      .reduce((s, c) => s + c.units_added, 0);
+    const recentLogs = contributions.filter(c => unitOf(c) === unit && c.units_added > 0 && inRange(c, windowStart, todayKey));
+    const recent = recentLogs.reduce((s, c) => s + c.units_added, 0);
+    const loggedDays = new Set(recentLogs.map(c => c.date_key)).size;
     const perDay = recent / 14;
-    if (perDay > 0) {
+    if (loggedDays >= MIN_ACTIVE_DAYS && perDay > 0) {
       const finishDate = shiftDate(todayKey, Math.ceil(remaining / perDay));
       forecast = {
         finishDate,
@@ -138,8 +139,8 @@ export function computeInsights(
       .filter(c => (c.units_added > 0 || c.duration_minutes > 0) && inRange(c, weekStart, todayKey))
       .map(c => c.date_key)
   ).size;
-  const momentum: ProgressInsights['momentum'] = contributions.length > 0
-    ? { level: activeDays >= 5 ? 'strong' : activeDays >= 3 ? 'stable' : 'low', activeDays }
+  const momentum: ProgressInsights['momentum'] = activeDays >= MIN_ACTIVE_DAYS
+    ? { level: activeDays >= 5 ? 'strong' : 'stable', activeDays }
     : null;
 
   const sessions = contributions.filter(c => countable(c) && c.units_added > 0 && c.duration_minutes >= 10);

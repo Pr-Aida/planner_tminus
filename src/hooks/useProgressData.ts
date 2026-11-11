@@ -128,33 +128,41 @@ export function useProgressData(userId: string | null) {
     const activityId = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const safeUnits = safeNum(data.units_added);
     const safeDuration = safeNum(data.duration_minutes);
+    const resourceId = data.resource_id;
+    const applyLocal = (delta: number) => {
+      if (!resourceId || delta === 0) return;
+      setResources(prev => prev.map(r => r.id === resourceId ? { ...r, completed: r.completed + delta } : r));
+    };
+    applyLocal(safeUnits);
 
     // Insert contribution first
     const { data: row, error: insertErr } = await supabase.from('planner_progress_contributions').insert({
       user_id: userId, activity_id: activityId,
-      project_id: data.project_id, resource_id: data.resource_id,
+      project_id: data.project_id, resource_id: resourceId,
       units_added: safeUnits, date_key: data.date_key,
       duration_minutes: safeDuration,
     }).select().single();
     if (insertErr || !row) {
       console.error('Failed to log contribution:', insertErr);
+      applyLocal(-safeUnits);
       return false;
     }
     const contribution = sanitizeContribution(row as ProgressContribution);
 
     // Atomically shift resource completed
-    if (data.resource_id && safeUnits !== 0) {
-      const next = await shiftResourceCompleted(data.resource_id, safeUnits);
+    if (resourceId && safeUnits !== 0) {
+      const next = await shiftResourceCompleted(resourceId, safeUnits);
       if (next === null) {
-        // Rollback the contribution insert
+        applyLocal(-safeUnits);
         await supabase.from('planner_progress_contributions').delete().eq('id', contribution.id);
         return false;
       }
-      setResources(prev => prev.map(r => r.id === data.resource_id ? { ...r, completed: next } : r));
+      setResources(prev => prev.map(r => r.id === resourceId ? { ...r, completed: next } : r));
     }
     setContributions(prev => [...prev, contribution]);
     return true;
   }, [userId]);
+
 
   const deleteContribution = useCallback(async (id: string): Promise<void> => {
     const contrib = contributions.find(c => c.id === id);

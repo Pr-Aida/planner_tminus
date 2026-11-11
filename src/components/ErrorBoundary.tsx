@@ -20,7 +20,7 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   static getDerivedStateFromError(error: unknown): State {
     const msg = error instanceof Error ? error.message : String(error);
-    const stack = error instanceof Error ? error.stack : null;
+    const stack = error instanceof Error ? error.stack ?? null : null;
     return { hasError: true, errorMessage: msg, errorStack: stack };
   }
 
