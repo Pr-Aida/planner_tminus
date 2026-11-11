@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Trash2, Clock, Play, Pause, Square, Timer, Loader2, Pencil, X } from 'lucide-react';
-import type { Activity } from '../types';
+import { Plus, Trash2, Clock, Play, Pause, Square, Timer, Loader2, Pencil, X, BarChart3, Link2, Unlink } from 'lucide-react';
+import type { Activity, ProgressProject, ProgressResource } from '../types';
+import { upsertContribution, removeContribution, getActivityLink, calcDurationMinutes } from '../lib/progressSync';
 import { useTheme } from '../lib/theme';
 import { useTimeFormat, formatTimeRange as fmtRange } from '../lib/timeFormat';
 import TimeInput from './TimeInput';
@@ -24,9 +25,11 @@ import {
 interface Props {
   activities: Activity[];
   dateKey: string;
-  onAdd: (act: Omit<Activity, 'id'>) => void;
+  onAdd: (act: Activity) => void;
   onDelete: (id: string) => void;
   onUpdate: (id: string, act: Omit<Activity, 'id'>) => void;
+  progressProjects?: ProgressProject[];
+  progressResources?: ProgressResource[];
 }
 
 type AddMode = 'menu' | 'timer' | 'manual' | null;
@@ -68,7 +71,7 @@ function formatTimeInput(seconds: number): { from: string; to: string } {
   };
 }
 
-export default function ActivitySection({ activities, dateKey, onAdd, onDelete, onUpdate }: Props) {
+export default function ActivitySection({ activities, dateKey, onAdd, onDelete, onUpdate, progressProjects = [], progressResources = [] }: Props) {
   const { colors } = useTheme();
   const timeFormat = useTimeFormat();
   const [addMode, setAddMode] = useState<AddMode>(null);
@@ -76,6 +79,13 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loadedDateKey, setLoadedDateKey] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+
+  // Optional Progress linking state
+  const [linkProgress, setLinkProgress] = useState(false);
+  const [linkProjectId, setLinkProjectId] = useState('');
+  const [linkResourceId, setLinkResourceId] = useState('');
+  const [linkUnits, setLinkUnits] = useState('');
+  const [existingLink, setExistingLink] = useState<{ projectId: string; resourceId: string | null; unitsAdded: number } | null>(null);
 
   const [timerState, setTimerState] = useState<TimerRecord | null>(null);
   const [loadingTimer, setLoadingTimer] = useState(true);
@@ -354,23 +364,61 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
     });
   }
 
-  function handleSaveForm() {
+  async function handleSaveForm() {
     if (!form.name.trim()) return;
+    const savedActivity: Omit<Activity, 'id'> = { name: form.name.trim(), from: form.from, to: form.to, note: form.note.trim() };
+    let activityId: string | null = null;
     if (editingId) {
-      onUpdate(editingId, { name: form.name.trim(), from: form.from, to: form.to, note: form.note.trim() });
+      onUpdate(editingId, savedActivity);
+      activityId = editingId;
     } else {
-      onAdd({ name: form.name.trim(), from: form.from, to: form.to, note: form.note.trim() });
+      activityId = crypto.randomUUID();
+      onAdd({ ...savedActivity, id: activityId });
     }
+
+    // Sync progress contribution if linking is on
+    if (linkProgress && linkProjectId && activityId) {
+      const durationMin = calcDurationMinutes(form.from, form.to);
+      const units = parseInt(linkUnits) || 0;
+      await upsertContribution({
+        activityId, projectId: linkProjectId, resourceId: linkResourceId || null,
+        unitsAdded: units, dateKey, durationMinutes: durationMin,
+      });
+    } else if (!linkProgress && existingLink && activityId) {
+      // Was linked before, now unlinked
+      await removeContribution(activityId, existingLink.projectId, existingLink.resourceId);
+    }
+
     discardDraft(dateKey);
     setForm(emptyDraftForm);
     setEditingId(null);
     setAddMode(null);
+    setLinkProgress(false);
+    setLinkProjectId('');
+    setLinkResourceId('');
+    setLinkUnits('');
+    setExistingLink(null);
   }
 
-  function handleEditActivity(act: Activity) {
+  async function handleEditActivity(act: Activity) {
     setForm({ name: act.name, from: act.from, to: act.to, note: act.note });
     setEditingId(act.id);
     setAddMode('manual');
+    // Check for existing progress link
+    const link = await getActivityLink(act.id);
+    if (link) {
+      setLinkProgress(true);
+      setLinkProjectId(link.project_id);
+      setLinkResourceId(link.resource_id || '');
+      setLinkUnits(String(link.units_added));
+      setExistingLink({ projectId: link.project_id, resourceId: link.resource_id, unitsAdded: link.units_added });
+    } else {
+      setLinkProgress(false);
+      setLinkProjectId('');
+      setLinkResourceId('');
+      setLinkUnits('');
+      setExistingLink(null);
+    }
   }
 
   function handleCancelForm() {
@@ -378,6 +426,11 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
     setForm(emptyDraftForm);
     setEditingId(null);
     setAddMode(null);
+    setLinkProgress(false);
+    setLinkProjectId('');
+    setLinkResourceId('');
+    setLinkUnits('');
+    setExistingLink(null);
   }
 
   const elapsedSeconds = timerState ? timerElapsedSeconds(timerState, nowMs) : 0;
@@ -691,6 +744,59 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
             onKeyDown={e => e.key === 'Enter' && handleSaveForm()}
           />
 
+          {/* Optional: Add to Progress */}
+          {progressProjects.length > 0 && (
+            <div className="mb-4">
+              <button
+                type="button"
+                onClick={() => setLinkProgress(v => !v)}
+                className="flex items-center gap-1.5 text-xs font-semibold transition-opacity hover:opacity-80"
+                style={{ color: linkProgress ? colors.accent : colors.textTertiary, background: 'transparent', border: 'none', cursor: 'pointer' }}
+              >
+                <BarChart3 size={12} />
+                {linkProgress ? 'Linked to Progress' : 'Add to Progress'}
+              </button>
+              {linkProgress && (
+                <div className="mt-2 space-y-2 rounded-lg p-3" style={{ background: colors.bgCard, border: `1px solid ${colors.borderLight}` }}>
+                  <select
+                    value={linkProjectId}
+                    onChange={e => { setLinkProjectId(e.target.value); setLinkResourceId(''); }}
+                    className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                    style={inputStyle}
+                  >
+                    <option value="">Select project…</option>
+                    {progressProjects.filter(p => !p.archived).map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  {linkProjectId && (
+                    <select
+                      value={linkResourceId}
+                      onChange={e => setLinkResourceId(e.target.value)}
+                      className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                      style={inputStyle}
+                    >
+                      <option value="">No specific resource</option>
+                      {progressResources.filter(r => r.project_id === linkProjectId).map(r => (
+                        <option key={r.id} value={r.id}>{r.name} ({r.unit})</option>
+                      ))}
+                    </select>
+                  )}
+                  <input
+                    type="number"
+                    value={linkUnits}
+                    onChange={e => setLinkUnits(e.target.value)}
+                    placeholder="Units completed (e.g. +8)"
+                    className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                    style={inputStyle}
+                    onFocus={e => e.target.style.borderColor = colors.heroBg}
+                    onBlur={e => e.target.style.borderColor = colors.borderLight}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Action buttons */}
           <div className="flex gap-3">
             <button
@@ -726,6 +832,8 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
             onDelete={() => onDelete(act.id)}
             onEdit={() => handleEditActivity(act)}
             timeFormat={timeFormat}
+            progressProjects={progressProjects}
+            progressResources={progressResources}
           />
         ))}
         {activities.length === 0 && !addMode && !loadingTimer && (
@@ -743,10 +851,32 @@ interface CardProps {
   onDelete: () => void;
   onEdit: () => void;
   timeFormat: '12h' | '24h';
+  progressProjects?: ProgressProject[];
+  progressResources?: ProgressResource[];
 }
 
-function ActivityCard({ activity, onDelete, onEdit, timeFormat }: CardProps) {
+function ActivityCard({ activity, onDelete, onEdit, timeFormat, progressProjects = [], progressResources = [] }: CardProps) {
   const { colors } = useTheme();
+  const [linkInfo, setLinkInfo] = useState<{ projectId: string; resourceId: string | null; unitsAdded: number } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getActivityLink(activity.id).then(link => {
+      if (!cancelled && link) {
+        setLinkInfo({ projectId: link.project_id, resourceId: link.resource_id, unitsAdded: link.units_added });
+      }
+    });
+    return () => { cancelled = true; };
+  }, [activity.id]);
+
+  const linkedProject = linkInfo ? progressProjects.find(p => p.id === linkInfo.projectId) : null;
+  const linkedResource = linkInfo?.resourceId ? progressResources.find(r => r.id === linkInfo.resourceId) : null;
+
+  async function handleUnlink() {
+    if (!linkInfo) return;
+    await removeContribution(activity.id, linkInfo.projectId, linkInfo.resourceId);
+    setLinkInfo(null);
+  }
   const duration = (() => {
     if (!activity.from || !activity.to) return null;
     const [fh, fm] = activity.from.split(':').map(Number);
@@ -786,8 +916,28 @@ function ActivityCard({ activity, onDelete, onEdit, timeFormat }: CardProps) {
             {activity.note}
           </p>
         )}
+        {linkedProject && (
+          <div className="flex items-center gap-1.5 mt-1">
+            <Link2 size={10} color={colors.accent} />
+            <span className="text-[11px] font-semibold" style={{ color: colors.accent }}>
+              {linkedProject.name}{linkedResource ? ` — ${linkedResource.name}` : ''}{linkInfo && linkInfo.unitsAdded > 0 ? ` (+${linkInfo.unitsAdded})` : ''}
+            </span>
+          </div>
+        )}
       </div>
       <div className="flex-shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {linkedProject && (
+          <button
+            onClick={handleUnlink}
+            className="p-1 rounded transition-colors"
+            style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textTertiary }}
+            onMouseEnter={e => (e.currentTarget.style.color = colors.warning)}
+            onMouseLeave={e => (e.currentTarget.style.color = colors.textTertiary)}
+            title="Unlink from Progress"
+          >
+            <Unlink size={13} />
+          </button>
+        )}
         <button
           onClick={onEdit}
           className="p-1 rounded transition-colors"

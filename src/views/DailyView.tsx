@@ -3,7 +3,7 @@ import { Bell, Check, X, RotateCcw, Ban, PartyPopper } from 'lucide-react';
 import ActivitySection from '../components/ActivitySection';
 import HabitSection from '../components/HabitSection';
 import { useTheme } from '../lib/theme';
-import type { Activity, DailyData, Habit, HabitType, Reminder, ReminderStatus } from '../types';
+import type { Activity, DailyData, Habit, HabitType, Reminder, ReminderStatus, ProgressProject, ProgressResource } from '../types';
 function genId() { return crypto.randomUUID(); }
 
 interface Props {
@@ -24,9 +24,11 @@ interface Props {
   onRemoveExtraHabit: (id: string) => void;
   onSaveTemplate: () => void;
   onUpdateReminderStatus: (id: string, status: ReminderStatus) => void;
+  progressProjects?: ProgressProject[];
+  progressResources?: ProgressResource[];
 }
 
-export default function DailyView({ data, habits, dateKey, isToday, reminders, onDataChange, onAddHabitToTemplate, onAddHabitToDay, onDeleteHabit, onUpdateHabitUnit, onEditHabit, onEditExtraHabit, onHideHabitForDay, onUnhideHabitForDay, onRemoveExtraHabit, onSaveTemplate, onUpdateReminderStatus }: Props) {
+export default function DailyView({ data, habits, dateKey, isToday, reminders, onDataChange, onAddHabitToTemplate, onAddHabitToDay, onDeleteHabit, onUpdateHabitUnit, onEditHabit, onEditExtraHabit, onHideHabitForDay, onUnhideHabitForDay, onRemoveExtraHabit, onSaveTemplate, onUpdateReminderStatus, progressProjects, progressResources }: Props) {
   const { colors } = useTheme();
   // Compute summary stats
   const { totalMinutes, namedActivities } = useMemo(() => {
@@ -169,6 +171,8 @@ export default function DailyView({ data, habits, dateKey, isToday, reminders, o
         onAdd={handleAddActivity}
         onDelete={handleDeleteActivity}
         onUpdate={handleUpdateActivity}
+        progressProjects={progressProjects}
+        progressResources={progressResources}
       />
 
       {/* Habits */}

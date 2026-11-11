@@ -18,7 +18,7 @@ export function computeProjectStats(
   resources: ProgressResource[],
   contributions: ProgressContribution[],
   deadlineDate: string | null,
-  targetStudyMinutes: number | null
+  _targetStudyMinutes: number | null
 ): ProjectStats {
   const totalUnits = resources.reduce((s, r) => s + r.total, 0);
   const completedUnits = resources.reduce((s, r) => s + r.completed, 0);
@@ -68,7 +68,7 @@ export function computeProjectStats(
       status = 'slightly-behind';
     }
   } else if (daysRemaining !== null && daysRemaining <= 3 && remainingUnits > 0) {
-    status = remainingUnits > dailyTarget * 2 ? 'at-risk' : 'slightly-behind';
+    status = remainingUnits > (dailyTarget ?? 0) * 2 ? 'at-risk' : 'slightly-behind';
   }
 
   return {

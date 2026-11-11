@@ -9,7 +9,7 @@ import {
   computeProjectStats, formatDuration, statusLabel, statusColor,
   UNIT_OPTIONS, PROJECT_COLORS,
 } from '../lib/progress';
-import type { ProgressProject, ProgressResource, ProgressStage } from '../types';
+import type { ProgressProject, ProgressResource, ProgressContribution, ProgressStage } from '../types';
 
 interface Props {
   userId: string | null;
@@ -44,7 +44,6 @@ export default function ProgressView({ userId }: Props) {
         onAddResource={progress.createResource}
         onUpdateResource={progress.updateResource}
         onDeleteResource={progress.deleteResource}
-        onSetCompleted={progress.setResourceCompleted}
         colors={colors}
       />
     );
@@ -199,7 +198,7 @@ function ProjectCard({ project, stats, resourceCount, onClick, colors }: {
 
 function ProjectDetail({
   project, resources, contributions, onBack, onUpdateProject, onDeleteProject,
-  onArchiveProject, onAddResource, onUpdateResource, onDeleteResource, onSetCompleted, colors,
+  onArchiveProject, onAddResource, onUpdateResource, onDeleteResource, colors,
 }: {
   project: ProgressProject;
   resources: ProgressResource[];
@@ -211,7 +210,6 @@ function ProjectDetail({
   onAddResource: (data: { project_id: string; name: string; unit: string; total: number; stage?: string | null }) => Promise<unknown>;
   onUpdateResource: (id: string, patch: Partial<ProgressResource>) => void;
   onDeleteResource: (id: string) => void;
-  onSetCompleted: (id: string, completed: number) => void;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
   const [showResourceForm, setShowResourceForm] = useState(false);
@@ -328,7 +326,6 @@ function ProjectDetail({
                 isLast={idx === resources.length - 1}
                 onUpdate={onUpdateResource}
                 onDelete={onDeleteResource}
-                onSetCompleted={onSetCompleted}
                 colors={colors}
               />
             ))}
@@ -388,12 +385,11 @@ function ProjectDetail({
 
 // ─── Resource Row ─────────────────────────────────────────────────────────────
 
-function ResourceRow({ resource, isLast, onUpdate, onDelete, onSetCompleted, colors }: {
+function ResourceRow({ resource, isLast, onUpdate, onDelete, colors }: {
   resource: ProgressResource;
   isLast: boolean;
   onUpdate: (id: string, patch: Partial<ProgressResource>) => void;
   onDelete: (id: string) => void;
-  onSetCompleted: (id: string, completed: number) => void;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
   const [editing, setEditing] = useState(false);
@@ -414,7 +410,7 @@ function ResourceRow({ resource, isLast, onUpdate, onDelete, onSetCompleted, col
       unit: editUnit.trim() || 'pages',
       total,
       completed,
-      stage: editStage || null,
+      stage: (editStage || null) as ProgressStage | null,
     });
     setEditing(false);
   }

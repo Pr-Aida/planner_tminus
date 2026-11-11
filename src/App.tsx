@@ -8,7 +8,9 @@ import {
 import type {
   CalendarMode, ViewMode, Habit, HabitType, DailyData, ShDate, GregDate,
   UserProfile, Reminder, ReminderStatus, ReminderOffset, TempHabit,
+  ProgressProject, ProgressResource,
 } from './types';
+import { useProgressData } from './hooks/useProgressData';
 import type { ClockSettings } from './components/TopNav';
 import type { User, Session } from '@supabase/supabase-js';
 import TopNav from './components/TopNav';
@@ -28,6 +30,7 @@ import StudyRoomsView from './views/StudyRoomsView';
 import JoinRoomView from './views/JoinRoomView';
 import RoomNotifications from './components/RoomNotifications';
 import ClassScheduleView from './views/ClassScheduleView';
+import ProgressView from './views/ProgressView';
 import { ThemeProvider, useTheme, type ThemeMode } from './lib/theme';
 import { TimeFormatProvider, type TimeFormat } from './lib/timeFormat';
 
@@ -111,6 +114,8 @@ export default function App() {
 
   const [coverImage, setCoverImage] = useState<string | null>(null);
   const [coverLoaded, setCoverLoaded] = useState(false);
+
+  const progress = useProgressData(user?.id ?? null);
 
   // Debounce timers
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -906,7 +911,7 @@ export default function App() {
       calMode={calMode}
       onCalModeChange={handleCalModeChange}
       viewMode={viewMode}
-      onViewChange={(v) => { setShowStudyRooms(false); setViewMode(v as ViewMode); }}
+      onViewChange={(v) => { setShowStudyRooms(false); setShowClassSchedule(false); setViewMode(v as ViewMode); }}
       currentGregYear={currentGregYear}
       currentShYear={calMode === 'shamsi' ? shDate.year : gregorianToSh(gregDate).year}
       currentShMonth={currentShMonth}
@@ -1000,6 +1005,8 @@ export default function App() {
         setShowStudyRooms(false);
       }}
       profileLoading={profileLoading}
+      progressProjects={progress.projects}
+      progressResources={progress.resources}
     />
     </TimeFormatProvider>
     </ThemeProvider>
@@ -1109,6 +1116,8 @@ interface MainAppContentProps {
   onViewGregYearChangeForYear: (y: number) => void;
   onPickMonth: (month: number, mode: ViewMode) => void;
   profileLoading: boolean;
+  progressProjects: ProgressProject[];
+  progressResources: ProgressResource[];
 }
 
 function MainAppContent(props: MainAppContentProps) {
@@ -1178,6 +1187,8 @@ function MainAppContent(props: MainAppContentProps) {
           timezone={props.timezone}
           onClose={props.onCloseClassSchedule}
         />
+      ) : props.viewMode === 'progress' ? (
+        <ProgressView userId={props.userId} />
       ) : (
       <>
       <HeroBanner imageDataUrl={props.coverImage} onImageChange={props.onCoverChange} />
@@ -1212,6 +1223,8 @@ function MainAppContent(props: MainAppContentProps) {
             onRemoveExtraHabit={props.onRemoveExtraHabit}
             onSaveTemplate={props.onSaveTemplate}
             onUpdateReminderStatus={props.onUpdateReminderStatus}
+            progressProjects={props.progressProjects}
+            progressResources={props.progressResources}
           />
         )}
 
