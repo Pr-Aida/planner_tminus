@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Plus, Trash2, Pencil, Save, X, ChevronLeft, Target,
   Calendar, Clock, TrendingUp, Archive, FolderPlus, BarChart3, BookOpen, Link2, Unlink,
-  MoreVertical, Zap,
+  MoreVertical, Zap, Check, Pause, Archive as ArchiveIcon,
 } from 'lucide-react';
 import LinkActivityModal from '../components/LinkActivityModal';
 import DatePicker from '../components/DatePicker';
@@ -11,10 +11,13 @@ import { useProgressData } from '../hooks/useProgressData';
 import { removeContribution } from '../lib/progressSync';
 import {
   computeProjectStats, formatDuration, formatProgressDate, statusLabel, statusColor,
-  UNIT_OPTIONS, PROJECT_COLORS,
+  UNIT_OPTIONS, PROJECT_COLORS, getQuickAddButtons, isTimeUnit, formatAmount, formatPair, toStoredAmount, toInputAmount,
+  projectStatusLabel, projectStatusColorKey, isPlanningActive, PROJECT_STATUS_OPTIONS,
 } from '../lib/progress';
+import { computeInsights } from '../lib/progressInsights';
+import ProgressInsightsPanel from '../components/ProgressInsightsPanel';
 import { dateKey, todayGreg } from '../lib/calendar';
-import type { ProgressProject, ProgressResource, ProgressContribution, ProgressStage, CalendarMode } from '../types';
+import type { ProgressProject, ProgressResource, ProgressContribution, CalendarMode, ProjectStatus } from '../types';
 
 interface Props {
   userId: string | null;
@@ -26,9 +29,15 @@ export default function ProgressView({ userId, calMode }: Props) {
   const progress = useProgressData(userId);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [showProjectForm, setShowProjectForm] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
-  const activeProjects = useMemo(
-    () => progress.projects.filter(p => !p.archived),
+  const visibleProjects = useMemo(
+    () => progress.projects.filter(p => showArchived ? (p.status === 'archived' || p.archived) : (p.status !== 'archived' && !p.archived)),
+    [progress.projects, showArchived]
+  );
+
+  const archivedCount = useMemo(
+    () => progress.projects.filter(p => p.status === 'archived' || p.archived).length,
     [progress.projects]
   );
 
@@ -36,6 +45,13 @@ export default function ProgressView({ userId, calMode }: Props) {
     () => progress.projects.find(p => p.id === selectedProjectId) || null,
     [progress.projects, selectedProjectId]
   );
+
+  // Safety: if selected project was deleted, go back to list
+  useEffect(() => {
+    if (selectedProjectId && !selectedProject) {
+      setSelectedProjectId(null);
+    }
+  }, [selectedProjectId, selectedProject]);
 
   if (selectedProject) {
     return (
@@ -80,25 +96,31 @@ export default function ProgressView({ userId, calMode }: Props) {
         <p className="text-sm" style={{ color: colors.textTertiary }}>Loading…</p>
       )}
 
-      {!progress.loading && activeProjects.length === 0 && !showProjectForm && (
+      {!progress.loading && visibleProjects.length === 0 && !showProjectForm && (
         <div className="text-center py-20">
           <FolderPlus size={48} color={colors.textTertiary} className="mx-auto mb-4 opacity-50" />
-          <p className="text-sm font-semibold mb-1" style={{ color: colors.textSecondary }}>No study projects yet</p>
-          <p className="text-xs mb-4" style={{ color: colors.textTertiary }}>
-            Create a project to track your study progress, resources, and deadlines.
+          <p className="text-sm font-semibold mb-1" style={{ color: colors.textSecondary }}>
+            {showArchived ? 'No archived projects' : 'No study projects yet'}
           </p>
-          <button
-            onClick={() => setShowProjectForm(true)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white"
-            style={{ background: colors.heroBg, border: 'none', cursor: 'pointer' }}
-          >
-            <Plus size={14} /> Create Project
-          </button>
+          {!showArchived && (
+            <>
+              <p className="text-xs mb-4" style={{ color: colors.textTertiary }}>
+                Create a project to track your study progress, resources, and deadlines.
+              </p>
+              <button
+                onClick={() => setShowProjectForm(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white"
+                style={{ background: colors.heroBg, border: 'none', cursor: 'pointer' }}
+              >
+                <Plus size={14} /> Create Project
+              </button>
+            </>
+          )}
         </div>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        {activeProjects.map(project => {
+        {visibleProjects.map(project => {
           const projectResources = progress.resources.filter(r => r.project_id === project.id);
           const projectContributions = progress.contributions.filter(c => c.project_id === project.id);
           const stats = computeProjectStats(projectResources, projectContributions, project.deadline_date, project.target_study_minutes);
@@ -115,6 +137,16 @@ export default function ProgressView({ userId, calMode }: Props) {
           );
         })}
       </div>
+
+      {archivedCount > 0 && (
+        <div className="mt-4 text-center">
+          <button onClick={() => setShowArchived(s => !s)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80"
+            style={{ background: 'transparent', color: colors.textTertiary, border: `1px solid ${colors.borderLight}`, cursor: 'pointer' }}>
+            <ArchiveIcon size={12} /> {showArchived ? 'Hide Archived' : `Show Archived (${archivedCount})`}
+          </button>
+        </div>
+      )}
 
       {showProjectForm && (
         <ProjectFormModal
@@ -138,9 +170,13 @@ function ProjectCard({ project, stats, resourceCount, onClick, calMode, colors }
   calMode: CalendarMode;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
-  const sc = statusColor(stats.status);
-  const statusClr = sc === 'success' ? colors.success : sc === 'warning' ? colors.warning : colors.error;
   const accentColor = project.color || colors.accent;
+  const mStatusKey = projectStatusColorKey(project.status);
+  const mStatusClr = mStatusKey === 'success' ? colors.success : mStatusKey === 'warning' ? colors.warning : mStatusKey === 'error' ? colors.error : mStatusKey === 'accent' ? colors.accent : colors.textTertiary;
+  const planningActive = isPlanningActive(project.status);
+  const sc = statusColor(stats.status);
+  const planClr = sc === 'success' ? colors.success : sc === 'warning' ? colors.warning : colors.error;
+  const showProgress = stats.totalUnits > 0;
 
   return (
     <button
@@ -155,21 +191,31 @@ function ProjectCard({ project, stats, resourceCount, onClick, calMode, colors }
           )}
           <h3 className="text-sm font-bold truncate" style={{ color: colors.textPrimary }}>{project.name}</h3>
         </div>
-        <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0"
-          style={{ background: `${statusClr}22`, color: statusClr }}>
-          {statusLabel(stats.status)}
-        </span>
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+          <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full"
+            style={{ background: `${mStatusClr}22`, color: mStatusClr }}>
+            {projectStatusLabel(project.status)}{project.status === 'completed' ? ' \u2713' : ''}
+          </span>
+          {planningActive && stats.totalUnits > 0 && stats.status !== 'on-track' && (
+            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full"
+              style={{ background: `${planClr}11`, color: planClr }}>
+              {statusLabel(stats.status)}
+            </span>
+          )}
+        </div>
       </div>
 
       {project.description && (
         <p className="text-xs mb-3 line-clamp-2" style={{ color: colors.textTertiary }}>{project.description}</p>
       )}
 
-      {stats.totalUnits > 0 && (
+      {showProgress && (
         <>
           <div className="flex items-center justify-between text-xs mb-1.5">
             <span style={{ color: colors.textSecondary }}>
-              {stats.completedUnits} / {stats.totalUnits} units
+              {stats.isMixedUnits
+                ? `${stats.overallPct}% overall`
+                : `${stats.completedUnits} / ${stats.totalUnits} ${stats.dominantUnit || 'units'}`}
             </span>
             <span className="font-bold" style={{ color: accentColor }}>{stats.overallPct}%</span>
           </div>
@@ -188,17 +234,17 @@ function ProjectCard({ project, stats, resourceCount, onClick, calMode, colors }
             <Clock size={11} /> {formatDuration(stats.studiedMinutes)}
           </span>
         )}
-        {stats.estimatedRemainingMinutes !== null && (
+        {planningActive && stats.estimatedRemainingMinutes !== null && (
           <span className="flex items-center gap-1">
             <TrendingUp size={11} /> ~{formatDuration(stats.estimatedRemainingMinutes)} left
           </span>
         )}
-        {stats.daysRemaining !== null && stats.daysRemaining >= 0 && (
+        {planningActive && stats.daysRemaining !== null && stats.daysRemaining >= 0 && (
           <span className="flex items-center gap-1">
             <Calendar size={11} /> {stats.daysRemaining}d left
           </span>
         )}
-        {stats.daysRemaining !== null && stats.daysRemaining < 0 && (
+        {planningActive && stats.daysRemaining !== null && stats.daysRemaining < 0 && (
           <span className="flex items-center gap-1" style={{ color: colors.error }}>
             <Calendar size={11} /> Overdue
           </span>
@@ -230,7 +276,7 @@ function ProjectDetail({
   onAddResource: (data: { project_id: string; name: string; unit: string; total: number; completed?: number; stage?: string | null }) => Promise<unknown>;
   onUpdateResource: (id: string, patch: Partial<ProgressResource>) => void;
   onDeleteResource: (id: string) => void;
-  onLogContribution: (data: { project_id: string; resource_id: string | null; units_added: number; date_key: string; duration_minutes?: number }) => Promise<unknown>;
+  onLogContribution: (data: { project_id: string; resource_id: string | null; units_added: number; date_key: string; duration_minutes?: number }) => Promise<boolean>;
   onDeleteContribution: (id: string) => Promise<void>;
   calMode: CalendarMode;
   allContributions: ProgressContribution[];
@@ -241,19 +287,55 @@ function ProjectDetail({
   const [showLinkActivity, setShowLinkActivity] = useState(false);
   const [showEditProject, setShowEditProject] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const statusMenuRef = useRef<HTMLDivElement>(null);
   const accentColor = project.color || colors.accent;
   const stats = computeProjectStats(resources, contributions, project.deadline_date, project.target_study_minutes);
+  const planningActive = isPlanningActive(project.status);
+  const mStatusKey = projectStatusColorKey(project.status);
+  const mStatusClr = mStatusKey === 'success' ? colors.success : mStatusKey === 'warning' ? colors.warning : mStatusKey === 'error' ? colors.error : mStatusKey === 'accent' ? colors.accent : colors.textTertiary;
   const sc = statusColor(stats.status);
-  const statusClr = sc === 'success' ? colors.success : sc === 'warning' ? colors.warning : colors.error;
+  const planClr = sc === 'success' ? colors.success : sc === 'warning' ? colors.warning : colors.error;
 
   const todayKey = dateKey(todayGreg());
+  const insights = useMemo(
+    () => planningActive ? computeInsights(resources, contributions, project.deadline_date, todayKey) : null,
+    [resources, contributions, project.deadline_date, todayKey, planningActive]
+  );
+  const milestonePct = stats.totalUnits > 0 ? Math.floor(stats.overallPct / 25) * 25 : 0;
+
+  useEffect(() => {
+    if (!statusMenuOpen) return;
+    function onClick(e: MouseEvent) {
+      if (statusMenuRef.current && !statusMenuRef.current.contains(e.target as Node)) setStatusMenuOpen(false);
+    }
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [statusMenuOpen]);
 
   const recentContributions = [...contributions]
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .sort((a, b) => {
+      try { return (b.created_at || '').localeCompare(a.created_at || ''); }
+      catch { return 0; }
+    })
     .slice(0, 8);
 
-  // Today's logged progress
+  // Today's logged progress - compact summary by unit
   const todayContributions = contributions.filter(c => c.date_key === todayKey);
+  const todayByUnit = useMemo(() => {
+    const unitMap = new Map<string, number>();
+    let studiedMin = 0;
+    for (const c of todayContributions) {
+      const res = resources.find(r => r.id === c.resource_id);
+      const u = res?.unit || null;
+      const safeUnits = Number.isFinite(c.units_added) ? c.units_added : 0;
+      const safeDur = Number.isFinite(c.duration_minutes) ? c.duration_minutes : 0;
+      if (u && !isTimeUnit(u) && safeUnits > 0) unitMap.set(u, (unitMap.get(u) || 0) + safeUnits);
+      if (isTimeUnit(u) && safeUnits > 0) studiedMin += safeUnits;
+      if (safeDur > 0) studiedMin += safeDur;
+    }
+    return { amounts: [...unitMap].map(([unit, amount]) => ({ unit, amount })), studiedMinutes: studiedMin };
+  }, [todayContributions, resources]);
 
   return (
     <div className="max-w-5xl mx-auto px-4 md:px-6 pt-6 pb-16">
@@ -295,36 +377,96 @@ function ProjectDetail({
         </div>
 
         {project.description && (
-          <p className="text-sm mb-4" style={{ color: colors.textSecondary }}>{project.description}</p>
+          <p className="text-sm mb-3" style={{ color: colors.textSecondary }}>{project.description}</p>
         )}
+
+        {/* Manual Status selector */}
+        <div className="mb-4">
+          <div className="relative inline-block" ref={statusMenuRef}>
+            <button onClick={() => setStatusMenuOpen(o => !o)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+              style={{ background: `${mStatusClr}18`, color: mStatusClr, border: `1px solid ${mStatusClr}33`, cursor: 'pointer' }}>
+              {project.status === 'completed' && <Check size={12} />}
+              {project.status === 'on_hold' && <Pause size={12} />}
+              {project.status === 'archived' && <ArchiveIcon size={12} />}
+              {projectStatusLabel(project.status)}
+              <span style={{ fontSize: 9, opacity: 0.6 }}>&#9662;</span>
+            </button>
+            {statusMenuOpen && (
+              <div className="absolute left-0 top-9 z-30 rounded-lg py-1 min-w-[140px]"
+                style={{ background: colors.bgCard, border: `1px solid ${colors.borderLight}`, boxShadow: `0 4px 12px ${colors.shadow}` }}>
+                {PROJECT_STATUS_OPTIONS.map(s => {
+                  const sClr = projectStatusColorKey(s);
+                  const c = sClr === 'success' ? colors.success : sClr === 'warning' ? colors.warning : sClr === 'error' ? colors.error : sClr === 'accent' ? colors.accent : colors.textTertiary;
+                  return (
+                    <button key={s} onClick={() => {
+                      const patch: Partial<ProgressProject> = { status: s as ProjectStatus };
+                      if (s === 'archived') patch.archived = true;
+                      else if (project.status === 'archived') patch.archived = false;
+                      onUpdateProject(patch);
+                      setStatusMenuOpen(false);
+                    }}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs transition-colors"
+                      style={{ border: 'none', cursor: 'pointer', background: project.status === s ? `${c}11` : 'transparent', color: project.status === s ? c : colors.textSecondary, fontWeight: project.status === s ? 700 : 400 }}
+                      onMouseEnter={e => { if (project.status !== s) e.currentTarget.style.background = colors.bgHover; }}
+                      onMouseLeave={e => { if (project.status !== s) e.currentTarget.style.background = 'transparent'; }}>
+                      {s === 'completed' && <Check size={11} />}
+                      {s === 'on_hold' && <Pause size={11} />}
+                      {s === 'archived' && <ArchiveIcon size={11} />}
+                      {projectStatusLabel(s)}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* Stats grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-          <StatBox label="Progress" value={`${stats.overallPct}%`} sub={`${stats.completedUnits}/${stats.totalUnits}`} color={accentColor} colors={colors} />
+          <StatBox label="Progress" value={`${stats.overallPct}%`} sub={stats.isMixedUnits ? 'mixed units' : `${stats.completedUnits}/${stats.totalUnits} ${stats.dominantUnit || ''}`.trim()} color={accentColor} colors={colors} />
           <StatBox label="Studied" value={formatDuration(stats.studiedMinutes)} sub={project.target_study_minutes ? `of ${formatDuration(project.target_study_minutes)}` : undefined} color={colors.accent} colors={colors} />
-          <StatBox label="Est. Remaining" value={stats.estimatedRemainingMinutes !== null ? `~${formatDuration(stats.estimatedRemainingMinutes)}` : '—'} sub={stats.pacePerHour !== null ? `${stats.pacePerHour.toFixed(1)} u/hr` : undefined} color={colors.warning} colors={colors} />
-          <StatBox label="Deadline" value={stats.daysRemaining !== null ? (stats.daysRemaining >= 0 ? `${stats.daysRemaining}d` : 'Overdue') : '—'} sub={project.deadline_date ? formatProgressDate(project.deadline_date, calMode) : undefined} color={stats.daysRemaining !== null && stats.daysRemaining < 0 ? colors.error : colors.textPrimary} colors={colors} />
+          <StatBox label="Est. Remaining" value={planningActive && stats.estimatedRemainingMinutes !== null ? `~${formatDuration(stats.estimatedRemainingMinutes)}` : '—'} sub={planningActive && stats.pacePerHour !== null ? `${stats.pacePerHour.toFixed(1)} ${stats.dominantUnit || 'units'}/hr` : undefined} color={colors.warning} colors={colors} />
+          <StatBox label="Deadline" value={stats.daysRemaining !== null ? (stats.daysRemaining >= 0 ? `${stats.daysRemaining}d` : (planningActive ? 'Overdue' : 'Past')) : '—'} sub={project.deadline_date ? formatProgressDate(project.deadline_date, calMode) : undefined} color={planningActive && stats.daysRemaining !== null && stats.daysRemaining < 0 ? colors.error : colors.textPrimary} colors={colors} />
         </div>
 
-        {/* Status + Daily Target */}
-        <div className="flex flex-wrap gap-3 text-xs">
-          <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold"
-            style={{ background: `${statusClr}18`, color: statusClr }}>
-            <Target size={12} /> {statusLabel(stats.status)}
-          </span>
-          {stats.dailyTarget !== null && (
-            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold"
-              style={{ background: colors.bgInput, color: colors.textSecondary }}>
-              <TrendingUp size={12} /> Daily target: {stats.dailyTarget} units
-            </span>
-          )}
-          {stats.remainingUnits > 0 && (
-            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold"
-              style={{ background: colors.bgInput, color: colors.textSecondary }}>
-              <BookOpen size={12} /> {stats.remainingUnits} units remaining
-            </span>
-          )}
-        </div>
+        {/* Planning status + Daily Target (only when in_progress) */}
+        {planningActive && (
+          <div className="flex flex-wrap gap-3 text-xs">
+            {stats.totalUnits > 0 && (
+              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold"
+                style={{ background: `${planClr}18`, color: planClr }}>
+                <Target size={12} /> {statusLabel(stats.status)}
+              </span>
+            )}
+            {stats.dailyTargetByUnit.length > 0 && (
+              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold"
+                style={{ background: colors.bgInput, color: colors.textSecondary }}>
+                <TrendingUp size={12} /> Daily target: {stats.dailyTargetByUnit.map(t => `${t.target} ${t.unit}`).join(', ')}/day
+              </span>
+            )}
+            {stats.remainingByUnit.length > 0 && (
+              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold"
+                style={{ background: colors.bgInput, color: colors.textSecondary }}>
+                <BookOpen size={12} /> {stats.remainingByUnit.map(r => `${r.remaining} ${r.unit}`).join(', ')} remaining
+              </span>
+            )}
+          </div>
+        )}
+        {!planningActive && project.status === 'on_hold' && (
+          <div className="text-xs font-semibold flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
+            style={{ background: `${colors.warning}18`, color: colors.warning }}>
+            <Pause size={12} /> On Hold — planning paused
+          </div>
+        )}
+
+        {/* Milestone */}
+        {milestonePct >= 25 && stats.totalUnits > 0 && (
+          <div className="mt-3 text-xs font-semibold flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
+            style={{ background: milestonePct >= 100 ? `${colors.success}18` : `${colors.accent}18`, color: milestonePct >= 100 ? colors.success : colors.accent }}>
+            {milestonePct >= 100 ? 'Project completed ✓' : `${milestonePct}% complete 🎯`}
+          </div>
+        )}
 
         {/* Remaining breakdown */}
         {stats.remainingByUnit.length > 0 && (
@@ -341,39 +483,22 @@ function ProjectDetail({
         )}
       </div>
 
-      {/* Today section */}
-      {todayContributions.length > 0 && (
+      {/* Insights panel - only show when planning is active */}
+      {insights && planningActive && (
+        <ProgressInsightsPanel insights={insights} calMode={calMode} hasDeadline={!!project.deadline_date} />
+      )}
+
+      {/* Today section - compact summary */}
+      {(todayByUnit.amounts.length > 0 || todayByUnit.studiedMinutes > 0) && (
         <div className="rounded-xl p-4 mb-4" style={{ background: colors.bgCard, border: `1px solid ${colors.borderLight}`, boxShadow: `0 2px 8px ${colors.shadow}` }}>
-          <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: colors.accent }}>Today</p>
-          <div className="space-y-1.5">
-            {todayContributions.map(c => {
-              const res = resources.find(r => r.id === c.resource_id);
-              return (
-                <div key={c.id} className="flex items-center justify-between text-xs">
-                  <span style={{ color: colors.textSecondary }}>
-                    {res ? res.name : 'General'}
-                  </span>
-                  <span className="font-semibold" style={{ color: colors.textPrimary }}>
-                    {c.units_added > 0 ? `+${c.units_added} ${res?.unit || ''}` : ''}
-                    {c.duration_minutes > 0 ? `${c.units_added > 0 ? ' · ' : ''}${formatDuration(c.duration_minutes)}` : ''}
-                  </span>
-                </div>
-              );
-            })}
-            {(() => {
-              const totalMin = todayContributions.reduce((s, c) => s + c.duration_minutes, 0);
-              const totalUnits = todayContributions.reduce((s, c) => s + c.units_added, 0);
-              if (totalMin === 0 && totalUnits === 0) return null;
-              return (
-                <div className="flex items-center justify-between text-xs pt-1.5 mt-1" style={{ borderTop: `1px solid ${colors.borderLight}` }}>
-                  <span className="font-bold" style={{ color: colors.textTertiary }}>Total today</span>
-                  <span className="font-bold" style={{ color: colors.accent }}>
-                    {totalUnits > 0 ? `${totalUnits} units` : ''}
-                    {totalMin > 0 ? `${totalUnits > 0 ? ' · ' : ''}${formatDuration(totalMin)}` : ''}
-                  </span>
-                </div>
-              );
-            })()}
+          <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: colors.accent }}>Today</p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+            {todayByUnit.amounts.map(a => (
+              <span key={a.unit} className="font-semibold" style={{ color: colors.textPrimary }}>+{a.amount} {a.unit}</span>
+            ))}
+            {todayByUnit.studiedMinutes > 0 && (
+              <span className="font-semibold" style={{ color: colors.textPrimary }}>+{formatDuration(todayByUnit.studiedMinutes)} studied</span>
+            )}
           </div>
         </div>
       )}
@@ -433,7 +558,7 @@ function ProjectDetail({
                 </span>
                 <div className="flex items-center gap-2">
                   <span style={{ color: colors.textTertiary }}>
-                    {c.units_added > 0 ? `+${c.units_added} ` : ''}{formatDuration(c.duration_minutes)}
+                    {c.units_added > 0 ? `+${(() => { const u = res?.unit || stats.dominantUnit || ''; return isTimeUnit(u) ? formatDuration(c.units_added) : `${c.units_added} ${u}`; })()} ` : ''}{formatDuration(c.duration_minutes)}
                   </span>
                   <button
                     onClick={async () => {
@@ -471,7 +596,7 @@ function ProjectDetail({
 
       {showResourceForm && (
         <ResourceFormModal
-          onSave={async (data) => { await onAddResource({ ...data, project_id: project.id, completed: data.completed || 0 }); setShowResourceForm(false); }}
+          onSave={async (data) => { await onAddResource({ ...data, project_id: project.id, completed: 0 }); setShowResourceForm(false); }}
           onCancel={() => setShowResourceForm(false)}
           colors={colors}
         />
@@ -501,16 +626,6 @@ function ProjectDetail({
 
 // ─── Quick-add shortcuts per unit type ────────────────────────────────────────
 
-function getQuickAddButtons(unit: string): { label: string; amount: number }[] {
-  const u = unit.toLowerCase();
-  if (u === 'hours') return [{ label: '+15m', amount: 15 }, { label: '+30m', amount: 30 }, { label: '+1h', amount: 60 }];
-  if (['pages', 'slides', 'questions', 'exercises', 'flashcards'].includes(u)) {
-    return [{ label: '+1', amount: 1 }, { label: '+5', amount: 5 }, { label: '+10', amount: 10 }];
-  }
-  // videos, chapters, lectures, past papers, custom
-  return [{ label: '+1', amount: 1 }];
-}
-
 // ─── Resource Row ─────────────────────────────────────────────────────────────
 
 function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onLog, todayKey, colors }: {
@@ -519,7 +634,7 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
   accentColor: string;
   onUpdate: (id: string, patch: Partial<ProgressResource>) => void;
   onDelete: (id: string) => void;
-  onLog: (data: { project_id: string; resource_id: string | null; units_added: number; date_key: string; duration_minutes?: number }) => Promise<unknown>;
+  onLog: (data: { project_id: string; resource_id: string | null; units_added: number; date_key: string; duration_minutes?: number }) => Promise<boolean>;
   todayKey: string;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
@@ -528,19 +643,30 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [customAmount, setCustomAmount] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Edit form state
   const [editName, setEditName] = useState(resource.name);
   const [editUnit, setEditUnit] = useState(UNIT_OPTIONS.includes(resource.unit) ? resource.unit : 'custom');
-  const [editTotal, setEditTotal] = useState(String(resource.total));
-  const [editCompleted, setEditCompleted] = useState(String(resource.completed));
-  const [editStage, setEditStage] = useState<string>(resource.stage || '');
+  const [editTotal, setEditTotal] = useState(toInputAmount(resource.total, resource.unit));
+  const [editCompleted, setEditCompleted] = useState(toInputAmount(resource.completed, resource.unit));
   const [editCustomUnit, setEditCustomUnit] = useState(!UNIT_OPTIONS.includes(resource.unit) ? resource.unit : '');
 
-  const pct = resource.total > 0 ? Math.min(100, Math.round((resource.completed / resource.total) * 100)) : 0;
+  const pct = resource.total > 0 ? Math.min(100, Math.max(0, Math.round((resource.completed / resource.total) * 100))) : 0;
+  const autoStatus: { label: string; color: string } = resource.total <= 0
+    ? { label: 'In Progress', color: colors.accent }
+    : pct === 0 ? { label: 'Not Started', color: colors.textTertiary }
+    : pct >= 100 ? { label: 'Completed', color: colors.success }
+    : { label: 'In Progress', color: colors.accent };
   const quickButtons = getQuickAddButtons(resource.unit);
-  const isHours = resource.unit.toLowerCase() === 'hours';
+  const isHours = isTimeUnit(resource.unit);
+
+  function showToast(msg: string) {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2200);
+  }
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -552,36 +678,47 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
   }, [menuOpen]);
 
   function saveEdit() {
-    const total = parseInt(editTotal) || 0;
-    const completed = Math.min(parseInt(editCompleted) || 0, total);
     const finalUnit = editUnit === 'custom' ? (editCustomUnit.trim() || 'custom') : editUnit;
+    const total = toStoredAmount(editTotal, finalUnit);
+    const completed = Math.min(toStoredAmount(editCompleted, finalUnit), total);
     onUpdate(resource.id, {
       name: editName.trim() || resource.name,
       unit: finalUnit,
       total,
       completed,
-      stage: (editStage || null) as ProgressStage | null,
     });
     setEditing(false);
   }
 
-  function quickAdd(amount: number) {
-    if (isHours) {
-      const hours = Math.round((amount / 60) * 100) / 100;
-      onLog({ project_id: projectId, resource_id: resource.id, units_added: hours, date_key: todayKey, duration_minutes: amount });
+  async function quickAdd(amount: number) {
+    if (saving) return;
+    setSaving(true);
+    const units = isHours ? amount : amount;
+    const ok = await onLog({ project_id: projectId, resource_id: resource.id, units_added: units, date_key: todayKey, duration_minutes: isHours ? amount : 0 });
+    setSaving(false);
+    if (ok) {
+      showToast(`+${formatAmount(amount, resource.unit)} logged`);
     } else {
-      onLog({ project_id: projectId, resource_id: resource.id, units_added: amount, date_key: todayKey, duration_minutes: 0 });
+      showToast('Failed to save. Please try again.');
     }
   }
 
-  function customAdd() {
+  async function customAdd() {
+    if (saving) return;
     const n = parseFloat(customAmount);
     if (!n || n <= 0) return;
+    setSaving(true);
     if (isHours) {
-      const hours = Math.round((n / 60) * 100) / 100;
-      onLog({ project_id: projectId, resource_id: resource.id, units_added: hours, date_key: todayKey, duration_minutes: n });
+      const minutes = Math.round(n);
+      const ok = await onLog({ project_id: projectId, resource_id: resource.id, units_added: minutes, date_key: todayKey, duration_minutes: minutes });
+      setSaving(false);
+      if (ok) showToast(`+${formatDuration(minutes)} logged`);
+      else showToast('Failed to save.');
     } else {
-      onLog({ project_id: projectId, resource_id: resource.id, units_added: n, date_key: todayKey, duration_minutes: 0 });
+      const ok = await onLog({ project_id: projectId, resource_id: resource.id, units_added: n, date_key: todayKey, duration_minutes: 0 });
+      setSaving(false);
+      if (ok) showToast(`+${n} ${resource.unit} added`);
+      else showToast('Failed to save.');
     }
     setCustomAmount('');
     setShowLog(false);
@@ -607,19 +744,11 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
         </div>
         <div className="flex flex-wrap gap-2 mb-2">
           <label className="text-xs flex items-center gap-1.5" style={{ color: colors.textSecondary }}>
-            Total <input type="number" value={editTotal} onChange={e => setEditTotal(e.target.value)} className="w-20 rounded-lg px-2 py-1.5 text-sm outline-none" style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgCard, color: colors.textPrimary }} />
+            Total <input type="number" value={editTotal} onChange={e => setEditTotal(e.target.value)} placeholder={isHours ? 'hours' : '0'} className="w-20 rounded-lg px-2 py-1.5 text-sm outline-none" style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgCard, color: colors.textPrimary }} />
           </label>
           <label className="text-xs flex items-center gap-1.5" style={{ color: colors.textSecondary }}>
-            Done <input type="number" value={editCompleted} onChange={e => setEditCompleted(e.target.value)} className="w-20 rounded-lg px-2 py-1.5 text-sm outline-none" style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgCard, color: colors.textPrimary }} />
+            Done <input type="number" value={editCompleted} onChange={e => setEditCompleted(e.target.value)} placeholder={isHours ? 'hours' : '0'} className="w-20 rounded-lg px-2 py-1.5 text-sm outline-none" style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgCard, color: colors.textPrimary }} />
           </label>
-          <select value={editStage} onChange={e => setEditStage(e.target.value)}
-            className="rounded-lg px-3 py-2 text-xs outline-none"
-            style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgCard, color: colors.textPrimary }}>
-            <option value="">No stage</option>
-            <option value="learn">Learn</option>
-            <option value="practice">Practice</option>
-            <option value="review">Review</option>
-          </select>
         </div>
         <div className="flex gap-2">
           <button onClick={saveEdit} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white" style={{ background: colors.heroBg, border: 'none', cursor: 'pointer' }}>
@@ -639,10 +768,8 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-sm font-medium truncate" style={{ color: colors.textPrimary }}>{resource.name}</span>
-          {resource.stage && (
-            <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full flex-shrink-0"
-              style={{ background: `${accentColor}22`, color: accentColor }}>{resource.stage}</span>
-          )}
+          <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full flex-shrink-0"
+            style={{ background: `${autoStatus.color}22`, color: autoStatus.color }}>{autoStatus.label}</span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {resource.total > 0 && (
@@ -681,9 +808,9 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
       {resource.total > 0 && (
         <>
           <div className="flex items-center justify-between text-[11px] mb-1" style={{ color: colors.textTertiary }}>
-            <span>{resource.completed} / {resource.total} {resource.unit}</span>
+            <span>{formatPair(resource.completed, resource.total, resource.unit)}</span>
             {resource.total - resource.completed > 0 && (
-              <span>{resource.total - resource.completed} remaining</span>
+              <span>{isHours ? formatDuration(resource.total - resource.completed) : `${resource.total - resource.completed} ${resource.unit}`} remaining</span>
             )}
           </div>
           <div className="rounded-full h-2 overflow-hidden mb-2" style={{ background: `${accentColor}22` }}>
@@ -706,9 +833,9 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
           {/* Quick-add buttons */}
           <div className="flex flex-wrap gap-1.5 mb-2">
             {quickButtons.map(b => (
-              <button key={b.label} onClick={() => quickAdd(b.amount)}
+              <button key={b.label} onClick={() => quickAdd(b.amount)} disabled={saving}
                 className="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all"
-                style={{ border: 'none', background: accentColor, color: '#fff', cursor: 'pointer' }}>
+                style={{ border: 'none', background: accentColor, color: '#fff', cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
                 {b.label}
               </button>
             ))}
@@ -719,10 +846,11 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
               placeholder={`Custom ${isHours ? 'minutes' : resource.unit}`}
               className="flex-1 rounded-lg px-2.5 py-1.5 text-xs outline-none"
               style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgCard, color: colors.textPrimary }}
+              disabled={saving}
               onKeyDown={e => e.key === 'Enter' && customAdd()} />
-            <button onClick={customAdd} disabled={!customAmount || parseFloat(customAmount) <= 0}
+            <button onClick={customAdd} disabled={saving || !customAmount || parseFloat(customAmount) <= 0}
               className="px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-opacity"
-              style={{ background: accentColor, border: 'none', cursor: 'pointer', opacity: (!customAmount || parseFloat(customAmount) <= 0) ? 0.5 : 1 }}>
+              style={{ background: accentColor, border: 'none', cursor: 'pointer', opacity: (saving || !customAmount || parseFloat(customAmount) <= 0) ? 0.5 : 1 }}>
               Add
             </button>
             <button onClick={() => { setShowLog(false); setCustomAmount(''); }}
@@ -731,6 +859,12 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
               <X size={14} />
             </button>
           </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className="mt-2 text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: `${colors.accent}18`, color: colors.accent }}>
+          {toast}
         </div>
       )}
 
@@ -766,7 +900,7 @@ function StatBox({ label, value, sub, color, colors }: {
 function ProjectFormModal({ initial, calMode, onSave, onCancel, colors }: {
   initial?: ProgressProject;
   calMode: CalendarMode;
-  onSave: (data: { name: string; description?: string; color?: string | null; deadline_date?: string | null; target_study_minutes?: number | null }) => void;
+  onSave: (data: { name: string; description?: string; color?: string | null; deadline_date?: string | null; target_study_minutes?: number | null; status?: ProjectStatus }) => void;
   onCancel: () => void;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
@@ -775,6 +909,7 @@ function ProjectFormModal({ initial, calMode, onSave, onCancel, colors }: {
   const [color, setColor] = useState(initial?.color || '');
   const [deadlineDate, setDeadlineDate] = useState<string | null>(initial?.deadline_date || null);
   const [targetHours, setTargetHours] = useState(initial?.target_study_minutes ? String(Math.round(initial.target_study_minutes / 60)) : '');
+  const [status, setStatus] = useState<ProjectStatus>(initial?.status || 'in_progress');
 
   function handleSave() {
     if (!name.trim()) return;
@@ -784,6 +919,7 @@ function ProjectFormModal({ initial, calMode, onSave, onCancel, colors }: {
       color: color || null,
       deadline_date: deadlineDate || null,
       target_study_minutes: targetHours ? Math.round(parseFloat(targetHours) * 60) : null,
+      status,
     });
   }
 
@@ -810,6 +946,16 @@ function ProjectFormModal({ initial, calMode, onSave, onCancel, colors }: {
           className="w-full rounded-lg px-4 py-2.5 text-sm outline-none mb-3 resize-none"
           style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }} />
 
+        <label className="text-xs font-semibold block mb-1.5" style={{ color: colors.textSecondary }}>Deadline (optional)</label>
+        <div className="mb-4">
+          <DatePicker
+            value={deadlineDate}
+            calMode={calMode}
+            onChange={setDeadlineDate}
+            onClear={() => setDeadlineDate(null)}
+            colors={colors}
+          />
+        </div>
         <label className="text-xs font-semibold block mb-1.5" style={{ color: colors.textSecondary }}>Color (optional)</label>
         <div className="flex gap-2 mb-3">
           {PROJECT_COLORS.map(c => (
@@ -821,14 +967,12 @@ function ProjectFormModal({ initial, calMode, onSave, onCancel, colors }: {
 
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div>
-            <label className="text-xs font-semibold block mb-1.5" style={{ color: colors.textSecondary }}>Deadline (optional)</label>
-            <DatePicker
-              value={deadlineDate}
-              calMode={calMode}
-              onChange={setDeadlineDate}
-              onClear={() => setDeadlineDate(null)}
-              colors={colors}
-            />
+            <label className="text-xs font-semibold block mb-1.5" style={{ color: colors.textSecondary }}>Status</label>
+            <select value={status} onChange={e => setStatus(e.target.value as ProjectStatus)}
+              className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+              style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}>
+              {PROJECT_STATUS_OPTIONS.map(s => <option key={s} value={s}>{projectStatusLabel(s)}</option>)}
+            </select>
           </div>
           <div>
             <label className="text-xs font-semibold block mb-1.5" style={{ color: colors.textSecondary }}>Target hours (optional)</label>
@@ -858,23 +1002,20 @@ function ProjectFormModal({ initial, calMode, onSave, onCancel, colors }: {
 // ─── Resource Form Modal ──────────────────────────────────────────────────────
 
 function ResourceFormModal({ onSave, onCancel, colors }: {
-  onSave: (data: { name: string; unit: string; total: number; completed?: number; stage?: string | null }) => void;
+  onSave: (data: { name: string; unit: string; total: number }) => void;
   onCancel: () => void;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
   const [name, setName] = useState('');
   const [unit, setUnit] = useState('pages');
   const [total, setTotal] = useState('');
-  const [completed, setCompleted] = useState('');
-  const [stage, setStage] = useState('');
   const [customUnit, setCustomUnit] = useState('');
 
   function handleSave() {
     if (!name.trim()) return;
     const finalUnit = unit === 'custom' ? (customUnit.trim() || 'custom') : unit;
-    const totalNum = parseInt(total) || 0;
-    const completedNum = Math.min(parseInt(completed) || 0, totalNum);
-    onSave({ name: name.trim(), unit: finalUnit, total: totalNum, completed: completedNum, stage: stage || null });
+    const totalNum = toStoredAmount(total, finalUnit);
+    onSave({ name: name.trim(), unit: finalUnit, total: totalNum });
   }
 
   return (
@@ -894,7 +1035,7 @@ function ResourceFormModal({ onSave, onCancel, colors }: {
           style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}
           onKeyDown={e => e.key === 'Enter' && handleSave()} />
 
-        <div className="grid grid-cols-2 gap-3 mb-3">
+        <div className="grid grid-cols-2 gap-3 mb-4">
           <div>
             <label className="text-xs font-semibold block mb-1.5" style={{ color: colors.textSecondary }}>Unit</label>
             <select value={unit} onChange={e => setUnit(e.target.value)}
@@ -909,30 +1050,11 @@ function ResourceFormModal({ onSave, onCancel, colors }: {
             )}
           </div>
           <div>
-            <label className="text-xs font-semibold block mb-1.5" style={{ color: colors.textSecondary }}>Total</label>
-            <input type="number" value={total} onChange={e => setTotal(e.target.value)} placeholder="0"
+            <label className="text-xs font-semibold block mb-1.5" style={{ color: colors.textSecondary }}>Total {unit === 'hours' && '(hours)'}</label>
+            <input type="number" value={total} onChange={e => setTotal(e.target.value)} placeholder={unit === 'hours' ? 'e.g. 2' : '0'}
+              step={unit === 'hours' ? '0.5' : '1'}
               className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
               style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }} />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 mb-3">
-          <div>
-            <label className="text-xs font-semibold block mb-1.5" style={{ color: colors.textSecondary }}>Completed (optional)</label>
-            <input type="number" value={completed} onChange={e => setCompleted(e.target.value)} placeholder="0"
-              className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-              style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }} />
-          </div>
-          <div>
-            <label className="text-xs font-semibold block mb-1.5" style={{ color: colors.textSecondary }}>Stage (optional)</label>
-            <select value={stage} onChange={e => setStage(e.target.value)}
-              className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-              style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}>
-              <option value="">No stage</option>
-              <option value="learn">Learn</option>
-              <option value="practice">Practice</option>
-              <option value="review">Review</option>
-            </select>
           </div>
         </div>
 

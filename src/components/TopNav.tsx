@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { CalendarDropdown } from './CalendarDropdown';
 import CountdownBar from './CountdownBar';
-import { Sparkles, X, Plus, Clock, Check, Users, Menu, CalendarRange } from 'lucide-react';
+import { Sparkles, X, Plus, Clock, Check, Users, Menu, CalendarRange, BarChart3 } from 'lucide-react';
 import type { CalendarMode, ViewMode } from '../types';
 import { TIMEZONES } from '../types';
 import type { CountdownConfig } from './CountdownBar';
@@ -606,8 +606,9 @@ export default function TopNav({
     { key: 'weekly', label: 'Weekly', tour: 'tour-view-weekly' },
     { key: 'monthly', label: 'Monthly', tour: 'tour-view-monthly' },
     { key: 'yearly', label: 'Yearly', tour: 'tour-view-yearly' },
-    { key: 'progress', label: 'Progress', tour: 'tour-view-progress' },
   ];
+
+  const progressActive = !studyRoomsActive && !classScheduleActive && viewMode === 'progress';
 
   const eff1Tz = clockSettings.clock1_tz === 'auto' ? timezone : (clockSettings.clock1_tz || timezone);
   const eff2Tz = clockSettings.clock2_tz || 'UTC';
@@ -685,6 +686,20 @@ export default function TopNav({
               }}
             >
               <CalendarRange size={15} />
+            </button>
+            <button
+              data-tour="tour-view-progress"
+              onClick={() => onViewChange('progress')}
+              aria-label="Progress"
+              title="Progress"
+              className="flex items-center justify-center px-2.5 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all duration-150"
+              style={{
+                background: progressActive ? colors.navAccent : 'transparent',
+                color: progressActive ? '#fff' : colors.navText,
+                border: 'none', cursor: 'pointer',
+              }}
+            >
+              <BarChart3 size={15} />
             </button>
           </div>
         </div>
@@ -828,6 +843,18 @@ export default function TopNav({
                 {tab.label}
               </button>
             ))}
+            <button
+              onClick={() => { onViewChange('progress'); setShowMobileMenu(false); }}
+              className="flex items-center gap-3 px-4 py-2.5 rounded-md text-sm font-semibold text-left transition-all"
+              style={{
+                background: progressActive ? colors.navAccent : 'transparent',
+                color: progressActive ? '#fff' : colors.navText,
+                border: 'none', cursor: 'pointer',
+                lineHeight: 1.5,
+              }}
+            >
+              <BarChart3 size={16} /> Progress
+            </button>
             <div style={{ height: 1, background: colors.borderLight, margin: '4px 0' }} />
             <button
               onClick={() => { onOpenStudyRooms(); setShowMobileMenu(false); }}

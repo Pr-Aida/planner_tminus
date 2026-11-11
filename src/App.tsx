@@ -31,6 +31,7 @@ import JoinRoomView from './views/JoinRoomView';
 import RoomNotifications from './components/RoomNotifications';
 import ClassScheduleView from './views/ClassScheduleView';
 import ProgressView from './views/ProgressView';
+import ErrorBoundary from './components/ErrorBoundary';
 import { ThemeProvider, useTheme, type ThemeMode } from './lib/theme';
 import { TimeFormatProvider, type TimeFormat } from './lib/timeFormat';
 
@@ -1188,7 +1189,7 @@ function MainAppContent(props: MainAppContentProps) {
           onClose={props.onCloseClassSchedule}
         />
       ) : props.viewMode === 'progress' ? (
-        <ProgressView userId={props.userId} calMode={props.calMode} />
+        <ErrorBoundary fallbackLabel="Progress encountered an error."><ProgressView userId={props.userId} calMode={props.calMode} /></ErrorBoundary>
       ) : (
       <>
       <HeroBanner imageDataUrl={props.coverImage} onImageChange={props.onCoverChange} />

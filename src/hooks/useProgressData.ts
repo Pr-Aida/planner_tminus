@@ -1,6 +1,30 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import type { ProgressProject, ProgressResource, ProgressContribution } from '../types';
+import { shiftResourceCompleted } from '../lib/progressSync';
+import type { ProgressProject, ProgressResource, ProgressContribution, ProjectStatus } from '../types';
+
+// Safe number: avoids NaN/Infinity from malformed DB data
+function safeNum(v: unknown, fallback = 0): number {
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function sanitizeResource(r: Partial<ProgressResource>): ProgressResource {
+  return {
+    ...r,
+    total: safeNum(r.total),
+    completed: safeNum(r.completed),
+    sort_order: safeNum(r.sort_order),
+  } as ProgressResource;
+}
+
+function sanitizeContribution(c: Partial<ProgressContribution>): ProgressContribution {
+  return {
+    ...c,
+    units_added: safeNum(c.units_added),
+    duration_minutes: safeNum(c.duration_minutes),
+  } as ProgressContribution;
+}
 
 export function useProgressData(userId: string | null) {
   const [projects, setProjects] = useState<ProgressProject[]>([]);
@@ -17,30 +41,41 @@ export function useProgressData(userId: string | null) {
       supabase.from('planner_progress_contributions').select('*').eq('user_id', userId),
     ]);
     setProjects((pRes.data as ProgressProject[]) || []);
-    setResources((rRes.data as ProgressResource[]) || []);
-    setContributions((cRes.data as ProgressContribution[]) || []);
+    setResources(((rRes.data as ProgressResource[]) || []).map(sanitizeResource));
+    setContributions(((cRes.data as ProgressContribution[]) || []).map(sanitizeContribution));
     setLoading(false);
   }, [userId]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
+  // Refetch when the window regains focus (cross-device sync)
+  useEffect(() => {
+    function onFocus() { loadAll(); }
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [loadAll]);
+
   const createProject = useCallback(async (data: {
     name: string; description?: string; color?: string | null; icon?: string | null;
     deadline_date?: string | null; target_study_minutes?: number | null;
+    status?: ProjectStatus;
   }) => {
     if (!userId) return null;
-    const { data: row } = await supabase.from('planner_progress_projects').insert({
+    const { data: row, error } = await supabase.from('planner_progress_projects').insert({
       user_id: userId, name: data.name, description: data.description || null,
       color: data.color || null, icon: data.icon || null,
       deadline_date: data.deadline_date || null,
       target_study_minutes: data.target_study_minutes || null,
+      status: data.status || 'in_progress',
     }).select().single();
+    if (error) { console.error('Failed to create project:', error); return null; }
     if (row) setProjects(prev => [...prev, row as ProgressProject]);
     return row as ProgressProject | null;
   }, [userId]);
 
   const updateProject = useCallback(async (id: string, patch: Partial<ProgressProject>) => {
-    await supabase.from('planner_progress_projects').update(patch).eq('id', id);
+    const { error } = await supabase.from('planner_progress_projects').update(patch).eq('id', id);
+    if (error) { console.error('Failed to update project:', error); return; }
     setProjects(prev => prev.map(p => p.id === id ? { ...p, ...patch } : p));
   }, []);
 
@@ -52,24 +87,27 @@ export function useProgressData(userId: string | null) {
   }, []);
 
   const archiveProject = useCallback(async (id: string, archived: boolean) => {
-    await supabase.from('planner_progress_projects').update({ archived }).eq('id', id);
-    setProjects(prev => prev.map(p => p.id === id ? { ...p, archived } : p));
+    const newStatus = archived ? 'archived' : 'in_progress';
+    await supabase.from('planner_progress_projects').update({ archived, status: newStatus }).eq('id', id);
+    setProjects(prev => prev.map(p => p.id === id ? { ...p, archived, status: newStatus } : p));
   }, []);
 
   const createResource = useCallback(async (data: {
     project_id: string; name: string; unit: string; total: number; completed?: number; stage?: string | null;
   }) => {
     if (!userId) return null;
-    const { data: row } = await supabase.from('planner_progress_resources').insert({
+    const { data: row, error } = await supabase.from('planner_progress_resources').insert({
       user_id: userId, project_id: data.project_id, name: data.name,
       unit: data.unit, total: data.total, completed: data.completed || 0, stage: data.stage || null,
     }).select().single();
+    if (error) { console.error('Failed to create resource:', error); return null; }
     if (row) setResources(prev => [...prev, row as ProgressResource]);
     return row as ProgressResource | null;
   }, [userId]);
 
   const updateResource = useCallback(async (id: string, patch: Partial<ProgressResource>) => {
-    await supabase.from('planner_progress_resources').update(patch).eq('id', id);
+    const { error } = await supabase.from('planner_progress_resources').update(patch).eq('id', id);
+    if (error) { console.error('Failed to update resource:', error); return; }
     setResources(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r));
   }, []);
 
@@ -85,43 +123,66 @@ export function useProgressData(userId: string | null) {
 
   const logContribution = useCallback(async (data: {
     project_id: string; resource_id: string | null; units_added: number; date_key: string; duration_minutes?: number;
-  }) => {
-    if (!userId) return null;
+  }): Promise<boolean> => {
+    if (!userId) return false;
     const activityId = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const { data: row } = await supabase.from('planner_progress_contributions').insert({
+    const safeUnits = safeNum(data.units_added);
+    const safeDuration = safeNum(data.duration_minutes);
+
+    // Insert contribution first
+    const { data: row, error: insertErr } = await supabase.from('planner_progress_contributions').insert({
       user_id: userId, activity_id: activityId,
       project_id: data.project_id, resource_id: data.resource_id,
-      units_added: data.units_added, date_key: data.date_key,
-      duration_minutes: data.duration_minutes || 0,
+      units_added: safeUnits, date_key: data.date_key,
+      duration_minutes: safeDuration,
     }).select().single();
-    if (row) setContributions(prev => [...prev, row as ProgressContribution]);
-
-    // Update resource completed count
-    if (data.resource_id && data.units_added !== 0) {
-      setResources(prev => prev.map(r => {
-        if (r.id !== data.resource_id) return r;
-        const newCompleted = Math.max(0, r.completed + data.units_added);
-        const finalCompleted = r.total > 0 ? Math.min(newCompleted, r.total) : newCompleted;
-        supabase.from('planner_progress_resources').update({ completed: finalCompleted }).eq('id', r.id);
-        return { ...r, completed: finalCompleted };
-      }));
+    if (insertErr || !row) {
+      console.error('Failed to log contribution:', insertErr);
+      return false;
     }
-    return row as ProgressContribution | null;
+    const contribution = sanitizeContribution(row as ProgressContribution);
+
+    // Atomically shift resource completed
+    if (data.resource_id && safeUnits !== 0) {
+      const next = await shiftResourceCompleted(data.resource_id, safeUnits);
+      if (next === null) {
+        // Rollback the contribution insert
+        await supabase.from('planner_progress_contributions').delete().eq('id', contribution.id);
+        return false;
+      }
+      setResources(prev => prev.map(r => r.id === data.resource_id ? { ...r, completed: next } : r));
+    }
+    setContributions(prev => [...prev, contribution]);
+    return true;
   }, [userId]);
 
-  const deleteContribution = useCallback(async (id: string) => {
+  const deleteContribution = useCallback(async (id: string): Promise<void> => {
     const contrib = contributions.find(c => c.id === id);
-    await supabase.from('planner_progress_contributions').delete().eq('id', id);
-    setContributions(prev => prev.filter(c => c.id !== id));
-    // Reverse the units on the resource
-    if (contrib && contrib.resource_id && contrib.units_added !== 0) {
-      setResources(prev => prev.map(r => {
-        if (r.id !== contrib.resource_id) return r;
-        const newCompleted = Math.max(0, r.completed - contrib.units_added);
-        supabase.from('planner_progress_resources').update({ completed: newCompleted }).eq('id', r.id);
-        return { ...r, completed: newCompleted };
-      }));
+    if (!contrib) return;
+
+    // Reverse resource shift FIRST (atomically), then delete contribution
+    if (contrib.resource_id && contrib.units_added !== 0) {
+      const next = await shiftResourceCompleted(contrib.resource_id, -contrib.units_added);
+      if (next === null) {
+        console.error('Failed to reverse resource completed');
+        return;
+      }
+      setResources(prev => prev.map(r => r.id === contrib.resource_id ? { ...r, completed: next } : r));
     }
+
+    const { error } = await supabase.from('planner_progress_contributions').delete().eq('id', id);
+    if (error) {
+      console.error('Failed to delete contribution:', error);
+      // Re-apply the shift since delete failed
+      if (contrib.resource_id && contrib.units_added !== 0) {
+        const restored = await shiftResourceCompleted(contrib.resource_id, contrib.units_added);
+        if (restored !== null) {
+          setResources(prev => prev.map(r => r.id === contrib.resource_id ? { ...r, completed: restored } : r));
+        }
+      }
+      return;
+    }
+    setContributions(prev => prev.filter(c => c.id !== id));
   }, [contributions]);
 
   return {

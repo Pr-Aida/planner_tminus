@@ -165,6 +165,8 @@ export interface MonthlyNote {
 
 export type ProgressStage = 'learn' | 'practice' | 'review';
 
+export type ProjectStatus = 'not_started' | 'in_progress' | 'completed' | 'on_hold' | 'archived';
+
 export interface ProgressProject {
   id: string;
   user_id: string;
@@ -175,6 +177,7 @@ export interface ProgressProject {
   deadline_date: string | null; // ISO date YYYY-MM-DD
   target_study_minutes: number | null;
   archived: boolean;
+  status: ProjectStatus;
   sort_order: number;
   created_at: string;
   updated_at: string;

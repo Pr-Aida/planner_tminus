@@ -11,8 +11,27 @@ export interface ProjectStats {
   pacePerHour: number | null;
   daysRemaining: number | null;
   dailyTarget: number | null;
+  dailyTargetByUnit: { unit: string; target: number }[];
   status: 'on-track' | 'slightly-behind' | 'at-risk';
   remainingByUnit: { unit: string; remaining: number }[];
+  dominantUnit: string | null;
+  isMixedUnits: boolean;
+}
+
+function pickDominantUnit(resources: ProgressResource[]): string | null {
+  const unitTotals = new Map<string, number>();
+  for (const r of resources) {
+    if (r.total <= 0) continue;
+    unitTotals.set(r.unit, (unitTotals.get(r.unit) || 0) + r.total);
+  }
+  if (unitTotals.size === 0) return null;
+  if (unitTotals.size === 1) return unitTotals.keys().next().value ?? null;
+  let best: string | null = null;
+  let bestTotal = 0;
+  for (const [unit, total] of unitTotals) {
+    if (total > bestTotal) { best = unit; bestTotal = total; }
+  }
+  return best;
 }
 
 export function computeProjectStats(
@@ -21,43 +40,70 @@ export function computeProjectStats(
   deadlineDate: string | null,
   _targetStudyMinutes: number | null
 ): ProjectStats {
-  const totalUnits = resources.reduce((s, r) => s + r.total, 0);
-  const completedUnits = resources.reduce((s, r) => s + r.completed, 0);
+  // Guard against malformed data
+  const safeResources = resources.map(r => ({
+    ...r,
+    total: Number.isFinite(r.total) ? r.total : 0,
+    completed: Number.isFinite(r.completed) ? r.completed : 0,
+  }));
+  const safeContribs = contributions.map(c => ({
+    ...c,
+    units_added: Number.isFinite(c.units_added) ? c.units_added : 0,
+    duration_minutes: Number.isFinite(c.duration_minutes) ? c.duration_minutes : 0,
+  }));
+
+  const totalUnits = safeResources.reduce((s, r) => s + r.total, 0);
+  const completedUnits = safeResources.reduce((s, r) => s + r.completed, 0);
   const remainingUnits = Math.max(0, totalUnits - completedUnits);
-  const overallPct = totalUnits > 0 ? Math.min(100, Math.round((completedUnits / totalUnits) * 100)) : 0;
+  const overallPct = totalUnits > 0 ? Math.min(100, Math.max(0, Math.round((completedUnits / totalUnits) * 100))) : 0;
 
-  const studiedMinutes = contributions.reduce((s, c) => s + c.duration_minutes, 0);
+  const studiedMinutes = safeContribs.reduce((s, c) => s + c.duration_minutes, 0);
 
-  const remainingByUnit = resources
-    .filter(r => r.total > 0)
-    .map(r => ({ unit: r.unit, remaining: Math.max(0, r.total - r.completed) }))
-    .filter(r => r.remaining > 0);
+  const remainingByUnitMap = new Map<string, number>();
+  for (const r of safeResources) {
+    if (r.total <= 0) continue;
+    const rem = Math.max(0, r.total - r.completed);
+    if (rem > 0) remainingByUnitMap.set(r.unit, (remainingByUnitMap.get(r.unit) || 0) + rem);
+  }
+  const remainingByUnit = [...remainingByUnitMap].map(([unit, remaining]) => ({ unit, remaining }));
 
-  const contributedUnits = contributions.reduce((s, c) => s + c.units_added, 0);
+  const isMixedUnits = remainingByUnitMap.size > 1;
+
+  const contributedUnits = safeContribs.reduce((s, c) => s + c.units_added, 0);
   const studiedHours = studiedMinutes / 60;
 
   const pacePerHour =
-    contributedUnits > 0 && studiedHours >= 0.5
+    contributedUnits > 0 && studiedHours >= 0.5 && Number.isFinite(studiedHours)
       ? contributedUnits / studiedHours
       : null;
 
   const estimatedRemainingMinutes =
-    pacePerHour !== null && remainingUnits > 0
+    pacePerHour !== null && remainingUnits > 0 && Number.isFinite(pacePerHour) && pacePerHour > 0
       ? (remainingUnits / pacePerHour) * 60
       : null;
 
   let daysRemaining: number | null = null;
-  if (deadlineDate) {
+  if (deadlineDate && /^\d{4}-\d{2}-\d{2}$/.test(deadlineDate)) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const deadline = new Date(deadlineDate + 'T00:00:00');
-    const diff = Math.ceil((deadline.getTime() - today.getTime()) / 86400000);
-    daysRemaining = diff;
+    if (!isNaN(deadline.getTime())) {
+      const diff = Math.ceil((deadline.getTime() - today.getTime()) / 86400000);
+      daysRemaining = diff;
+    }
   }
 
   let dailyTarget: number | null = null;
   if (daysRemaining !== null && daysRemaining > 0 && remainingUnits > 0) {
     dailyTarget = Math.ceil(remainingUnits / daysRemaining);
+  }
+
+  let dailyTargetByUnit: { unit: string; target: number }[] = [];
+  if (daysRemaining !== null && daysRemaining > 0 && remainingByUnitMap.size > 0) {
+    dailyTargetByUnit = [...remainingByUnitMap].map(([unit, remaining]) => ({
+      unit,
+      target: Math.ceil(remaining / daysRemaining),
+    }));
   }
 
   let status: ProjectStats['status'] = 'on-track';
@@ -82,21 +128,32 @@ export function computeProjectStats(
     pacePerHour,
     daysRemaining,
     dailyTarget,
+    dailyTargetByUnit,
     status,
     remainingByUnit,
+    dominantUnit: pickDominantUnit(safeResources),
+    isMixedUnits,
   };
 }
 
 export function formatProgressDate(isoDate: string, calMode: CalendarMode): string {
-  const [year, month, day] = isoDate.split('-').map(Number);
-  if (!year || !month || !day) return isoDate;
-  if (calMode === 'gregorian') return `${GREG_MONTH_NAMES[month - 1]} ${day}, ${year}`;
-  const sh = gregorianToSh({ year, month, day });
-  return `${SH_MONTHS[sh.month - 1].name} ${sh.day}, ${sh.year}`;
+  if (!isoDate || typeof isoDate !== 'string') return '';
+  const parts = isoDate.split('-').map(Number);
+  const year = parts[0];
+  const month = parts[1];
+  const day = parts[2];
+  if (!year || !month || !day || isNaN(year) || isNaN(month) || isNaN(day)) return isoDate;
+  try {
+    if (calMode === 'gregorian') return `${GREG_MONTH_NAMES[month - 1]} ${day}, ${year}`;
+    const sh = gregorianToSh({ year, month, day });
+    return `${SH_MONTHS[sh.month - 1].name} ${sh.day}, ${sh.year}`;
+  } catch {
+    return isoDate;
+  }
 }
 
 export function formatDuration(minutes: number): string {
-  if (minutes <= 0) return '0m';
+  if (!Number.isFinite(minutes) || minutes <= 0) return '0m';
   const h = Math.floor(minutes / 60);
   const m = Math.round(minutes % 60);
   if (h > 0 && m > 0) return `${h}h ${m}m`;
@@ -125,7 +182,71 @@ export const UNIT_OPTIONS = [
   'exercises', 'lectures', 'past papers', 'flashcards', 'hours', 'custom',
 ];
 
+const SINGLE_STEP_UNITS = ['videos', 'chapters', 'lectures', 'past papers'];
+
+export function isTimeUnit(unit: string): boolean {
+  return unit.toLowerCase() === 'hours';
+}
+
+export function formatAmount(value: number, unit: string): string {
+  return isTimeUnit(unit) ? formatDuration(value) : `${value} ${unit}`;
+}
+
+export function formatPair(done: number, total: number, unit: string): string {
+  return isTimeUnit(unit)
+    ? `${formatDuration(done)} / ${formatDuration(total)}`
+    : `${done} / ${total} ${unit}`;
+}
+
+// Time-based resources are stored in whole minutes; the form accepts hours.
+export function toStoredAmount(input: string, unit: string): number {
+  if (isTimeUnit(unit)) return Math.max(0, Math.round((parseFloat(input) || 0) * 60));
+  return Math.max(0, parseInt(input) || 0);
+}
+
+export function toInputAmount(stored: number, unit: string): string {
+  if (isTimeUnit(unit)) return String(Math.round((stored / 60) * 100) / 100);
+  return String(stored);
+}
+
+export function getQuickAddButtons(unit: string): { label: string; amount: number }[] {
+  if (isTimeUnit(unit)) return [{ label: '+15m', amount: 15 }, { label: '+30m', amount: 30 }, { label: '+1h', amount: 60 }];
+  if (SINGLE_STEP_UNITS.includes(unit.toLowerCase())) return [{ label: '+1', amount: 1 }];
+  return [1, 5, 10].map(n => ({ label: `+${n}`, amount: n }));
+}
+
 export const PROJECT_COLORS = [
   '#2563eb', '#0891b2', '#059669', '#7c3aed',
   '#db2777', '#ea580c', '#d97706', '#dc2626',
 ];
+
+// ─── Manual Project Status ────────────────────────────────────────────────────
+
+export const PROJECT_STATUS_OPTIONS = [
+  'not_started', 'in_progress', 'completed', 'on_hold', 'archived',
+] as const;
+
+export function projectStatusLabel(status: string): string {
+  switch (status) {
+    case 'not_started': return 'Not Started';
+    case 'in_progress': return 'In Progress';
+    case 'completed': return 'Completed';
+    case 'on_hold': return 'On Hold';
+    case 'archived': return 'Archived';
+    default: return 'In Progress';
+  }
+}
+
+export function projectStatusColorKey(status: string): 'success' | 'warning' | 'error' | 'accent' | 'textTertiary' {
+  switch (status) {
+    case 'completed': return 'success';
+    case 'on_hold': return 'warning';
+    case 'not_started': return 'textTertiary';
+    case 'archived': return 'textTertiary';
+    default: return 'accent';
+  }
+}
+
+export function isPlanningActive(status: string): boolean {
+  return status === 'in_progress';
+}
