@@ -184,18 +184,18 @@ export const UNIT_OPTIONS = [
 
 const SINGLE_STEP_UNITS = ['videos', 'chapters', 'lectures', 'past papers'];
 
-export function isTimeUnit(unit: string): boolean {
-  return unit.toLowerCase() === 'hours';
+export function isTimeUnit(unit: string | null | undefined): boolean {
+  return !!unit && unit.toLowerCase() === 'hours';
 }
 
-export function formatAmount(value: number, unit: string): string {
-  return isTimeUnit(unit) ? formatDuration(value) : `${value} ${unit}`;
+export function formatAmount(value: number, unit: string | null | undefined): string {
+  return isTimeUnit(unit) ? formatDuration(value) : `${value} ${unit || 'units'}`;
 }
 
-export function formatPair(done: number, total: number, unit: string): string {
+export function formatPair(done: number, total: number, unit: string | null | undefined): string {
   return isTimeUnit(unit)
     ? `${formatDuration(done)} / ${formatDuration(total)}`
-    : `${done} / ${total} ${unit}`;
+    : `${done} / ${total} ${unit || 'units'}`;
 }
 
 // Time-based resources are stored in whole minutes; the form accepts hours.
@@ -211,7 +211,8 @@ export function toInputAmount(stored: number, unit: string): string {
 
 export function getQuickAddButtons(unit: string): { label: string; amount: number }[] {
   if (isTimeUnit(unit)) return [{ label: '+15m', amount: 15 }, { label: '+30m', amount: 30 }, { label: '+1h', amount: 60 }];
-  if (SINGLE_STEP_UNITS.includes(unit.toLowerCase())) return [{ label: '+1', amount: 1 }];
+  const u = (unit || '').toLowerCase();
+  if (SINGLE_STEP_UNITS.includes(u)) return [{ label: '+1', amount: 1 }];
   return [1, 5, 10].map(n => ({ label: `+${n}`, amount: n }));
 }
 
