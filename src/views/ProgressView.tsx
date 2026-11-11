@@ -9,7 +9,7 @@ import { useTheme } from '../lib/theme';
 import { useProgressData } from '../hooks/useProgressData';
 import {
   computeProjectStats, attributableContributions, formatDuration, formatProgressDate, statusLabel, statusColor,
-  UNIT_OPTIONS, PROJECT_COLORS, getQuickAddButtons, isTimeUnit, formatAmount, formatPair, toStoredAmount, toInputAmount,
+  UNIT_OPTIONS, PROJECT_COLORS, getQuickAddButtons, isTimeUnit, formatAmount, formatPair, toStoredAmount, toEditableAmount, parseTimeInput,
   projectStatusLabel, projectStatusColorKey, isPlanningActive, PROJECT_STATUS_OPTIONS,
 } from '../lib/progress';
 import { computeInsights } from '../lib/progressInsights';
@@ -266,11 +266,11 @@ function ProjectDetail({
   resources: ProgressResource[];
   contributions: ProgressContribution[];
   onBack: () => void;
-  onUpdateProject: (patch: Partial<ProgressProject>) => void;
+  onUpdateProject: (patch: Partial<ProgressProject>) => Promise<boolean>;
   onDeleteProject: () => void;
   onArchiveProject: (archived: boolean) => void;
   onAddResource: (data: { project_id: string; name: string; unit: string; total: number; completed?: number; stage?: string | null }) => Promise<unknown>;
-  onUpdateResource: (id: string, patch: Partial<ProgressResource>) => void;
+  onUpdateResource: (id: string, patch: Partial<ProgressResource>) => Promise<boolean>;
   onDeleteResource: (id: string) => void;
   onLogContribution: (data: { project_id: string; resource_id: string | null; units_added: number; date_key: string; duration_minutes?: number }) => Promise<boolean>;
   calMode: CalendarMode;
@@ -483,13 +483,14 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
   const [customAmount, setCustomAmount] = useState('');
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Edit form state
   const [editName, setEditName] = useState(resource.name);
   const [editUnit, setEditUnit] = useState(UNIT_OPTIONS.includes(resource.unit) ? resource.unit : 'custom');
-  const [editTotal, setEditTotal] = useState(toInputAmount(resource.total, resource.unit));
-  const [editCompleted, setEditCompleted] = useState(toInputAmount(resource.completed, resource.unit));
+  const [editTotal, setEditTotal] = useState(toEditableAmount(resource.total, resource.unit));
+  const [editCompleted, setEditCompleted] = useState(toEditableAmount(resource.completed, resource.unit));
   const [editCustomUnit, setEditCustomUnit] = useState(!UNIT_OPTIONS.includes(resource.unit) ? resource.unit : '');
 
   const pct = resource.total > 0 ? Math.min(100, Math.max(0, Math.round((resource.completed / resource.total) * 100))) : 0;
@@ -515,26 +516,36 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
     return () => document.removeEventListener('mousedown', onClick);
   }, [menuOpen]);
 
-  function saveEdit() {
+  async function saveEdit() {
+    if (saving) return;
     const finalUnit = editUnit === 'custom' ? (editCustomUnit.trim() || 'custom') : editUnit;
-    const total = toStoredAmount(editTotal, finalUnit);
-    if (!isTimeUnit(finalUnit) && total <= 0) return;
-    const completed = total > 0
-      ? Math.min(toStoredAmount(editCompleted, finalUnit), total)
-      : toStoredAmount(editCompleted, finalUnit);
-    onUpdate(resource.id, {
+    const total = isTimeUnit(finalUnit) ? parseTimeInput(editTotal) : toStoredAmount(editTotal, finalUnit);
+    if (!isTimeUnit(finalUnit) && total <= 0) {
+      setEditError('Total must be greater than 0.');
+      return;
+    }
+    const enteredCompleted = isTimeUnit(finalUnit) ? parseTimeInput(editCompleted) : toStoredAmount(editCompleted, finalUnit);
+    const completed = total > 0 ? Math.min(enteredCompleted, total) : enteredCompleted;
+    setSaving(true);
+    setEditError(null);
+    const ok = await onUpdate(resource.id, {
       name: editName.trim() || resource.name,
       unit: finalUnit,
       total,
       completed,
     });
+    setSaving(false);
+    if (!ok) {
+      setEditError('Could not save this resource. Please try again.');
+      return;
+    }
     setEditing(false);
   }
 
   async function quickAdd(amount: number) {
     if (saving) return;
     setSaving(true);
-    const ok = await onLog({ project_id: projectId, resource_id: resource.id, units_added: amount, date_key: todayKey, duration_minutes: isHours ? amount : 0 });
+    const ok = await onLog({ project_id: projectId, resource_id: resource.id, units_added: amount, date_key: todayKey, duration_minutes: 0 });
     setSaving(false);
     if (ok) {
       showToast(`+${formatAmount(amount, resource.unit)} logged`);
@@ -551,7 +562,7 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
     let ok = false;
     if (isHours) {
       const minutes = Math.round(n);
-      ok = await onLog({ project_id: projectId, resource_id: resource.id, units_added: minutes, date_key: todayKey, duration_minutes: minutes });
+      ok = await onLog({ project_id: projectId, resource_id: resource.id, units_added: minutes, date_key: todayKey, duration_minutes: 0 });
       setSaving(false);
       if (ok) showToast(`+${formatDuration(minutes)} logged`);
       else showToast('Failed to save.');
@@ -587,14 +598,15 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
         </div>
         <div className="flex flex-wrap gap-2 mb-2">
           <label className="text-xs flex items-center gap-1.5" style={{ color: colors.textSecondary }}>
-            Total <input type="number" value={editTotal} onChange={e => setEditTotal(e.target.value)} placeholder={isHours ? 'hours' : '0'} className="w-20 rounded-lg px-2 py-1.5 text-sm outline-none" style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgCard, color: colors.textPrimary }} />
+            Total <input type={isHours ? 'text' : 'number'} value={editTotal} onChange={e => setEditTotal(e.target.value)} placeholder={isHours ? 'e.g. 1h 30m' : '0'} onKeyDown={e => e.key === 'Enter' && saveEdit()} className="w-28 rounded-lg px-2 py-1.5 text-sm outline-none" style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgCard, color: colors.textPrimary }} />
           </label>
           <label className="text-xs flex items-center gap-1.5" style={{ color: colors.textSecondary }}>
-            Done <input type="number" value={editCompleted} onChange={e => setEditCompleted(e.target.value)} placeholder={isHours ? 'hours' : '0'} className="w-20 rounded-lg px-2 py-1.5 text-sm outline-none" style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgCard, color: colors.textPrimary }} />
+            Completed <input type={isHours ? 'text' : 'number'} value={editCompleted} onChange={e => setEditCompleted(e.target.value)} placeholder={isHours ? 'e.g. 1h 30m' : '0'} onKeyDown={e => e.key === 'Enter' && saveEdit()} className="w-28 rounded-lg px-2 py-1.5 text-sm outline-none" style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgCard, color: colors.textPrimary }} />
           </label>
         </div>
+        {editError && <p className="text-xs mb-2" style={{ color: colors.error }}>{editError}</p>}
         <div className="flex gap-2">
-          <button onClick={saveEdit} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white" style={{ background: colors.heroBg, border: 'none', cursor: 'pointer' }}>
+          <button onClick={saveEdit} disabled={saving} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white" style={{ background: colors.heroBg, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}>
             <Save size={12} /> Save
           </button>
           <button onClick={() => setEditing(false)} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: colors.bgHover, color: colors.textPrimary, border: 'none', cursor: 'pointer' }}>
@@ -627,7 +639,16 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
             {menuOpen && (
               <div className="absolute right-0 top-7 z-20 rounded-lg py-1 min-w-[100px]"
                 style={{ background: colors.bgCard, border: `1px solid ${colors.borderLight}`, boxShadow: `0 4px 12px ${colors.shadow}` }}>
-                <button onClick={() => { setEditing(true); setMenuOpen(false); }}
+                <button onClick={() => {
+                  setEditName(resource.name);
+                  setEditUnit(UNIT_OPTIONS.includes(resource.unit) ? resource.unit : 'custom');
+                  setEditTotal(toEditableAmount(resource.total, resource.unit));
+                  setEditCompleted(toEditableAmount(resource.completed, resource.unit));
+                  setEditCustomUnit(!UNIT_OPTIONS.includes(resource.unit) ? resource.unit : '');
+                  setEditError(null);
+                  setEditing(true);
+                  setMenuOpen(false);
+                }}
                   className="flex items-center gap-2 w-full px-3 py-1.5 text-xs transition-colors"
                   style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textSecondary }}
                   onMouseEnter={e => e.currentTarget.style.background = colors.bgHover}

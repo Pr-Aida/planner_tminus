@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { shiftResourceCompleted } from '../lib/progressSync';
+import { isTimeUnit } from '../lib/progress';
 import type { ProgressProject, ProgressResource, ProgressContribution, ProjectStatus } from '../types';
 
 // Safe number: avoids NaN/Infinity from malformed DB data
@@ -26,27 +27,70 @@ function sanitizeContribution(c: Partial<ProgressContribution>): ProgressContrib
   } as ProgressContribution;
 }
 
+function sanitizeContributions(rows: Partial<ProgressContribution>[], resources: ProgressResource[]): ProgressContribution[] {
+  const unitById = new Map(resources.map(r => [r.id, r.unit]));
+  return rows.map(row => {
+    const contribution = sanitizeContribution(row);
+    const unit = contribution.resource_id ? unitById.get(contribution.resource_id) : null;
+    if (!isTimeUnit(unit)) return contribution;
+    const minutes = contribution.activity_id.startsWith('manual-')
+      ? contribution.units_added
+      : contribution.duration_minutes > 0 ? contribution.duration_minutes : contribution.units_added;
+    return { ...contribution, units_added: minutes, duration_minutes: minutes };
+  });
+}
+
 export function useProgressData(userId: string | null) {
   const [projects, setProjects] = useState<ProgressProject[]>([]);
   const [resources, setResources] = useState<ProgressResource[]>([]);
   const [contributions, setContributions] = useState<ProgressContribution[]>([]);
   const [loading, setLoading] = useState(true);
+  const currentUserRef = useRef(userId);
+  const loadPromiseRef = useRef<Promise<void> | null>(null);
+  const dataVersionRef = useRef(0);
+  currentUserRef.current = userId;
+
+  const markMutation = () => { dataVersionRef.current += 1; };
 
   const loadAll = useCallback(async () => {
     if (!userId) { setLoading(false); return; }
+    if (loadPromiseRef.current) return loadPromiseRef.current;
+    const requestVersion = dataVersionRef.current;
+    const requestUserId = userId;
     setLoading(true);
-    const [pRes, rRes, cRes] = await Promise.all([
-      supabase.from('planner_progress_projects').select('*').eq('user_id', userId).order('sort_order', { ascending: true }),
-      supabase.from('planner_progress_resources').select('*').eq('user_id', userId).order('sort_order', { ascending: true }),
-      supabase.from('planner_progress_contributions').select('*').eq('user_id', userId),
-    ]);
-    setProjects((pRes.data as ProgressProject[]) || []);
-    setResources(((rRes.data as ProgressResource[]) || []).map(sanitizeResource));
-    setContributions(((cRes.data as ProgressContribution[]) || []).map(sanitizeContribution));
-    setLoading(false);
+    const request = Promise.all([
+      supabase.from('planner_progress_projects').select('*').eq('user_id', requestUserId).order('sort_order', { ascending: true }),
+      supabase.from('planner_progress_resources').select('*').eq('user_id', requestUserId).order('sort_order', { ascending: true }),
+      supabase.from('planner_progress_contributions').select('*').eq('user_id', requestUserId),
+    ]).then(([pRes, rRes, cRes]) => {
+      if (currentUserRef.current !== requestUserId) return;
+      if (dataVersionRef.current !== requestVersion) {
+        setLoading(false);
+        return;
+      }
+      const loadedResources = ((rRes.data as ProgressResource[]) || []).map(sanitizeResource);
+      setProjects((pRes.data as ProgressProject[]) || []);
+      setResources(loadedResources);
+      setContributions(sanitizeContributions((cRes.data as ProgressContribution[]) || [], loadedResources));
+      setLoading(false);
+    }).finally(() => {
+      if (loadPromiseRef.current === request) loadPromiseRef.current = null;
+    });
+    loadPromiseRef.current = request;
+    return request;
   }, [userId]);
 
-  useEffect(() => { loadAll(); }, [loadAll]);
+  useEffect(() => {
+    loadPromiseRef.current = null;
+    if (!userId) {
+      setProjects([]);
+      setResources([]);
+      setContributions([]);
+      setLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => { void loadAll(); }, [loadAll]);
 
   // Refetch when the window regains focus (cross-device sync)
   useEffect(() => {
@@ -61,6 +105,7 @@ export function useProgressData(userId: string | null) {
     status?: ProjectStatus;
   }) => {
     if (!userId) return null;
+    markMutation();
     const { data: row, error } = await supabase.from('planner_progress_projects').insert({
       user_id: userId, name: data.name, description: data.description || null,
       color: data.color || null, icon: data.icon || null,
@@ -73,13 +118,22 @@ export function useProgressData(userId: string | null) {
     return row as ProgressProject | null;
   }, [userId]);
 
-  const updateProject = useCallback(async (id: string, patch: Partial<ProgressProject>) => {
-    const { error } = await supabase.from('planner_progress_projects').update(patch).eq('id', id);
-    if (error) { console.error('Failed to update project:', error); return; }
+  const updateProject = useCallback(async (id: string, patch: Partial<ProgressProject>): Promise<boolean> => {
+    const previous = projects.find(p => p.id === id);
+    if (!previous) return false;
+    markMutation();
     setProjects(prev => prev.map(p => p.id === id ? { ...p, ...patch } : p));
-  }, []);
+    const { error } = await supabase.from('planner_progress_projects').update(patch).eq('id', id);
+    if (error) {
+      console.error('Failed to update project:', error);
+      setProjects(prev => prev.map(p => p.id === id ? previous : p));
+      return false;
+    }
+    return true;
+  }, [projects]);
 
   const deleteProject = useCallback(async (id: string) => {
+    markMutation();
     await supabase.from('planner_progress_projects').delete().eq('id', id);
     setProjects(prev => prev.filter(p => p.id !== id));
     setResources(prev => prev.filter(r => r.project_id !== id));
@@ -87,6 +141,7 @@ export function useProgressData(userId: string | null) {
   }, []);
 
   const archiveProject = useCallback(async (id: string, archived: boolean) => {
+    markMutation();
     const newStatus = archived ? 'archived' : 'in_progress';
     await supabase.from('planner_progress_projects').update({ archived, status: newStatus }).eq('id', id);
     setProjects(prev => prev.map(p => p.id === id ? { ...p, archived, status: newStatus } : p));
@@ -96,6 +151,7 @@ export function useProgressData(userId: string | null) {
     project_id: string; name: string; unit: string; total: number; completed?: number; stage?: string | null;
   }) => {
     if (!userId) return null;
+    markMutation();
     const { data: row, error } = await supabase.from('planner_progress_resources').insert({
       user_id: userId, project_id: data.project_id, name: data.name,
       unit: data.unit, total: data.total, completed: data.completed || 0, stage: data.stage || null,
@@ -105,13 +161,22 @@ export function useProgressData(userId: string | null) {
     return row as ProgressResource | null;
   }, [userId]);
 
-  const updateResource = useCallback(async (id: string, patch: Partial<ProgressResource>) => {
-    const { error } = await supabase.from('planner_progress_resources').update(patch).eq('id', id);
-    if (error) { console.error('Failed to update resource:', error); return; }
+  const updateResource = useCallback(async (id: string, patch: Partial<ProgressResource>): Promise<boolean> => {
+    const previous = resources.find(r => r.id === id);
+    if (!previous) return false;
+    markMutation();
     setResources(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r));
-  }, []);
+    const { error } = await supabase.from('planner_progress_resources').update(patch).eq('id', id);
+    if (error) {
+      console.error('Failed to update resource:', error);
+      setResources(prev => prev.map(r => r.id === id ? previous : r));
+      return false;
+    }
+    return true;
+  }, [resources]);
 
   const deleteResource = useCallback(async (id: string) => {
+    markMutation();
     await supabase.from('planner_progress_resources').delete().eq('id', id);
     setResources(prev => prev.filter(r => r.id !== id));
   }, []);
@@ -125,10 +190,12 @@ export function useProgressData(userId: string | null) {
     project_id: string; resource_id: string | null; units_added: number; date_key: string; duration_minutes?: number;
   }): Promise<boolean> => {
     if (!userId) return false;
+    markMutation();
     const activityId = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const safeUnits = safeNum(data.units_added);
-    const safeDuration = safeNum(data.duration_minutes);
     const resourceId = data.resource_id;
+    const resource = resources.find(r => r.id === resourceId);
+    const storedDuration = resource && isTimeUnit(resource.unit) ? safeUnits : 0;
     const applyLocal = (delta: number) => {
       if (!resourceId || delta === 0) return;
       setResources(prev => prev.map(r => r.id === resourceId ? { ...r, completed: r.completed + delta } : r));
@@ -140,7 +207,7 @@ export function useProgressData(userId: string | null) {
       user_id: userId, activity_id: activityId,
       project_id: data.project_id, resource_id: resourceId,
       units_added: safeUnits, date_key: data.date_key,
-      duration_minutes: safeDuration,
+      duration_minutes: storedDuration,
     }).select().single();
     if (insertErr || !row) {
       console.error('Failed to log contribution:', insertErr);
@@ -161,12 +228,13 @@ export function useProgressData(userId: string | null) {
     }
     setContributions(prev => [...prev, contribution]);
     return true;
-  }, [userId]);
+  }, [userId, resources]);
 
 
   const deleteContribution = useCallback(async (id: string): Promise<void> => {
     const contrib = contributions.find(c => c.id === id);
     if (!contrib) return;
+    markMutation();
 
     // Reverse resource shift FIRST (atomically), then delete contribution
     if (contrib.resource_id && contrib.units_added !== 0) {

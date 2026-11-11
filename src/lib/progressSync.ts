@@ -42,8 +42,7 @@ async function findContribution(activityId: string) {
  * Upsert a contribution linked to an activity.
  * - If a contribution for this activityId already exists, it updates it
  *   (shifting the resource completed value by the difference) — no double counting.
- * - If the resource is a time unit and no explicit unitsAdded is given (<= 0),
- *   the duration_minutes is used as the units_added automatically.
+ * - Time resources store one authoritative minute value in both progress fields.
  * Returns true on success, false on failure.
  */
 export async function upsertContribution(input: ContributionInput): Promise<boolean> {
@@ -52,12 +51,11 @@ export async function upsertContribution(input: ContributionInput): Promise<bool
 
   const existing = await findContribution(input.activityId);
 
-  // For time resources, if no explicit unitsAdded, use duration minutes
+  // Time resources prioritize a real activity duration; otherwise manual minutes are used.
   let effectiveUnits = input.unitsAdded;
-  if (input.resourceId && isTimeUnitUnitOf(input.resourceId)) {
-    if (effectiveUnits <= 0 && input.durationMinutes > 0) {
-      effectiveUnits = input.durationMinutes;
-    }
+  const timeResource = input.resourceId ? await isTimeUnitUnitOf(input.resourceId) : false;
+  if (timeResource && input.durationMinutes > 0) {
+    effectiveUnits = input.durationMinutes;
   }
 
   if (existing) {
@@ -82,7 +80,7 @@ export async function upsertContribution(input: ContributionInput): Promise<bool
         project_id: input.projectId,
         resource_id: input.resourceId,
         units_added: effectiveUnits,
-        duration_minutes: input.durationMinutes,
+        duration_minutes: timeResource ? effectiveUnits : input.durationMinutes,
         date_key: input.dateKey,
       })
       .eq('id', existing.id);
@@ -105,7 +103,7 @@ export async function upsertContribution(input: ContributionInput): Promise<bool
     resource_id: input.resourceId,
     units_added: effectiveUnits,
     date_key: input.dateKey,
-    duration_minutes: input.durationMinutes,
+    duration_minutes: timeResource ? effectiveUnits : input.durationMinutes,
   });
   if (insertErr) {
     console.error('upsertContribution insert failed:', insertErr);
@@ -118,20 +116,17 @@ export async function upsertContribution(input: ContributionInput): Promise<bool
   return true;
 }
 
-// Cache resource units to avoid extra lookups during upsert
-const resourceUnitCache = new Map<string, string>();
 async function isTimeUnitUnitOf(resourceId: string): Promise<boolean> {
-  if (resourceUnitCache.has(resourceId)) {
-    return isTimeUnit(resourceUnitCache.get(resourceId)!);
-  }
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('planner_progress_resources')
     .select('unit')
     .eq('id', resourceId)
     .maybeSingle();
-  const unit = (data as { unit: string } | null)?.unit || '';
-  resourceUnitCache.set(resourceId, unit);
-  return isTimeUnit(unit);
+  if (error) {
+    console.error('Could not read resource unit:', error);
+    return false;
+  }
+  return isTimeUnit((data as { unit: string } | null)?.unit || '');
 }
 
 /**

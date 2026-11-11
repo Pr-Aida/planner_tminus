@@ -62,6 +62,7 @@ export function computeInsights(
   todayKey: string,
 ): ProgressInsights {
   const unitById = new Map(resources.map(r => [r.id, r.unit]));
+  const scopedContributions = scopedContributions.filter(c => !!c.resource_id && unitById.has(c.resource_id));
   const unitOf = (c: ProgressContribution) => (c.resource_id ? unitById.get(c.resource_id) ?? null : null);
   const countable = (c: ProgressContribution) => {
     const u = unitOf(c);
@@ -70,7 +71,7 @@ export function computeInsights(
   const inRange = (c: ProgressContribution, from: string, to: string) => c.date_key >= from && c.date_key <= to;
   const weekStart = shiftDate(todayKey, -6);
 
-  const todays = contributions.filter(c => c.date_key === todayKey);
+  const todays = scopedContributions.filter(c => c.date_key === todayKey);
   const amountByUnit = new Map<string, number>();
   for (const c of todays) {
     const u = unitOf(c);
@@ -102,7 +103,7 @@ export function computeInsights(
   let forecast: ProgressInsights['forecast'] = null;
   if (unit && remaining > 0) {
     const windowStart = shiftDate(todayKey, -13);
-    const recentLogs = contributions.filter(c => unitOf(c) === unit && c.units_added > 0 && inRange(c, windowStart, todayKey));
+    const recentLogs = scopedContributions.filter(c => unitOf(c) === unit && c.units_added > 0 && inRange(c, windowStart, todayKey));
     const recent = recentLogs.reduce((s, c) => s + c.units_added, 0);
     const loggedDays = new Set(recentLogs.map(c => c.date_key)).size;
     const perDay = recent / 14;
@@ -117,7 +118,7 @@ export function computeInsights(
 
   const paceOf = (from: string, to: string): number | null => {
     if (!unit || isTimeUnit(unit)) return null;
-    const timed = contributions.filter(c =>
+    const timed = scopedContributions.filter(c =>
       unitOf(c) === unit && c.units_added > 0 && c.duration_minutes > 0 && inRange(c, from, to));
     const minutes = timed.reduce((s, c) => s + c.duration_minutes, 0);
     if (minutes < 30) return null;
@@ -143,7 +144,7 @@ export function computeInsights(
     ? { level: activeDays >= 5 ? 'strong' : 'stable', activeDays }
     : null;
 
-  const sessions = contributions.filter(c => countable(c) && c.units_added > 0 && c.duration_minutes >= 10);
+  const sessions = scopedContributions.filter(c => countable(c) && c.units_added > 0 && c.duration_minutes >= 10);
   let bestPace: ProgressInsights['bestPace'] = null;
   let fastest: ProgressInsights['fastest'] = null;
   const monthSessions = sessions.filter(c => inRange(c, shiftDate(todayKey, -29), todayKey));

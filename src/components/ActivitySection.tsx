@@ -3,6 +3,7 @@ import { Plus, Trash2, Clock, Play, Pause, Square, Timer, Loader2, Pencil, X, Ba
 import type { Activity, ProgressProject, ProgressResource } from '../types';
 import { upsertContribution, removeContribution, getActivityLink, calcDurationMinutes } from '../lib/progressSync';
 import { useTheme } from '../lib/theme';
+import { isTimeUnit } from '../lib/progress';
 import { useTimeFormat, formatTimeRange as fmtRange } from '../lib/timeFormat';
 import TimeInput from './TimeInput';
 import {
@@ -86,6 +87,9 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
   const [linkResourceId, setLinkResourceId] = useState('');
   const [linkUnits, setLinkUnits] = useState('');
   const [existingLink, setExistingLink] = useState<{ projectId: string; resourceId: string | null; unitsAdded: number } | null>(null);
+  const selectedLinkResource = progressResources.find(r => r.id === linkResourceId) || null;
+  const selectedLinkIsTime = selectedLinkResource ? isTimeUnit(selectedLinkResource.unit) : false;
+  const linkActivityDuration = calcDurationMinutes(form.from, form.to);
 
   const [timerState, setTimerState] = useState<TimerRecord | null>(null);
   const [loadingTimer, setLoadingTimer] = useState(true);
@@ -265,6 +269,12 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
   }, []);
 
   useEffect(() => {
+    if (!linkProgress || !selectedLinkIsTime || linkActivityDuration <= 0) return;
+    const actual = String(linkActivityDuration);
+    if (linkUnits !== actual) setLinkUnits(actual);
+  }, [linkProgress, selectedLinkIsTime, linkActivityDuration, linkUnits]);
+
+  useEffect(() => {
     if (!timerState || timerState.is_paused) return;
     setNowMs(Date.now());
     const interval = setInterval(() => setNowMs(Date.now()), 1000);
@@ -379,7 +389,10 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
     // Sync progress contribution if linking is on
     if (linkProgress && linkProjectId && activityId) {
       const durationMin = calcDurationMinutes(form.from, form.to);
-      const units = parseInt(linkUnits) || 0;
+      const manualAmount = Math.max(0, parseInt(linkUnits) || 0);
+      const units = selectedLinkIsTime
+        ? (durationMin > 0 ? durationMin : manualAmount)
+        : manualAmount;
       await upsertContribution({
         activityId, projectId: linkProjectId, resourceId: linkResourceId || null,
         unitsAdded: units, dateKey, durationMinutes: durationMin,
@@ -772,7 +785,16 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
                   {linkProjectId && (
                     <select
                       value={linkResourceId}
-                      onChange={e => setLinkResourceId(e.target.value)}
+                      onChange={e => {
+                        const nextId = e.target.value;
+                        setLinkResourceId(nextId);
+                        const nextResource = progressResources.find(r => r.id === nextId);
+                        if (nextResource && isTimeUnit(nextResource.unit) && linkActivityDuration > 0) {
+                          setLinkUnits(String(linkActivityDuration));
+                        } else {
+                          setLinkUnits('');
+                        }
+                      }}
                       className="w-full rounded-lg px-3 py-2 text-sm outline-none"
                       style={inputStyle}
                     >
@@ -782,16 +804,25 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
                       ))}
                     </select>
                   )}
-                  <input
-                    type="number"
-                    value={linkUnits}
-                    onChange={e => setLinkUnits(e.target.value)}
-                    placeholder="Units completed (e.g. +8)"
-                    className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-                    style={inputStyle}
-                    onFocus={e => e.target.style.borderColor = colors.heroBg}
-                    onBlur={e => e.target.style.borderColor = colors.borderLight}
-                  />
+                  <label className="text-xs font-semibold block" style={{ color: colors.textSecondary }}>
+                    {selectedLinkResource
+                      ? selectedLinkIsTime
+                        ? 'Duration (minutes)'
+                        : `${selectedLinkResource.unit.charAt(0).toUpperCase() + selectedLinkResource.unit.slice(1)} completed`
+                      : 'Output added (optional)'}
+                    <input
+                      type="number"
+                      min="0"
+                      value={linkUnits}
+                      onChange={e => setLinkUnits(e.target.value)}
+                      placeholder={selectedLinkIsTime ? (linkActivityDuration > 0 ? 'Uses activity duration' : 'e.g. 50') : selectedLinkResource ? `e.g. 8 ${selectedLinkResource.unit}` : '0'}
+                      disabled={selectedLinkIsTime && linkActivityDuration > 0}
+                      className="w-full rounded-lg px-3 py-2 text-sm outline-none mt-1.5"
+                      style={inputStyle}
+                      onFocus={e => e.target.style.borderColor = colors.heroBg}
+                      onBlur={e => e.target.style.borderColor = colors.borderLight}
+                    />
+                  </label>
                 </div>
               )}
             </div>

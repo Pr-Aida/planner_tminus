@@ -78,7 +78,9 @@ export function computeProjectStats(
   const remainingUnits = Math.max(0, totalUnits - completedUnits);
   const overallPct = computeOverallPct(safeResources) ?? 0;
 
-  const studiedMinutes = safeContribs.reduce((s, c) => s + c.duration_minutes, 0);
+  const studiedMinutes = safeContribs
+    .filter(c => !c.activity_id.startsWith('manual-'))
+    .reduce((s, c) => s + c.duration_minutes, 0);
 
   const remainingByUnitMap = new Map<string, number>();
   for (const r of safeResources) {
@@ -219,15 +221,26 @@ export function formatPair(done: number, total: number, unit: string | null | un
     : `${done} / ${total} ${unit || 'units'}`;
 }
 
-// Time-based resources are stored in whole minutes; the form accepts hours.
+// Time-based resources are stored in whole minutes; add-resource targets accept hours.
 export function toStoredAmount(input: string, unit: string): number {
   if (isTimeUnit(unit)) return Math.max(0, Math.round((parseFloat(input) || 0) * 60));
   return Math.max(0, parseInt(input) || 0);
 }
 
-export function toInputAmount(stored: number, unit: string): string {
-  if (isTimeUnit(unit)) return String(Math.round((stored / 60) * 100) / 100);
-  return String(stored);
+export function parseTimeInput(input: string): number {
+  const value = input.trim().toLowerCase();
+  if (!value) return 0;
+  const hours = value.match(/(\d+(?:\.\d+)?)\s*h/);
+  const minutes = value.match(/(\d+(?:\.\d+)?)\s*m/);
+  if (hours || minutes) {
+    return Math.max(0, Math.round((hours ? Number(hours[1]) * 60 : 0) + (minutes ? Number(minutes[1]) : 0)));
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.max(0, Math.round(numeric)) : 0;
+}
+
+export function toEditableAmount(stored: number, unit: string): string {
+  return isTimeUnit(unit) ? formatDuration(stored) : String(stored);
 }
 
 export function getQuickAddButtons(unit: string): { label: string; amount: number }[] {
