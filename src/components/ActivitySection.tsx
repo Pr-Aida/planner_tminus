@@ -386,7 +386,7 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
       });
     } else if (!linkProgress && existingLink && activityId) {
       // Was linked before, now unlinked
-      await removeContribution(activityId, existingLink.projectId, existingLink.resourceId);
+      await removeContribution(activityId);
     }
 
     discardDraft(dateKey);
@@ -874,7 +874,7 @@ function ActivityCard({ activity, onDelete, onEdit, timeFormat, progressProjects
 
   async function handleUnlink() {
     if (!linkInfo) return;
-    await removeContribution(activity.id, linkInfo.projectId, linkInfo.resourceId);
+    await removeContribution(activity.id);
     setLinkInfo(null);
   }
   const duration = (() => {

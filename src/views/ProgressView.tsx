@@ -1,21 +1,23 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Plus, Trash2, Pencil, Save, X, ChevronLeft, Target,
-  Calendar, Clock, TrendingUp, Archive, FolderPlus, BarChart3, BookOpen,
+  Calendar, Clock, TrendingUp, Archive, FolderPlus, BarChart3, BookOpen, Link2,
 } from 'lucide-react';
+import LinkActivityModal from '../components/LinkActivityModal';
 import { useTheme } from '../lib/theme';
 import { useProgressData } from '../hooks/useProgressData';
 import {
-  computeProjectStats, formatDuration, statusLabel, statusColor,
+  computeProjectStats, formatDuration, formatProgressDate, statusLabel, statusColor,
   UNIT_OPTIONS, PROJECT_COLORS,
 } from '../lib/progress';
-import type { ProgressProject, ProgressResource, ProgressContribution, ProgressStage } from '../types';
+import type { ProgressProject, ProgressResource, ProgressContribution, ProgressStage, CalendarMode } from '../types';
 
 interface Props {
   userId: string | null;
+  calMode: CalendarMode;
 }
 
-export default function ProgressView({ userId }: Props) {
+export default function ProgressView({ userId, calMode }: Props) {
   const { colors } = useTheme();
   const progress = useProgressData(userId);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -44,6 +46,9 @@ export default function ProgressView({ userId }: Props) {
         onAddResource={progress.createResource}
         onUpdateResource={progress.updateResource}
         onDeleteResource={progress.deleteResource}
+        calMode={calMode}
+        allContributions={progress.contributions}
+        onActivityLinked={progress.loadAll}
         colors={colors}
       />
     );
@@ -106,6 +111,7 @@ export default function ProgressView({ userId }: Props) {
 
       {showProjectForm && (
         <ProjectFormModal
+          calMode={calMode}
           onSave={async (data) => { await progress.createProject(data); setShowProjectForm(false); }}
           onCancel={() => setShowProjectForm(false)}
           colors={colors}
@@ -198,7 +204,7 @@ function ProjectCard({ project, stats, resourceCount, onClick, colors }: {
 
 function ProjectDetail({
   project, resources, contributions, onBack, onUpdateProject, onDeleteProject,
-  onArchiveProject, onAddResource, onUpdateResource, onDeleteResource, colors,
+  onArchiveProject, onAddResource, onUpdateResource, onDeleteResource, calMode, allContributions, onActivityLinked, colors,
 }: {
   project: ProgressProject;
   resources: ProgressResource[];
@@ -210,9 +216,13 @@ function ProjectDetail({
   onAddResource: (data: { project_id: string; name: string; unit: string; total: number; stage?: string | null }) => Promise<unknown>;
   onUpdateResource: (id: string, patch: Partial<ProgressResource>) => void;
   onDeleteResource: (id: string) => void;
+  calMode: CalendarMode;
+  allContributions: ProgressContribution[];
+  onActivityLinked: () => void;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
   const [showResourceForm, setShowResourceForm] = useState(false);
+  const [showLinkActivity, setShowLinkActivity] = useState(false);
   const [showEditProject, setShowEditProject] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const accentColor = project.color || colors.accent;
@@ -272,7 +282,7 @@ function ProjectDetail({
           <StatBox label="Progress" value={`${stats.overallPct}%`} sub={`${stats.completedUnits}/${stats.totalUnits}`} color={accentColor} colors={colors} />
           <StatBox label="Studied" value={formatDuration(stats.studiedMinutes)} sub={project.target_study_minutes ? `of ${formatDuration(project.target_study_minutes)}` : undefined} color={colors.accent} colors={colors} />
           <StatBox label="Est. Remaining" value={stats.estimatedRemainingMinutes !== null ? `~${formatDuration(stats.estimatedRemainingMinutes)}` : '—'} sub={stats.pacePerHour !== null ? `${stats.pacePerHour.toFixed(1)} u/hr` : undefined} color={colors.warning} colors={colors} />
-          <StatBox label="Deadline" value={stats.daysRemaining !== null ? (stats.daysRemaining >= 0 ? `${stats.daysRemaining}d` : 'Overdue') : '—'} sub={project.deadline_date || undefined} color={stats.daysRemaining !== null && stats.daysRemaining < 0 ? colors.error : colors.textPrimary} colors={colors} />
+          <StatBox label="Deadline" value={stats.daysRemaining !== null ? (stats.daysRemaining >= 0 ? `${stats.daysRemaining}d` : 'Overdue') : '—'} sub={project.deadline_date ? formatProgressDate(project.deadline_date, calMode) : undefined} color={stats.daysRemaining !== null && stats.daysRemaining < 0 ? colors.error : colors.textPrimary} colors={colors} />
         </div>
 
         {/* Status + Daily Target */}
@@ -334,15 +344,23 @@ function ProjectDetail({
       </div>
 
       {/* Recent activities */}
-      {recentContributions.length > 0 && (
-        <div className="rounded-xl p-6" style={{ background: colors.bgCard, border: `1px solid ${colors.borderLight}`, boxShadow: `0 2px 12px ${colors.shadow}` }}>
-          <span className="text-xs font-bold uppercase tracking-widest mb-4 block" style={{ color: colors.accent }}>Recent Activity</span>
+      <div className="rounded-xl p-6" style={{ background: colors.bgCard, border: `1px solid ${colors.borderLight}`, boxShadow: `0 2px 12px ${colors.shadow}` }}>
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.accent }}>Recent Activity</span>
+            <button onClick={() => setShowLinkActivity(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80"
+              style={{ background: colors.bgInput, color: colors.textPrimary, border: 'none', cursor: 'pointer' }}>
+              <Link2 size={12} /> Link Existing Activity
+            </button>
+          </div>
+          {recentContributions.length === 0 && (
+            <p className="text-xs" style={{ color: colors.textTertiary }}>No activities linked yet. Link an existing activity to record its study time and output here.</p>
+          )}
           {recentContributions.map(c => {
             const res = resources.find(r => r.id === c.resource_id);
             return (
               <div key={c.id} className="flex items-center justify-between py-2 text-xs" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
                 <span style={{ color: colors.textSecondary }}>
-                  {c.date_key}
+                  {formatProgressDate(c.date_key, calMode)}
                   {res ? ` — ${res.name}` : ''}
                 </span>
                 <span style={{ color: colors.textTertiary }}>
@@ -352,6 +370,17 @@ function ProjectDetail({
             );
           })}
         </div>
+
+      {showLinkActivity && (
+        <LinkActivityModal
+          project={project}
+          resources={resources}
+          contributions={allContributions}
+          calMode={calMode}
+          onLinked={onActivityLinked}
+          onClose={() => setShowLinkActivity(false)}
+          colors={colors}
+        />
       )}
 
       {showResourceForm && (
@@ -365,6 +394,7 @@ function ProjectDetail({
       {showEditProject && (
         <ProjectFormModal
           initial={project}
+          calMode={calMode}
           onSave={(data) => { onUpdateProject(data); setShowEditProject(false); }}
           onCancel={() => setShowEditProject(false)}
           colors={colors}
@@ -394,10 +424,13 @@ function ResourceRow({ resource, isLast, onUpdate, onDelete, colors }: {
 }) {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(resource.name);
-  const [editUnit, setEditUnit] = useState(resource.unit);
+  const [editUnit, setEditUnit] = useState(UNIT_OPTIONS.includes(resource.unit) ? resource.unit : 'custom');
   const [editTotal, setEditTotal] = useState(String(resource.total));
   const [editCompleted, setEditCompleted] = useState(String(resource.completed));
   const [editStage, setEditStage] = useState<string>(resource.stage || '');
+  const [editCustomUnit, setEditCustomUnit] = useState(
+    !UNIT_OPTIONS.includes(resource.unit) ? resource.unit : ''
+  );
   const [confirmDel, setConfirmDel] = useState(false);
 
   const pct = resource.total > 0 ? Math.round((resource.completed / resource.total) * 100) : 0;
@@ -405,9 +438,10 @@ function ResourceRow({ resource, isLast, onUpdate, onDelete, colors }: {
   function saveEdit() {
     const total = parseInt(editTotal) || 0;
     const completed = Math.min(parseInt(editCompleted) || 0, total);
+    const finalUnit = editUnit === 'custom' ? (editCustomUnit.trim() || 'custom') : editUnit;
     onUpdate(resource.id, {
       name: editName.trim() || resource.name,
-      unit: editUnit.trim() || 'pages',
+      unit: finalUnit,
       total,
       completed,
       stage: (editStage || null) as ProgressStage | null,
@@ -425,9 +459,13 @@ function ResourceRow({ resource, isLast, onUpdate, onDelete, colors }: {
           <select value={editUnit} onChange={e => setEditUnit(e.target.value)}
             className="rounded-lg px-3 py-2 text-sm outline-none"
             style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}>
-            {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}
-            {!UNIT_OPTIONS.includes(editUnit) && <option value={editUnit}>{editUnit}</option>}
+            {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u === 'custom' ? 'Custom unit' : u}</option>)}
           </select>
+          {editUnit === 'custom' && (
+            <input type="text" value={editCustomUnit} onChange={e => setEditCustomUnit(e.target.value)} placeholder="Enter unit name"
+              className="rounded-lg px-3 py-2 text-sm outline-none mt-2 w-full"
+              style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }} />
+          )}
         </div>
         <div className="flex flex-wrap gap-2 mb-2">
           <label className="text-xs flex items-center gap-1.5" style={{ color: colors.textSecondary }}>
@@ -524,8 +562,9 @@ function StatBox({ label, value, sub, color, colors }: {
 
 // ─── Project Form Modal ───────────────────────────────────────────────────────
 
-function ProjectFormModal({ initial, onSave, onCancel, colors }: {
+function ProjectFormModal({ initial, calMode, onSave, onCancel, colors }: {
   initial?: ProgressProject;
+  calMode: CalendarMode;
   onSave: (data: { name: string; description?: string; color?: string | null; deadline_date?: string | null; target_study_minutes?: number | null }) => void;
   onCancel: () => void;
   colors: ReturnType<typeof useTheme>['colors'];
@@ -585,6 +624,9 @@ function ProjectFormModal({ initial, onSave, onCancel, colors }: {
             <input type="date" value={deadlineDate} onChange={e => setDeadlineDate(e.target.value)}
               className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
               style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }} />
+            {calMode === 'shamsi' && deadlineDate && (
+              <p className="text-[10px] mt-1" style={{ color: colors.textTertiary }}>{formatProgressDate(deadlineDate, calMode)}</p>
+            )}
           </div>
           <div>
             <label className="text-xs font-semibold block mb-1.5" style={{ color: colors.textSecondary }}>Target hours (optional)</label>
@@ -622,10 +664,12 @@ function ResourceFormModal({ onSave, onCancel, colors }: {
   const [unit, setUnit] = useState('pages');
   const [total, setTotal] = useState('');
   const [stage, setStage] = useState('');
+  const [customUnit, setCustomUnit] = useState('');
 
   function handleSave() {
     if (!name.trim()) return;
-    onSave({ name: name.trim(), unit, total: parseInt(total) || 0, stage: stage || null });
+    const finalUnit = unit === 'custom' ? (customUnit.trim() || 'custom') : unit;
+    onSave({ name: name.trim(), unit: finalUnit, total: parseInt(total) || 0, stage: stage || null });
   }
 
   return (
@@ -651,8 +695,13 @@ function ResourceFormModal({ onSave, onCancel, colors }: {
             <select value={unit} onChange={e => setUnit(e.target.value)}
               className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
               style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}>
-              {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}
+              {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u === 'custom' ? 'Custom unit' : u}</option>)}
             </select>
+            {unit === 'custom' && (
+              <input type="text" value={customUnit} onChange={e => setCustomUnit(e.target.value)} placeholder="e.g. drawings"
+                className="w-full rounded-lg px-3 py-2.5 text-sm outline-none mt-2"
+                style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }} />
+            )}
           </div>
           <div>
             <label className="text-xs font-semibold block mb-1.5" style={{ color: colors.textSecondary }}>Total</label>

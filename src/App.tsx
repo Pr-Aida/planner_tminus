@@ -1188,7 +1188,7 @@ function MainAppContent(props: MainAppContentProps) {
           onClose={props.onCloseClassSchedule}
         />
       ) : props.viewMode === 'progress' ? (
-        <ProgressView userId={props.userId} />
+        <ProgressView userId={props.userId} calMode={props.calMode} />
       ) : (
       <>
       <HeroBanner imageDataUrl={props.coverImage} onImageChange={props.onCoverChange} />

@@ -1,4 +1,5 @@
-import type { ProgressResource, ProgressContribution } from '../types';
+import type { ProgressResource, ProgressContribution, CalendarMode } from '../types';
+import { gregorianToSh, SH_MONTHS } from './calendar';
 
 export interface ProjectStats {
   totalUnits: number;
@@ -86,6 +87,14 @@ export function computeProjectStats(
   };
 }
 
+export function formatProgressDate(isoDate: string, calMode: CalendarMode): string {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  if (!year || !month || !day) return isoDate;
+  if (calMode === 'gregorian') return isoDate;
+  const sh = gregorianToSh({ year, month, day });
+  return `${sh.day} ${SH_MONTHS[sh.month - 1]} ${sh.year}`;
+}
+
 export function formatDuration(minutes: number): string {
   if (minutes <= 0) return '0m';
   const h = Math.floor(minutes / 60);
@@ -113,7 +122,7 @@ export function statusColor(status: ProjectStats['status']): string {
 
 export const UNIT_OPTIONS = [
   'pages', 'slides', 'videos', 'chapters', 'questions',
-  'exercises', 'lectures', 'past papers', 'flashcards', 'hours',
+  'exercises', 'lectures', 'past papers', 'flashcards', 'hours', 'custom',
 ];
 
 export const PROJECT_COLORS = [
