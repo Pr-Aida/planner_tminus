@@ -16,9 +16,13 @@ const COLUMN_HEIGHT = ITEM_HEIGHT * VISIBLE_ITEMS;
 const pad = (n: number) => String(n).padStart(2, '0');
 
 function splitHHmm(hhmm: string): { hour: number; minute: number } {
-  if (!hhmm) return { hour: 8, minute: 0 };
   const [h, m] = hhmm.split(':').map(Number);
   return { hour: h || 0, minute: m || 0 };
+}
+
+function nowHHmm(): string {
+  const d = new Date();
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function hourOptions(fmt: TimeFormat): number[] {
@@ -31,9 +35,11 @@ export default function TimeInput({ value, onChange, className = '', }: Props) {
   const { colors } = useTheme();
   const timeFormat = useTimeFormat();
   const [open, setOpen] = useState(false);
+  const [openSeed, setOpenSeed] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
   const formatted = formatTimeForInput(value, timeFormat);
-  const { hour: hour24, minute } = splitHHmm(value);
+  const pickerValue = value || openSeed;
+  const { hour: hour24, minute } = splitHHmm(pickerValue);
   const isPm = hour24 >= 12;
   const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
 
@@ -92,7 +98,10 @@ export default function TimeInput({ value, onChange, className = '', }: Props) {
         </span>
         <button
           type="button"
-          onClick={() => setOpen(o => !o)}
+          onClick={() => {
+            setOpenSeed(value ? '' : nowHHmm());
+            setOpen(o => !o);
+          }}
           aria-haspopup="dialog"
           aria-expanded={open}
           className="p-0.5 rounded transition-colors flex-shrink-0"
