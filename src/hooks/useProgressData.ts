@@ -83,9 +83,51 @@ export function useProgressData(userId: string | null) {
     setResources(prev => prev.map(r => r.id === id ? { ...r, completed } : r));
   }, []);
 
+  const logContribution = useCallback(async (data: {
+    project_id: string; resource_id: string | null; units_added: number; date_key: string; duration_minutes?: number;
+  }) => {
+    if (!userId) return null;
+    const activityId = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const { data: row } = await supabase.from('planner_progress_contributions').insert({
+      user_id: userId, activity_id: activityId,
+      project_id: data.project_id, resource_id: data.resource_id,
+      units_added: data.units_added, date_key: data.date_key,
+      duration_minutes: data.duration_minutes || 0,
+    }).select().single();
+    if (row) setContributions(prev => [...prev, row as ProgressContribution]);
+
+    // Update resource completed count
+    if (data.resource_id && data.units_added !== 0) {
+      setResources(prev => prev.map(r => {
+        if (r.id !== data.resource_id) return r;
+        const newCompleted = Math.max(0, r.completed + data.units_added);
+        const finalCompleted = r.total > 0 ? Math.min(newCompleted, r.total) : newCompleted;
+        supabase.from('planner_progress_resources').update({ completed: finalCompleted }).eq('id', r.id);
+        return { ...r, completed: finalCompleted };
+      }));
+    }
+    return row as ProgressContribution | null;
+  }, [userId]);
+
+  const deleteContribution = useCallback(async (id: string) => {
+    const contrib = contributions.find(c => c.id === id);
+    await supabase.from('planner_progress_contributions').delete().eq('id', id);
+    setContributions(prev => prev.filter(c => c.id !== id));
+    // Reverse the units on the resource
+    if (contrib && contrib.resource_id && contrib.units_added !== 0) {
+      setResources(prev => prev.map(r => {
+        if (r.id !== contrib.resource_id) return r;
+        const newCompleted = Math.max(0, r.completed - contrib.units_added);
+        supabase.from('planner_progress_resources').update({ completed: newCompleted }).eq('id', r.id);
+        return { ...r, completed: newCompleted };
+      }));
+    }
+  }, [contributions]);
+
   return {
     projects, resources, contributions, loading, loadAll,
     createProject, updateProject, deleteProject, archiveProject,
     createResource, updateResource, deleteResource, setResourceCompleted,
+    logContribution, deleteContribution,
   };
 }
