@@ -1,14 +1,12 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Plus, Trash2, Pencil, Save, X, ChevronLeft, Target,
-  Calendar, Clock, TrendingUp, Archive, FolderPlus, BarChart3, BookOpen, Link2, Unlink,
+  Calendar, Clock, TrendingUp, Archive, FolderPlus, BarChart3, BookOpen,
   MoreVertical, Zap, Check, Pause, Archive as ArchiveIcon,
 } from 'lucide-react';
-import LinkActivityModal from '../components/LinkActivityModal';
 import DatePicker from '../components/DatePicker';
 import { useTheme } from '../lib/theme';
 import { useProgressData } from '../hooks/useProgressData';
-import { removeContribution } from '../lib/progressSync';
 import {
   computeProjectStats, formatDuration, formatProgressDate, statusLabel, statusColor,
   UNIT_OPTIONS, PROJECT_COLORS, getQuickAddButtons, isTimeUnit, formatAmount, formatPair, toStoredAmount, toInputAmount,
@@ -67,10 +65,7 @@ export default function ProgressView({ userId, calMode }: Props) {
         onUpdateResource={progress.updateResource}
         onDeleteResource={progress.deleteResource}
         onLogContribution={progress.logContribution}
-        onDeleteContribution={progress.deleteContribution}
         calMode={calMode}
-        allContributions={progress.contributions}
-        onActivityLinked={progress.loadAll}
         colors={colors}
       />
     );
@@ -264,7 +259,7 @@ function ProjectCard({ project, stats, resourceCount, onClick, calMode, colors }
 function ProjectDetail({
   project, resources, contributions, onBack, onUpdateProject, onDeleteProject,
   onArchiveProject, onAddResource, onUpdateResource, onDeleteResource, onLogContribution,
-  onDeleteContribution, calMode, allContributions, onActivityLinked, colors,
+  calMode, colors,
 }: {
   project: ProgressProject;
   resources: ProgressResource[];
@@ -277,14 +272,10 @@ function ProjectDetail({
   onUpdateResource: (id: string, patch: Partial<ProgressResource>) => void;
   onDeleteResource: (id: string) => void;
   onLogContribution: (data: { project_id: string; resource_id: string | null; units_added: number; date_key: string; duration_minutes?: number }) => Promise<boolean>;
-  onDeleteContribution: (id: string) => Promise<void>;
   calMode: CalendarMode;
-  allContributions: ProgressContribution[];
-  onActivityLinked: () => void;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
   const [showResourceForm, setShowResourceForm] = useState(false);
-  const [showLinkActivity, setShowLinkActivity] = useState(false);
   const [showEditProject, setShowEditProject] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
@@ -312,13 +303,6 @@ function ProjectDetail({
     document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
   }, [statusMenuOpen]);
-
-  const recentContributions = [...contributions]
-    .sort((a, b) => {
-      try { return (b.created_at || '').localeCompare(a.created_at || ''); }
-      catch { return 0; }
-    })
-    .slice(0, 8);
 
   // Today's logged progress - compact summary by unit
   const todayContributions = contributions.filter(c => c.date_key === todayKey);
@@ -534,65 +518,6 @@ function ProjectDetail({
           </div>
         )}
       </div>
-
-      {/* Recent activities */}
-      <div className="rounded-xl p-6" style={{ background: colors.bgCard, border: `1px solid ${colors.borderLight}`, boxShadow: `0 2px 12px ${colors.shadow}` }}>
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.accent }}>Recent Activity</span>
-            <button onClick={() => setShowLinkActivity(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80"
-              style={{ background: colors.bgInput, color: colors.textPrimary, border: 'none', cursor: 'pointer' }}>
-              <Link2 size={12} /> Link Existing Activity
-            </button>
-          </div>
-          {recentContributions.length === 0 && (
-            <p className="text-xs" style={{ color: colors.textTertiary }}>No activities linked yet. Link an existing activity or log progress from a resource to record study time and output here.</p>
-          )}
-          {recentContributions.map(c => {
-            const res = resources.find(r => r.id === c.resource_id);
-            const isManual = c.activity_id.startsWith('manual-');
-            return (
-              <div key={c.id} className="group flex items-center justify-between py-2 text-xs" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
-                <span style={{ color: colors.textSecondary }}>
-                  {formatProgressDate(c.date_key, calMode)}
-                  {res ? ` — ${res.name}` : ''}
-                </span>
-                <div className="flex items-center gap-2">
-                  <span style={{ color: colors.textTertiary }}>
-                    {c.units_added > 0 ? `+${(() => { const u = res?.unit || stats.dominantUnit || ''; return isTimeUnit(u) ? formatDuration(c.units_added) : `${c.units_added} ${u}`; })()} ` : ''}{formatDuration(c.duration_minutes)}
-                  </span>
-                  <button
-                    onClick={async () => {
-                      if (isManual) {
-                        await onDeleteContribution(c.id);
-                      } else {
-                        await removeContribution(c.activity_id);
-                        onActivityLinked();
-                      }
-                    }}
-                    className="p-1 rounded transition-colors opacity-60 sm:opacity-0 sm:group-hover:opacity-100"
-                    style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textTertiary }}
-                    onMouseEnter={e => (e.currentTarget.style.color = colors.warning)}
-                    onMouseLeave={e => (e.currentTarget.style.color = colors.textTertiary)}
-                    title="Unlink from Progress">
-                    <Unlink size={12} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-      {showLinkActivity && (
-        <LinkActivityModal
-          project={project}
-          resources={resources}
-          contributions={allContributions}
-          calMode={calMode}
-          onLinked={onActivityLinked}
-          onClose={() => setShowLinkActivity(false)}
-          colors={colors}
-        />
-      )}
 
       {showResourceForm && (
         <ResourceFormModal
