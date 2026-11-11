@@ -1,15 +1,17 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Plus, Trash2, Pencil, Save, X, ChevronLeft, Target,
-  Calendar, Clock, TrendingUp, Archive, FolderPlus, BarChart3, BookOpen, Link2,
+  Calendar, Clock, TrendingUp, Archive, FolderPlus, BarChart3, BookOpen, Link2, Unlink,
 } from 'lucide-react';
 import LinkActivityModal from '../components/LinkActivityModal';
 import { useTheme } from '../lib/theme';
 import { useProgressData } from '../hooks/useProgressData';
+import { removeContribution } from '../lib/progressSync';
 import {
   computeProjectStats, formatDuration, formatProgressDate, statusLabel, statusColor,
   UNIT_OPTIONS, PROJECT_COLORS,
 } from '../lib/progress';
+import { SH_MONTHS, gregorianToSh, shToGregorian, dateKey, todaySh, shDaysInMonth } from '../lib/calendar';
 import type { ProgressProject, ProgressResource, ProgressContribution, ProgressStage, CalendarMode } from '../types';
 
 interface Props {
@@ -166,7 +168,7 @@ function ProjectCard({ project, stats, resourceCount, onClick, colors }: {
             <span className="font-bold" style={{ color: accentColor }}>{stats.overallPct}%</span>
           </div>
           <div className="rounded-full h-2 mb-3 overflow-hidden" style={{ background: colors.bgInput }}>
-            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${stats.overallPct}%`, background: accentColor }} />
+            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, stats.overallPct)}%`, background: accentColor }} />
           </div>
         </>
       )}
@@ -213,7 +215,7 @@ function ProjectDetail({
   onUpdateProject: (patch: Partial<ProgressProject>) => void;
   onDeleteProject: () => void;
   onArchiveProject: (archived: boolean) => void;
-  onAddResource: (data: { project_id: string; name: string; unit: string; total: number; stage?: string | null }) => Promise<unknown>;
+  onAddResource: (data: { project_id: string; name: string; unit: string; total: number; completed?: number; stage?: string | null }) => Promise<unknown>;
   onUpdateResource: (id: string, patch: Partial<ProgressResource>) => void;
   onDeleteResource: (id: string) => void;
   calMode: CalendarMode;
@@ -358,14 +360,25 @@ function ProjectDetail({
           {recentContributions.map(c => {
             const res = resources.find(r => r.id === c.resource_id);
             return (
-              <div key={c.id} className="flex items-center justify-between py-2 text-xs" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
+              <div key={c.id} className="group flex items-center justify-between py-2 text-xs" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
                 <span style={{ color: colors.textSecondary }}>
                   {formatProgressDate(c.date_key, calMode)}
                   {res ? ` — ${res.name}` : ''}
                 </span>
-                <span style={{ color: colors.textTertiary }}>
-                  {c.units_added > 0 ? `+${c.units_added} ` : ''}{formatDuration(c.duration_minutes)}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span style={{ color: colors.textTertiary }}>
+                    {c.units_added > 0 ? `+${c.units_added} ` : ''}{formatDuration(c.duration_minutes)}
+                  </span>
+                  <button
+                    onClick={async () => { await removeContribution(c.activity_id); onActivityLinked(); }}
+                    className="p-1 rounded transition-colors opacity-60 sm:opacity-0 sm:group-hover:opacity-100"
+                    style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textTertiary }}
+                    onMouseEnter={e => (e.currentTarget.style.color = colors.warning)}
+                    onMouseLeave={e => (e.currentTarget.style.color = colors.textTertiary)}
+                    title="Unlink from Progress">
+                    <Unlink size={12} />
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -385,7 +398,7 @@ function ProjectDetail({
 
       {showResourceForm && (
         <ResourceFormModal
-          onSave={async (data) => { await onAddResource({ ...data, project_id: project.id }); setShowResourceForm(false); }}
+          onSave={async (data) => { await onAddResource({ ...data, project_id: project.id, completed: data.completed || 0 }); setShowResourceForm(false); }}
           onCancel={() => setShowResourceForm(false)}
           colors={colors}
         />
@@ -433,7 +446,7 @@ function ResourceRow({ resource, isLast, onUpdate, onDelete, colors }: {
   );
   const [confirmDel, setConfirmDel] = useState(false);
 
-  const pct = resource.total > 0 ? Math.round((resource.completed / resource.total) * 100) : 0;
+  const pct = resource.total > 0 ? Math.min(100, Math.round((resource.completed / resource.total) * 100)) : 0;
 
   function saveEdit() {
     const total = parseInt(editTotal) || 0;
@@ -512,12 +525,12 @@ function ResourceRow({ resource, isLast, onUpdate, onDelete, colors }: {
               <span className="font-bold" style={{ color: colors.accent }}>{pct}%</span>
             </div>
             <div className="rounded-full h-1.5 overflow-hidden" style={{ background: colors.bgInput }}>
-              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: colors.accent }} />
+              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, pct)}%`, background: colors.accent }} />
             </div>
           </>
         )}
       </div>
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+      <div className="flex items-center gap-1 opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
         <button onClick={() => setEditing(true)} className="p-1 rounded transition-colors"
           style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textTertiary }}
           onMouseEnter={e => e.currentTarget.style.color = colors.textPrimary}
@@ -575,6 +588,18 @@ function ProjectFormModal({ initial, calMode, onSave, onCancel, colors }: {
   const [deadlineDate, setDeadlineDate] = useState(initial?.deadline_date || '');
   const [targetHours, setTargetHours] = useState(initial?.target_study_minutes ? String(Math.round(initial.target_study_minutes / 60)) : '');
 
+  // Shamsi deadline picker state
+  const initialSh = initial?.deadline_date ? gregorianToSh({ year: Number(initial.deadline_date.slice(0, 4)), month: Number(initial.deadline_date.slice(5, 7)), day: Number(initial.deadline_date.slice(8, 10)) }) : null;
+  const todayShDate = todaySh();
+  const [shYear, setShYear] = useState(initialSh?.year || todayShDate.year);
+  const [shMonth, setShMonth] = useState(initialSh?.month || todayShDate.month);
+  const [shDay, setShDay] = useState(initialSh?.day || todayShDate.day);
+
+  function setShamsiDeadline(year: number, month: number, day: number) {
+    const g = shToGregorian({ year, month, day });
+    setDeadlineDate(dateKey(g));
+  }
+
   function handleSave() {
     if (!name.trim()) return;
     onSave({
@@ -620,11 +645,35 @@ function ProjectFormModal({ initial, calMode, onSave, onCancel, colors }: {
 
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div>
-            <label className="text-xs font-semibold block mb-1.5" style={{ color: colors.textSecondary }}>Deadline (optional)</label>
-            <input type="date" value={deadlineDate} onChange={e => setDeadlineDate(e.target.value)}
-              className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-              style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }} />
-            {calMode === 'shamsi' && deadlineDate && (
+            <label className="text-xs font-semibold block mb-1.5" style={{ color: colors.textSecondary }}>Deadline (optional){calMode === 'shamsi' ? ' (Shamsi)' : ''}</label>
+            {calMode === 'shamsi' ? (
+              <div className="flex gap-1.5">
+                <select value={shYear} onChange={e => { setShYear(Number(e.target.value)); if (deadlineDate) setShamsiDeadline(Number(e.target.value), shMonth, shDay); }}
+                  className="rounded-lg px-2 py-2.5 text-sm outline-none"
+                  style={{ width: '80px', border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}>
+                  {Array.from({ length: 8 }, (_, i) => todayShDate.year + i - 1).map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+                <select value={shMonth} onChange={e => { const m = Number(e.target.value); setShMonth(m); setShDay(1); if (deadlineDate) setShamsiDeadline(shYear, m, 1); }}
+                  className="flex-1 rounded-lg px-2 py-2.5 text-sm outline-none"
+                  style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}>
+                  {SH_MONTHS.map((m, i) => <option key={i} value={i + 1}>{m.name}</option>)}
+                </select>
+                <select value={shDay} onChange={e => { const d = Number(e.target.value); setShDay(d); setShamsiDeadline(shYear, shMonth, d); }}
+                  className="rounded-lg px-2 py-2.5 text-sm outline-none"
+                  style={{ width: '60px', border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}>
+                  {Array.from({ length: shDaysInMonth(shYear, shMonth) }, (_, i) => i + 1).map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <input type="date" value={deadlineDate} onChange={e => setDeadlineDate(e.target.value)}
+                className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+                style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }} />
+            )}
+            {deadlineDate && (
               <p className="text-[10px] mt-1" style={{ color: colors.textTertiary }}>{formatProgressDate(deadlineDate, calMode)}</p>
             )}
           </div>
@@ -656,20 +705,23 @@ function ProjectFormModal({ initial, calMode, onSave, onCancel, colors }: {
 // ─── Resource Form Modal ──────────────────────────────────────────────────────
 
 function ResourceFormModal({ onSave, onCancel, colors }: {
-  onSave: (data: { name: string; unit: string; total: number; stage?: string | null }) => void;
+  onSave: (data: { name: string; unit: string; total: number; completed?: number; stage?: string | null }) => void;
   onCancel: () => void;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
   const [name, setName] = useState('');
   const [unit, setUnit] = useState('pages');
   const [total, setTotal] = useState('');
+  const [completed, setCompleted] = useState('');
   const [stage, setStage] = useState('');
   const [customUnit, setCustomUnit] = useState('');
 
   function handleSave() {
     if (!name.trim()) return;
     const finalUnit = unit === 'custom' ? (customUnit.trim() || 'custom') : unit;
-    onSave({ name: name.trim(), unit: finalUnit, total: parseInt(total) || 0, stage: stage || null });
+    const totalNum = parseInt(total) || 0;
+    const completedNum = Math.min(parseInt(completed) || 0, totalNum);
+    onSave({ name: name.trim(), unit: finalUnit, total: totalNum, completed: completedNum, stage: stage || null });
   }
 
   return (
@@ -711,16 +763,24 @@ function ResourceFormModal({ onSave, onCancel, colors }: {
           </div>
         </div>
 
-        <div className="mb-4">
-          <label className="text-xs font-semibold block mb-1.5" style={{ color: colors.textSecondary }}>Stage (optional)</label>
-          <select value={stage} onChange={e => setStage(e.target.value)}
-            className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-            style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}>
-            <option value="">No stage</option>
-            <option value="learn">Learn</option>
-            <option value="practice">Practice</option>
-            <option value="review">Review</option>
-          </select>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="text-xs font-semibold block mb-1.5" style={{ color: colors.textSecondary }}>Completed (optional)</label>
+            <input type="number" value={completed} onChange={e => setCompleted(e.target.value)} placeholder="0"
+              className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+              style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold block mb-1.5" style={{ color: colors.textSecondary }}>Stage (optional)</label>
+            <select value={stage} onChange={e => setStage(e.target.value)}
+              className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+              style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }}>
+              <option value="">No stage</option>
+              <option value="learn">Learn</option>
+              <option value="practice">Practice</option>
+              <option value="review">Review</option>
+            </select>
+          </div>
         </div>
 
         <div className="flex gap-3">

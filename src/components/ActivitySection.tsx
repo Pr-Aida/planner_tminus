@@ -925,7 +925,7 @@ function ActivityCard({ activity, onDelete, onEdit, timeFormat, progressProjects
           </div>
         )}
       </div>
-      <div className="flex-shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="flex-shrink-0 flex items-center gap-1 opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
         {linkedProject && (
           <button
             onClick={handleUnlink}

@@ -1,5 +1,5 @@
 import type { ProgressResource, ProgressContribution, CalendarMode } from '../types';
-import { gregorianToSh, SH_MONTHS } from './calendar';
+import { gregorianToSh, SH_MONTHS, GREG_MONTH_NAMES } from './calendar';
 
 export interface ProjectStats {
   totalUnits: number;
@@ -24,7 +24,7 @@ export function computeProjectStats(
   const totalUnits = resources.reduce((s, r) => s + r.total, 0);
   const completedUnits = resources.reduce((s, r) => s + r.completed, 0);
   const remainingUnits = Math.max(0, totalUnits - completedUnits);
-  const overallPct = totalUnits > 0 ? Math.round((completedUnits / totalUnits) * 100) : 0;
+  const overallPct = totalUnits > 0 ? Math.min(100, Math.round((completedUnits / totalUnits) * 100)) : 0;
 
   const studiedMinutes = contributions.reduce((s, c) => s + c.duration_minutes, 0);
 
@@ -90,9 +90,9 @@ export function computeProjectStats(
 export function formatProgressDate(isoDate: string, calMode: CalendarMode): string {
   const [year, month, day] = isoDate.split('-').map(Number);
   if (!year || !month || !day) return isoDate;
-  if (calMode === 'gregorian') return isoDate;
+  if (calMode === 'gregorian') return `${GREG_MONTH_NAMES[month - 1]} ${day}, ${year}`;
   const sh = gregorianToSh({ year, month, day });
-  return `${sh.day} ${SH_MONTHS[sh.month - 1]} ${sh.year}`;
+  return `${SH_MONTHS[sh.month - 1].name} ${sh.day}, ${sh.year}`;
 }
 
 export function formatDuration(minutes: number): string {

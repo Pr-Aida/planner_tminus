@@ -57,12 +57,12 @@ export function useProgressData(userId: string | null) {
   }, []);
 
   const createResource = useCallback(async (data: {
-    project_id: string; name: string; unit: string; total: number; stage?: string | null;
+    project_id: string; name: string; unit: string; total: number; completed?: number; stage?: string | null;
   }) => {
     if (!userId) return null;
     const { data: row } = await supabase.from('planner_progress_resources').insert({
       user_id: userId, project_id: data.project_id, name: data.name,
-      unit: data.unit, total: data.total, completed: 0, stage: data.stage || null,
+      unit: data.unit, total: data.total, completed: data.completed || 0, stage: data.stage || null,
     }).select().single();
     if (row) setResources(prev => [...prev, row as ProgressResource]);
     return row as ProgressResource | null;
