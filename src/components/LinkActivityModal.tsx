@@ -17,12 +17,12 @@ interface Props {
   calMode: CalendarMode;
   onLinked: () => void;
   onClose: () => void;
-  colors: { textPrimary: string; textSecondary: string; textTertiary: string; bgCard: string; bgInput: string; bgHover: string; borderLight: string; accent: string; heroBg: string; overlay: string; shadow: string };
+  colors: { textPrimary: string; textSecondary: string; textTertiary: string; bgCard: string; bgInput: string; bgHover: string; borderLight: string; accent: string; heroBg: string; overlay: string; shadow: string; error: string };
 }
 
 function unitLabel(unit: string): string {
   const u = unit.toLowerCase();
-  if (u === 'hours') return 'Time completed (minutes)';
+  if (u === 'hours') return 'Duration (minutes)';
   if (u === 'custom') return 'Amount completed';
   return `${unit.charAt(0).toUpperCase() + unit.slice(1)} completed`;
 }
@@ -87,7 +87,10 @@ export default function LinkActivityModal({ project, resources, contributions, c
     setSaving(true);
     setError(null);
     const duration = calcDurationMinutes(selected.activity.from, selected.activity.to);
-    const unitsAdded = parseInt(units) || 0;
+    const manualMinutes = Math.max(0, parseInt(units) || 0);
+    const unitsAdded = selectedIsTime
+      ? (duration > 0 ? duration : manualMinutes)
+      : manualMinutes;
 
     const ok = await upsertContribution({
       activityId: selected.activity.id,
@@ -175,10 +178,6 @@ export default function LinkActivityModal({ project, resources, contributions, c
                   <input type="number" min="0" value={units} onChange={e => setUnits(e.target.value)} placeholder={unitPlaceholder(selectedResource.unit)}
                     className="w-full rounded-lg px-3 py-2.5 text-sm outline-none mt-1.5" style={inputStyle} />
                 ) : null}
-                {selectedIsTime && activityDuration > 0 && (
-                  <input type="number" min="0" value={units} onChange={e => setUnits(e.target.value)} placeholder="override (minutes)"
-                    className="w-full rounded-lg px-3 py-2.5 text-sm outline-none mt-1.5" style={inputStyle} />
-                )}
               </label>
             ) : (
               <label className="text-xs font-semibold block" style={{ color: colors.textSecondary }}>

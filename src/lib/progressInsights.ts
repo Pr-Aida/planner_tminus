@@ -62,7 +62,7 @@ export function computeInsights(
   todayKey: string,
 ): ProgressInsights {
   const unitById = new Map(resources.map(r => [r.id, r.unit]));
-  const scopedContributions = scopedContributions.filter(c => !!c.resource_id && unitById.has(c.resource_id));
+  const scopedContributions: ProgressContribution[] = contributions.filter(c => !!c.resource_id && unitById.has(c.resource_id));
   const unitOf = (c: ProgressContribution) => (c.resource_id ? unitById.get(c.resource_id) ?? null : null);
   const countable = (c: ProgressContribution) => {
     const u = unitOf(c);
@@ -136,7 +136,7 @@ export function computeInsights(
   }
 
   const activeDays = new Set(
-    contributions
+    scopedContributions
       .filter(c => (c.units_added > 0 || c.duration_minutes > 0) && inRange(c, weekStart, todayKey))
       .map(c => c.date_key)
   ).size;

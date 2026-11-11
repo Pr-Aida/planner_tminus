@@ -470,7 +470,7 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
   resource: ProgressResource;
   projectId: string;
   accentColor: string;
-  onUpdate: (id: string, patch: Partial<ProgressResource>) => void;
+  onUpdate: (id: string, patch: Partial<ProgressResource>) => Promise<boolean>;
   onDelete: (id: string) => void;
   onLog: (data: { project_id: string; resource_id: string | null; units_added: number; date_key: string; duration_minutes?: number }) => Promise<boolean>;
   todayKey: string;

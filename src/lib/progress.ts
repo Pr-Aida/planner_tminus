@@ -78,9 +78,9 @@ export function computeProjectStats(
   const remainingUnits = Math.max(0, totalUnits - completedUnits);
   const overallPct = computeOverallPct(safeResources) ?? 0;
 
-  const studiedMinutes = safeContribs
-    .filter(c => !c.activity_id.startsWith('manual-'))
-    .reduce((s, c) => s + c.duration_minutes, 0);
+  // Studied Time = real study minutes. Time Quick Logs store minutes in
+  // duration_minutes; count-unit Quick Logs store 0, so they add nothing.
+  const studiedMinutes = safeContribs.reduce((s, c) => s + c.duration_minutes, 0);
 
   const remainingByUnitMap = new Map<string, number>();
   for (const r of safeResources) {
