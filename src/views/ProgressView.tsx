@@ -693,8 +693,7 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
   async function quickAdd(amount: number) {
     if (saving) return;
     setSaving(true);
-    const units = isHours ? amount : amount;
-    const ok = await onLog({ project_id: projectId, resource_id: resource.id, units_added: units, date_key: todayKey, duration_minutes: isHours ? amount : 0 });
+    const ok = await onLog({ project_id: projectId, resource_id: resource.id, units_added: amount, date_key: todayKey, duration_minutes: isHours ? amount : 0 });
     setSaving(false);
     if (ok) {
       showToast(`+${formatAmount(amount, resource.unit)} logged`);
@@ -708,20 +707,23 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
     const n = parseFloat(customAmount);
     if (!n || n <= 0) return;
     setSaving(true);
+    let ok = false;
     if (isHours) {
       const minutes = Math.round(n);
-      const ok = await onLog({ project_id: projectId, resource_id: resource.id, units_added: minutes, date_key: todayKey, duration_minutes: minutes });
+      ok = await onLog({ project_id: projectId, resource_id: resource.id, units_added: minutes, date_key: todayKey, duration_minutes: minutes });
       setSaving(false);
       if (ok) showToast(`+${formatDuration(minutes)} logged`);
       else showToast('Failed to save.');
     } else {
-      const ok = await onLog({ project_id: projectId, resource_id: resource.id, units_added: n, date_key: todayKey, duration_minutes: 0 });
+      ok = await onLog({ project_id: projectId, resource_id: resource.id, units_added: Math.round(n), date_key: todayKey, duration_minutes: 0 });
       setSaving(false);
-      if (ok) showToast(`+${n} ${resource.unit} added`);
+      if (ok) showToast(`+${Math.round(n)} ${resource.unit} added`);
       else showToast('Failed to save.');
     }
-    setCustomAmount('');
-    setShowLog(false);
+    if (ok) {
+      setCustomAmount('');
+      setShowLog(false);
+    }
   }
 
   if (editing) {

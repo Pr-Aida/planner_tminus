@@ -7,25 +7,32 @@ interface Props {
 
 interface State {
   hasError: boolean;
+  errorMessage: string;
+  errorStack: string | null;
 }
 
 /**
- * Lightweight error boundary — catches render crashes in a subtree and shows
- * a safe fallback instead of a blank white screen.
+ * Error boundary — catches render crashes in a subtree and shows
+ * a safe fallback with the actual error details instead of a white screen.
  */
 export default class ErrorBoundary extends Component<Props, State> {
-  state: State = { hasError: false };
+  state: State = { hasError: false, errorMessage: '', errorStack: null };
 
-  static getDerivedStateFromError(): State {
-    return { hasError: true };
+  static getDerivedStateFromError(error: unknown): State {
+    const msg = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : null;
+    return { hasError: true, errorMessage: msg, errorStack: stack };
   }
 
-  componentDidCatch(error: unknown) {
+  componentDidCatch(error: unknown, info: { componentStack?: string | null }) {
     console.error('ErrorBoundary caught:', error);
+    console.error('Error message:', error instanceof Error ? error.message : String(error));
+    console.error('Error stack:', error instanceof Error ? error.stack : null);
+    console.error('Component stack:', info.componentStack || '(none)');
   }
 
   handleRetry = () => {
-    this.setState({ hasError: false });
+    this.setState({ hasError: false, errorMessage: '', errorStack: null });
   };
 
   render() {
@@ -34,6 +41,9 @@ export default class ErrorBoundary extends Component<Props, State> {
         <div className="max-w-md mx-auto px-4 py-16 text-center">
           <p className="text-sm font-semibold mb-1" style={{ color: 'inherit' }}>
             {this.props.fallbackLabel || 'Something went wrong.'}
+          </p>
+          <p className="text-xs mb-2 opacity-70 font-mono break-all">
+            {this.state.errorMessage}
           </p>
           <p className="text-xs mb-4 opacity-60">An unexpected error occurred. Try reloading.</p>
           <button
