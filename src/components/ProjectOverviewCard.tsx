@@ -29,7 +29,7 @@ export default function ProjectOverviewCard({ project, stats, calMode, accentCol
   const planningActive = isPlanningActive(project.status);
   const hasTargets = stats.totalUnits > 0;
   const unit = stats.dominantUnit;
-  const remainingUnits = stats.totalUnits - stats.completedUnits;
+  const remainingUnits = stats.remainingUnits;
 
   let summary = 'No targets set yet';
   if (hasTargets && stats.isMixedUnits) {

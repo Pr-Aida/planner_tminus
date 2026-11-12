@@ -524,8 +524,7 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
       setEditError('Total must be greater than 0.');
       return;
     }
-    const enteredCompleted = isTimeUnit(finalUnit) ? parseTimeInput(editCompleted) : toStoredAmount(editCompleted, finalUnit);
-    const completed = total > 0 ? Math.min(enteredCompleted, total) : enteredCompleted;
+    const completed = isTimeUnit(finalUnit) ? parseTimeInput(editCompleted) : toStoredAmount(editCompleted, finalUnit);
     setSaving(true);
     setEditError(null);
     const ok = await onUpdate(resource.id, {

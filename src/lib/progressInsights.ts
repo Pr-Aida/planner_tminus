@@ -1,5 +1,5 @@
 import type { ProgressResource, ProgressContribution } from '../types';
-import { isTimeUnit } from './progress';
+import { isTimeUnit, dailyTargetFor } from './progress';
 
 export interface ProgressInsights {
   today: { amounts: { unit: string; amount: number }[]; studiedMinutes: number };
@@ -89,17 +89,14 @@ export function computeInsights(
 
   let goal: ProgressInsights['goal'] = null;
   const daysLeft = deadlineDate ? dayDiff(todayKey, deadlineDate) : null;
-  if (unit && daysLeft !== null && daysLeft >= 0) {
+  const target = unit ? dailyTargetFor(remaining, daysLeft) : null;
+  if (unit && target !== null) {
     const done = todays.filter(c => unitOf(c) === unit).reduce((s, c) => s + c.units_added, 0);
-    const dayTotal = remaining + done;
-    if (dayTotal > 0) {
-      const target = Math.ceil(dayTotal / Math.max(1, daysLeft));
-      goal = {
-        unit, target, done,
-        pct: Math.min(100, Math.round((done / target) * 100)),
-        complete: done >= target,
-      };
-    }
+    goal = {
+      unit, target, done,
+      pct: Math.min(100, Math.round((done / target) * 100)),
+      complete: done >= target,
+    };
   }
 
   let forecast: ProgressInsights['forecast'] = null;

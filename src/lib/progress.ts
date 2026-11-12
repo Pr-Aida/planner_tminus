@@ -56,6 +56,11 @@ export function computeOverallPct(resources: ProgressResource[]): number | null 
   return Math.round((sum / withTarget.length) * 100);
 }
 
+export function dailyTargetFor(remaining: number, daysRemaining: number | null): number | null {
+  if (daysRemaining === null || daysRemaining <= 0 || remaining <= 0) return null;
+  return Math.ceil(remaining / daysRemaining);
+}
+
 export function computeProjectStats(
   resources: ProgressResource[],
   contributions: ProgressContribution[],
@@ -76,8 +81,8 @@ export function computeProjectStats(
 
   const targeted = safeResources.filter(r => r.total > 0);
   const totalUnits = targeted.reduce((s, r) => s + r.total, 0);
-  const completedUnits = targeted.reduce((s, r) => s + r.completed, 0);
-  const remainingUnits = Math.max(0, totalUnits - completedUnits);
+  const completedUnits = targeted.reduce((s, r) => s + Math.min(r.completed, r.total), 0);
+  const remainingUnits = targeted.reduce((s, r) => s + Math.max(0, r.total - r.completed), 0);
   const overallPct = computeOverallPct(safeResources) ?? 0;
 
   // Studied Time = real study minutes. Time Quick Logs store minutes in
@@ -118,18 +123,11 @@ export function computeProjectStats(
     }
   }
 
-  let dailyTarget: number | null = null;
-  if (daysRemaining !== null && daysRemaining > 0 && remainingUnits > 0) {
-    dailyTarget = Math.ceil(remainingUnits / daysRemaining);
-  }
-
-  let dailyTargetByUnit: { unit: string; target: number }[] = [];
-  if (daysRemaining !== null && daysRemaining > 0 && remainingByUnitMap.size > 0) {
-    dailyTargetByUnit = [...remainingByUnitMap].map(([unit, remaining]) => ({
-      unit,
-      target: Math.ceil(remaining / daysRemaining),
-    }));
-  }
+  const dailyTarget = dailyTargetFor(remainingUnits, daysRemaining);
+  const dailyTargetByUnit = [...remainingByUnitMap].flatMap(([unit, remaining]) => {
+    const target = dailyTargetFor(remaining, daysRemaining);
+    return target === null ? [] : [{ unit, target }];
+  });
 
   let status: ProjectStats['status'] = 'on-track';
   if (daysRemaining !== null && estimatedRemainingMinutes !== null) {
