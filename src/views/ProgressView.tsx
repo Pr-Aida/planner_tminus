@@ -9,7 +9,7 @@ import { useTheme } from '../lib/theme';
 import { useProgressData } from '../hooks/useProgressData';
 import {
   computeProjectStats, attributableContributions, formatDuration, formatProgressDate, statusLabel, statusColor,
-  UNIT_OPTIONS, PROJECT_COLORS, getQuickAddButtons, isTimeUnit, formatAmount, formatPair, toStoredAmount, toEditableAmount, parseTimeInput,
+  UNIT_OPTIONS, PROJECT_COLORS, getQuickAddButtons, isTimeUnit, formatAmount, formatPair, toStoredAmount, toEditableAmount, parseTimeInput, normalizeDigits,
   projectStatusLabel, projectStatusColorKey, isPlanningActive, PROJECT_STATUS_OPTIONS,
 } from '../lib/progress';
 import { computeInsights } from '../lib/progressInsights';
@@ -556,7 +556,7 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
 
   async function customAdd() {
     if (saving) return;
-    const n = parseFloat(customAmount);
+    const n = parseFloat(normalizeDigits(customAmount));
     if (!n || n <= 0) return;
     setSaving(true);
     let ok = false;
@@ -598,10 +598,10 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
         </div>
         <div className="flex flex-wrap gap-2 mb-2">
           <label className="text-xs flex items-center gap-1.5" style={{ color: colors.textSecondary }}>
-            Total <input type={isHours ? 'text' : 'number'} value={editTotal} onChange={e => setEditTotal(e.target.value)} placeholder={isHours ? 'e.g. 1h 30m' : '0'} onKeyDown={e => e.key === 'Enter' && saveEdit()} className="w-28 rounded-lg px-2 py-1.5 text-sm outline-none" style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgCard, color: colors.textPrimary }} />
+            Total <input type="text" inputMode="decimal" value={editTotal} onChange={e => setEditTotal(e.target.value)} placeholder={isHours ? 'e.g. 1h 30m' : '0'} onKeyDown={e => e.key === 'Enter' && saveEdit()} className="w-28 rounded-lg px-2 py-1.5 text-sm outline-none" style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgCard, color: colors.textPrimary }} />
           </label>
           <label className="text-xs flex items-center gap-1.5" style={{ color: colors.textSecondary }}>
-            Completed <input type={isHours ? 'text' : 'number'} value={editCompleted} onChange={e => setEditCompleted(e.target.value)} placeholder={isHours ? 'e.g. 1h 30m' : '0'} onKeyDown={e => e.key === 'Enter' && saveEdit()} className="w-28 rounded-lg px-2 py-1.5 text-sm outline-none" style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgCard, color: colors.textPrimary }} />
+            Completed <input type="text" inputMode="decimal" value={editCompleted} onChange={e => setEditCompleted(e.target.value)} placeholder={isHours ? 'e.g. 1h 30m' : '0'} onKeyDown={e => e.key === 'Enter' && saveEdit()} className="w-28 rounded-lg px-2 py-1.5 text-sm outline-none" style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgCard, color: colors.textPrimary }} />
           </label>
         </div>
         {editError && <p className="text-xs mb-2" style={{ color: colors.error }}>{editError}</p>}
@@ -712,7 +712,7 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
           </div>
           {/* Custom input */}
           <div className="flex gap-1.5">
-            <input type="number" value={customAmount} onChange={e => setCustomAmount(e.target.value)}
+            <input type="text" inputMode="decimal" value={customAmount} onChange={e => setCustomAmount(e.target.value)}
               placeholder={`Custom ${isHours ? 'minutes' : resource.unit}`}
               className="flex-1 rounded-lg px-2.5 py-1.5 text-xs outline-none"
               style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgCard, color: colors.textPrimary }}
@@ -755,7 +755,7 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
 function ProjectFormModal({ initial, calMode, onSave, onCancel, colors }: {
   initial?: ProgressProject;
   calMode: CalendarMode;
-  onSave: (data: { name: string; description?: string; color?: string | null; deadline_date?: string | null; target_study_minutes?: number | null; status?: ProjectStatus }) => void;
+  onSave: (data: { name: string; description?: string | null; color?: string | null; deadline_date?: string | null; target_study_minutes?: number | null; status?: ProjectStatus }) => void;
   onCancel: () => void;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
@@ -770,7 +770,7 @@ function ProjectFormModal({ initial, calMode, onSave, onCancel, colors }: {
     if (!name.trim()) return;
     onSave({
       name: name.trim(),
-      description: description.trim() || undefined,
+      description: description.trim() || null,
       color: color || null,
       deadline_date: deadlineDate || null,
       target_study_minutes: targetHours ? Math.round(parseFloat(targetHours) * 60) : null,
@@ -912,7 +912,7 @@ function ResourceFormModal({ onSave, onCancel, colors }: {
             <label className="text-xs font-semibold block mb-1.5" style={{ color: colors.textSecondary }}>
               {isTime ? 'Target hours (optional)' : 'Total (required)'}
             </label>
-            <input type="number" min="0" value={total} onChange={e => setTotal(e.target.value)} placeholder={isTime ? 'e.g. 10' : 'e.g. 100'}
+            <input type="text" inputMode="decimal" value={total} onChange={e => setTotal(e.target.value)} placeholder={isTime ? 'e.g. 10' : 'e.g. 100'}
               step={isTime ? '0.5' : '1'}
               className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
               style={{ border: `1.5px solid ${colors.borderLight}`, background: colors.bgInput, color: colors.textPrimary }} />

@@ -34,14 +34,16 @@ function pickDominantUnit(resources: ProgressResource[]): string | null {
   return best;
 }
 
-// Only contributions tied to a resource in this project count. Legacy rows with no
-// resource (and no real linked Activity) cannot be attributed and are excluded.
+// Legacy quick logs with no resource cannot be attributed and are excluded. Activity
+// contributions with no specific resource are kept for Studied Time only.
 export function attributableContributions(
   resources: ProgressResource[],
   contributions: ProgressContribution[]
 ): ProgressContribution[] {
   const resourceIds = new Set(resources.map(r => r.id));
-  return contributions.filter(c => !!c.resource_id && resourceIds.has(c.resource_id));
+  return contributions.filter(c =>
+    c.resource_id ? resourceIds.has(c.resource_id) : !c.activity_id.startsWith('manual-')
+  );
 }
 
 export function computeOverallPct(resources: ProgressResource[]): number | null {
@@ -92,7 +94,7 @@ export function computeProjectStats(
 
   const isMixedUnits = remainingByUnitMap.size > 1;
 
-  const contributedUnits = safeContribs.reduce((s, c) => s + c.units_added, 0);
+  const contributedUnits = safeContribs.filter(c => !!c.resource_id).reduce((s, c) => s + c.units_added, 0);
   const studiedHours = studiedMinutes / 60;
 
   const pacePerHour =
@@ -222,13 +224,19 @@ export function formatPair(done: number, total: number, unit: string | null | un
 }
 
 // Time-based resources are stored in whole minutes; add-resource targets accept hours.
+export function normalizeDigits(input: string): string {
+  return input.replace(/[\u06F0-\u06F9]/g, d => String(d.charCodeAt(0) - 0x06F0))
+    .replace(/[\u0660-\u0669]/g, d => String(d.charCodeAt(0) - 0x0660));
+}
+
 export function toStoredAmount(input: string, unit: string): number {
-  if (isTimeUnit(unit)) return Math.max(0, Math.round((parseFloat(input) || 0) * 60));
-  return Math.max(0, parseInt(input) || 0);
+  const value = parseFloat(normalizeDigits(input)) || 0;
+  if (isTimeUnit(unit)) return Math.max(0, Math.round(value * 60));
+  return Math.max(0, Math.round(value));
 }
 
 export function parseTimeInput(input: string): number {
-  const value = input.trim().toLowerCase();
+  const value = normalizeDigits(input).trim().toLowerCase();
   if (!value) return 0;
   const hours = value.match(/(\d+(?:\.\d+)?)\s*h/);
   const minutes = value.match(/(\d+(?:\.\d+)?)\s*m/);

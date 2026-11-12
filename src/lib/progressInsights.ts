@@ -79,7 +79,9 @@ export function computeInsights(
   }
   const today = {
     amounts: [...amountByUnit].map(([unit, amount]) => ({ unit, amount })),
-    studiedMinutes: todays.reduce((s, c) => s + c.duration_minutes, 0),
+    studiedMinutes: contributions
+      .filter(c => c.date_key === todayKey)
+      .reduce((s, c) => s + c.duration_minutes, 0),
   };
 
   const unit = dominantUnit(resources);

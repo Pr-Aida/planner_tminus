@@ -48,38 +48,47 @@ export default function ProjectOverviewCard({ project, stats, calMode, accentCol
     ? '—'
     : stats.daysRemaining >= 0 ? `${stats.daysRemaining} days` : planningActive ? 'Overdue' : 'Past';
 
+  const barColor = !planningActive || !hasTargets ? accentColor
+    : stats.status === 'on-track' ? colors.success
+    : stats.status === 'slightly-behind' ? colors.warning
+    : colors.error;
+
   return (
     <div className="rounded-xl p-6 mb-4" style={{ background: colors.bgCard, border: `1px solid ${colors.borderLight}`, boxShadow: `0 2px 12px ${colors.shadow}` }}>
-      <div className="flex items-end justify-between gap-4 mb-3">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: colors.textTertiary }}>Overall Progress</p>
-          {hasTargets
-            ? <p className="text-3xl font-bold leading-none" style={{ color: accentColor }}>{stats.overallPct}%</p>
-            : <p className="text-base font-semibold leading-none" style={{ color: colors.textSecondary }}>No targets set yet</p>}
-        </div>
-        <p className="text-xs text-right" style={{ color: colors.textSecondary }}>{summary}</p>
-      </div>
-
-      {hasTargets && (
-        <div className="rounded-full h-3 overflow-hidden" style={{ background: `${accentColor}22` }}>
-          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, stats.overallPct)}%`, background: accentColor }} />
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Metric label="Progress" value={hasTargets ? `${stats.overallPct}%` : '—'} colors={colors} />
         <Metric label="Studied" value={formatDuration(stats.studiedMinutes)}
           sub={project.target_study_minutes ? `of ${formatDuration(project.target_study_minutes)}` : undefined} colors={colors} />
         <Metric label="Est. Remaining" value={remainingValue}
           sub={planningActive && stats.pacePerHour !== null && unit ? `${stats.pacePerHour.toFixed(1)} ${unit}/hr` : undefined} colors={colors} />
         <Metric label="Deadline" value={deadlineValue}
           sub={project.deadline_date ? formatProgressDate(project.deadline_date, calMode) : undefined} colors={colors} />
-        <Metric label="Status" value={statusValue} colors={colors} />
       </div>
 
-      {planningActive && hasTargets && stats.dailyTargetByUnit.length > 0 && (
-        <p className="mt-3 text-xs font-semibold" style={{ color: colors.textSecondary }}>
-          Daily target: {stats.dailyTargetByUnit.map(t => `${formatAmount(t.target, t.unit)}/day`).join(', ')}
-        </p>
+      <div className="flex flex-wrap gap-2 mt-3">
+        <span className="text-[11px] font-bold px-2.5 py-1 rounded-full"
+          style={{ background: `${barColor}18`, color: barColor }}>{statusValue}</span>
+        {planningActive && hasTargets && stats.dailyTargetByUnit.map(t => (
+          <span key={t.unit} className="text-[11px] font-semibold px-2.5 py-1 rounded-full"
+            style={{ background: colors.bgInput, color: colors.textSecondary }}>
+            Daily target: {formatAmount(t.target, t.unit)}/day
+          </span>
+        ))}
+      </div>
+
+      {hasTargets && (
+        <div className="mt-5 pt-5" style={{ borderTop: `1px solid ${colors.borderLight}` }}>
+          <div className="flex items-end justify-between gap-4 mb-2">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: colors.textTertiary }}>Overall Progress</p>
+              <p className="text-2xl font-bold leading-none" style={{ color: barColor }}>{stats.overallPct}%</p>
+            </div>
+            <p className="text-xs text-right" style={{ color: colors.textSecondary }}>{summary}</p>
+          </div>
+          <div className="rounded-full h-3 overflow-hidden" style={{ background: `${barColor}22` }}>
+            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, stats.overallPct)}%`, background: barColor }} />
+          </div>
+        </div>
       )}
     </div>
   );

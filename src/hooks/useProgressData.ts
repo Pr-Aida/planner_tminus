@@ -100,7 +100,7 @@ export function useProgressData(userId: string | null) {
   }, [loadAll]);
 
   const createProject = useCallback(async (data: {
-    name: string; description?: string; color?: string | null; icon?: string | null;
+    name: string; description?: string | null; color?: string | null; icon?: string | null;
     deadline_date?: string | null; target_study_minutes?: number | null;
     status?: ProjectStatus;
   }) => {
