@@ -66,6 +66,8 @@ export default function ProgressView({ userId, calMode }: Props) {
         onUpdateResource={progress.updateResource}
         onDeleteResource={progress.deleteResource}
         onLogContribution={progress.logContribution}
+        onAdjustResource={progress.adjustResourceCompleted}
+        onDeleteContribution={progress.deleteContribution}
         calMode={calMode}
         colors={colors}
       />
@@ -260,7 +262,7 @@ function ProjectCard({ project, stats, resourceCount, onClick, calMode, colors }
 function ProjectDetail({
   project, resources, contributions, onBack, onUpdateProject, onDeleteProject,
   onArchiveProject, onAddResource, onUpdateResource, onDeleteResource, onLogContribution,
-  calMode, colors,
+  onAdjustResource, onDeleteContribution, calMode, colors,
 }: {
   project: ProgressProject;
   resources: ProgressResource[];
@@ -273,6 +275,8 @@ function ProjectDetail({
   onUpdateResource: (id: string, patch: Partial<ProgressResource>) => Promise<boolean>;
   onDeleteResource: (id: string) => void;
   onLogContribution: (data: { project_id: string; resource_id: string | null; units_added: number; date_key: string; duration_minutes?: number }) => Promise<boolean>;
+  onAdjustResource: (id: string, target: number, dateKey: string) => Promise<boolean>;
+  onDeleteContribution: (id: string) => Promise<boolean>;
   calMode: CalendarMode;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
@@ -422,8 +426,11 @@ function ProjectDetail({
                 projectId={project.id}
                 accentColor={accentColor}
                 onUpdate={onUpdateResource}
+                onAdjust={onAdjustResource}
                 onDelete={onDeleteResource}
                 onLog={onLogContribution}
+                onDeleteLog={onDeleteContribution}
+                todayLogs={contributions.filter(c => c.resource_id === r.id && c.date_key === todayKey)}
                 todayKey={todayKey}
                 colors={colors}
               />
@@ -466,13 +473,16 @@ function ProjectDetail({
 
 // ─── Resource Row ─────────────────────────────────────────────────────────────
 
-function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onLog, todayKey, colors }: {
+function ResourceRow({ resource, projectId, accentColor, onUpdate, onAdjust, onDelete, onLog, onDeleteLog, todayLogs, todayKey, colors }: {
   resource: ProgressResource;
   projectId: string;
   accentColor: string;
   onUpdate: (id: string, patch: Partial<ProgressResource>) => Promise<boolean>;
+  onAdjust: (id: string, target: number, dateKey: string) => Promise<boolean>;
   onDelete: (id: string) => void;
   onLog: (data: { project_id: string; resource_id: string | null; units_added: number; date_key: string; duration_minutes?: number }) => Promise<boolean>;
+  onDeleteLog: (id: string) => Promise<boolean>;
+  todayLogs: ProgressContribution[];
   todayKey: string;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
@@ -527,18 +537,28 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
     const completed = isTimeUnit(finalUnit) ? parseTimeInput(editCompleted) : toStoredAmount(editCompleted, finalUnit);
     setSaving(true);
     setEditError(null);
-    const ok = await onUpdate(resource.id, {
+    let ok = await onUpdate(resource.id, {
       name: editName.trim() || resource.name,
       unit: finalUnit,
       total,
-      completed,
     });
+    if (ok && completed !== resource.completed) {
+      ok = await onAdjust(resource.id, completed, todayKey);
+    }
     setSaving(false);
     if (!ok) {
       setEditError('Could not save this resource. Please try again.');
       return;
     }
     setEditing(false);
+  }
+
+  async function removeLog(id: string) {
+    if (saving) return;
+    setSaving(true);
+    const ok = await onDeleteLog(id);
+    setSaving(false);
+    if (!ok) showToast('Could not remove this log. Please try again.');
   }
 
   async function quickAdd(amount: number) {
@@ -728,6 +748,22 @@ function ResourceRow({ resource, projectId, accentColor, onUpdate, onDelete, onL
               <X size={14} />
             </button>
           </div>
+        </div>
+      )}
+
+      {todayLogs.length > 0 && (
+        <div className="mt-2 space-y-1">
+          <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: colors.textTertiary }}>Logged today</p>
+          {todayLogs.map(l => (
+            <div key={l.id} className="flex items-center justify-between text-[11px]" style={{ color: colors.textSecondary }}>
+              <span>{l.units_added < 0 ? '-' : '+'}{formatAmount(Math.abs(l.units_added), resource.unit)}</span>
+              <button onClick={() => removeLog(l.id)} disabled={saving} title="Remove this log"
+                className="p-1 rounded transition-opacity hover:opacity-70"
+                style={{ background: 'transparent', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', color: colors.textTertiary }}>
+                <Trash2 size={11} />
+              </button>
+            </div>
+          ))}
         </div>
       )}
 

@@ -181,10 +181,36 @@ export function useProgressData(userId: string | null) {
     setResources(prev => prev.filter(r => r.id !== id));
   }, []);
 
-  const setResourceCompleted = useCallback(async (id: string, completed: number) => {
-    await supabase.from('planner_progress_resources').update({ completed }).eq('id', id);
-    setResources(prev => prev.map(r => r.id === id ? { ...r, completed } : r));
-  }, []);
+  // Completed edits are recorded as a signed contribution so that the sum of
+  // contributions always equals Resource.completed (one source of truth).
+  const adjustResourceCompleted = useCallback(async (id: string, target: number, dateKey: string): Promise<boolean> => {
+    if (!userId) return false;
+    const resource = resources.find(r => r.id === id);
+    if (!resource) return false;
+    const delta = target - resource.completed;
+    if (delta === 0) return true;
+    markMutation();
+    const activityId = `adjust-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const { data: row, error: insertErr } = await supabase.from('planner_progress_contributions').insert({
+      user_id: userId, activity_id: activityId,
+      project_id: resource.project_id, resource_id: id,
+      units_added: delta, date_key: dateKey,
+      duration_minutes: isTimeUnit(resource.unit) ? delta : 0,
+    }).select().single();
+    if (insertErr || !row) {
+      console.error('Failed to record progress adjustment:', insertErr);
+      return false;
+    }
+    const contribution = sanitizeContribution(row as ProgressContribution);
+    const next = await shiftResourceCompleted(id, delta);
+    if (next === null) {
+      await supabase.from('planner_progress_contributions').delete().eq('id', contribution.id);
+      return false;
+    }
+    setResources(prev => prev.map(r => r.id === id ? { ...r, completed: next } : r));
+    setContributions(prev => [...prev, contribution]);
+    return true;
+  }, [userId, resources]);
 
   const logContribution = useCallback(async (data: {
     project_id: string; resource_id: string | null; units_added: number; date_key: string; duration_minutes?: number;
@@ -231,17 +257,16 @@ export function useProgressData(userId: string | null) {
   }, [userId, resources]);
 
 
-  const deleteContribution = useCallback(async (id: string): Promise<void> => {
+  const deleteContribution = useCallback(async (id: string): Promise<boolean> => {
     const contrib = contributions.find(c => c.id === id);
-    if (!contrib) return;
+    if (!contrib) return false;
     markMutation();
 
-    // Reverse resource shift FIRST (atomically), then delete contribution
     if (contrib.resource_id && contrib.units_added !== 0) {
       const next = await shiftResourceCompleted(contrib.resource_id, -contrib.units_added);
       if (next === null) {
         console.error('Failed to reverse resource completed');
-        return;
+        return false;
       }
       setResources(prev => prev.map(r => r.id === contrib.resource_id ? { ...r, completed: next } : r));
     }
@@ -249,22 +274,22 @@ export function useProgressData(userId: string | null) {
     const { error } = await supabase.from('planner_progress_contributions').delete().eq('id', id);
     if (error) {
       console.error('Failed to delete contribution:', error);
-      // Re-apply the shift since delete failed
       if (contrib.resource_id && contrib.units_added !== 0) {
         const restored = await shiftResourceCompleted(contrib.resource_id, contrib.units_added);
         if (restored !== null) {
           setResources(prev => prev.map(r => r.id === contrib.resource_id ? { ...r, completed: restored } : r));
         }
       }
-      return;
+      return false;
     }
     setContributions(prev => prev.filter(c => c.id !== id));
+    return true;
   }, [contributions]);
 
   return {
     projects, resources, contributions, loading, loadAll,
     createProject, updateProject, deleteProject, archiveProject,
-    createResource, updateResource, deleteResource, setResourceCompleted,
+    createResource, updateResource, deleteResource, adjustResourceCompleted,
     logContribution, deleteContribution,
   };
 }
