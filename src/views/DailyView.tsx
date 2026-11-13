@@ -4,7 +4,6 @@ import ActivitySection from '../components/ActivitySection';
 import HabitSection from '../components/HabitSection';
 import { useTheme } from '../lib/theme';
 import type { Activity, DailyData, Habit, HabitType, Reminder, ReminderStatus, ProgressProject, ProgressResource } from '../types';
-function genId() { return crypto.randomUUID(); }
 
 interface Props {
   data: DailyData;
@@ -69,8 +68,8 @@ export default function DailyView({ data, habits, dateKey, isToday, reminders, o
     return { habitMinutes: mins, habitPages: pages };
   }, [habits, data.habit_values]);
 
-  const handleAddActivity = useCallback((act: Omit<Activity, 'id'>) => {
-    onDataChange({ activities: [...data.activities, { ...act, id: genId() }] });
+  const handleAddActivity = useCallback((act: Activity) => {
+    onDataChange({ activities: [...data.activities, act] });
   }, [data.activities, onDataChange]);
 
   const handleDeleteActivity = useCallback((id: string) => {

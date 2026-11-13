@@ -15,6 +15,8 @@ import {
 import { computeInsights } from '../lib/progressInsights';
 import ProgressInsightsPanel from '../components/ProgressInsightsPanel';
 import ProjectOverviewCard from '../components/ProjectOverviewCard';
+import ChecklistSection from '../components/ChecklistSection';
+import ProjectNotes from '../components/ProjectNotes';
 import { dateKey, todayGreg } from '../lib/calendar';
 import type { ProgressProject, ProgressResource, ProgressContribution, CalendarMode, ProjectStatus } from '../types';
 
@@ -56,6 +58,7 @@ export default function ProgressView({ userId, calMode }: Props) {
     return (
       <ProjectDetail
         project={selectedProject}
+        userId={userId}
         resources={progress.resources.filter(r => r.project_id === selectedProject.id)}
         contributions={progress.contributions.filter(c => c.project_id === selectedProject.id)}
         onBack={() => setSelectedProjectId(null)}
@@ -260,11 +263,12 @@ function ProjectCard({ project, stats, resourceCount, onClick, calMode, colors }
 // ─── Project Detail ───────────────────────────────────────────────────────────
 
 function ProjectDetail({
-  project, resources, contributions, onBack, onUpdateProject, onDeleteProject,
+  project, userId, resources, contributions, onBack, onUpdateProject, onDeleteProject,
   onArchiveProject, onAddResource, onUpdateResource, onDeleteResource, onLogContribution,
   onAdjustResource, onDeleteContribution, calMode, colors,
 }: {
   project: ProgressProject;
+  userId: string | null;
   resources: ProgressResource[];
   contributions: ProgressContribution[];
   onBack: () => void;
@@ -446,6 +450,14 @@ function ProjectDetail({
           colors={colors}
         />
       )}
+
+      {/* Checklist */}
+      {userId && (
+        <ChecklistSection projectId={project.id} userId={userId} accentColor={accentColor} />
+      )}
+
+      {/* Notes */}
+      <ProjectNotes projectId={project.id} initialNotes={project.notes} accentColor={accentColor} />
 
       {showEditProject && (
         <ProjectFormModal

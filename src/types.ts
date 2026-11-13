@@ -179,6 +179,19 @@ export interface ProgressProject {
   archived: boolean;
   status: ProjectStatus;
   sort_order: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChecklistItem {
+  id: string;
+  project_id: string;
+  user_id: string;
+  parent_id: string | null;
+  title: string;
+  completed: boolean;
+  sort_order: number;
   created_at: string;
   updated_at: string;
 }

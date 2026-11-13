@@ -156,14 +156,32 @@ export async function removeContribution(activityId: string): Promise<boolean> {
   return true;
 }
 
-export async function getActivityLink(activityId: string): Promise<{ project_id: string; resource_id: string | null; units_added: number } | null> {
+export async function getActivityLink(activityId: string): Promise<{ project_id: string; resource_id: string | null; units_added: number; duration_minutes: number } | null> {
   const { data, error } = await supabase
     .from('planner_progress_contributions')
-    .select('project_id, resource_id, units_added')
+    .select('project_id, resource_id, units_added, duration_minutes')
     .eq('activity_id', activityId)
     .maybeSingle();
   if (error || !data) return null;
-  return data as { project_id: string; resource_id: string | null; units_added: number };
+  return data as { project_id: string; resource_id: string | null; units_added: number; duration_minutes: number };
+}
+
+/** Fetch links for many activities in ONE query. Keyed by activity_id. */
+export async function fetchActivityLinks(activityIds: string[]): Promise<Record<string, { project_id: string; resource_id: string | null; units_added: number; duration_minutes: number }>> {
+  if (activityIds.length === 0) return {};
+  const { data, error } = await supabase
+    .from('planner_progress_contributions')
+    .select('activity_id, project_id, resource_id, units_added, duration_minutes')
+    .in('activity_id', activityIds);
+  if (error) {
+    console.error('fetchActivityLinks failed:', error);
+    return {};
+  }
+  const map: Record<string, { project_id: string; resource_id: string | null; units_added: number; duration_minutes: number }> = {};
+  for (const row of (data as { activity_id: string; project_id: string; resource_id: string | null; units_added: number; duration_minutes: number }[]) || []) {
+    map[row.activity_id] = { project_id: row.project_id, resource_id: row.resource_id, units_added: row.units_added, duration_minutes: row.duration_minutes };
+  }
+  return map;
 }
 
 export function calcDurationMinutes(from: string, to: string): number {

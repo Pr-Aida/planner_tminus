@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Trash2, Clock, Play, Pause, Square, Timer, Loader2, Pencil, X, BarChart3, Link2, Unlink } from 'lucide-react';
+import { Plus, Trash2, Clock, Play, Pause, Square, Timer, Loader2, Pencil, X, BarChart3, Unlink, ChevronDown, ChevronRight } from 'lucide-react';
 import type { Activity, ProgressProject, ProgressResource } from '../types';
-import { upsertContribution, removeContribution, getActivityLink, calcDurationMinutes } from '../lib/progressSync';
+import { upsertContribution, removeContribution, getActivityLink, fetchActivityLinks, calcDurationMinutes } from '../lib/progressSync';
 import { useTheme } from '../lib/theme';
 import { isTimeUnit } from '../lib/progress';
 import { useTimeFormat, formatTimeRange as fmtRange } from '../lib/timeFormat';
+import { formatAmount, formatDuration as formatStudyMinutes } from '../lib/progress';
 import TimeInput from './TimeInput';
 import {
   type DraftForm,
@@ -34,6 +35,8 @@ interface Props {
 }
 
 type AddMode = 'menu' | 'timer' | 'manual' | null;
+
+type LinkInfo = { projectId: string; resourceId: string | null; unitsAdded: number; durationMinutes: number };
 
 interface SyncedDraft {
   dateKey: string;
@@ -87,6 +90,12 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
   const [linkResourceId, setLinkResourceId] = useState('');
   const [linkUnits, setLinkUnits] = useState('');
   const [existingLink, setExistingLink] = useState<{ projectId: string; resourceId: string | null; unitsAdded: number } | null>(null);
+  // Single source of truth for card link summaries: activityId -> link (null = confirmed unlinked)
+  const [linkMap, setLinkMap] = useState<Record<string, LinkInfo | null>>({});
+  const linkFetchVersionRef = useRef(0);
+
+  // Stable sorted key of visible activity IDs — avoids re-fetching on every parent re-render
+  const activityIdsKey = activities.map(a => String(a.id)).sort().join(',');
   const selectedLinkResource = progressResources.find(r => r.id === linkResourceId) || null;
   const selectedLinkIsTime = selectedLinkResource ? isTimeUnit(selectedLinkResource.unit) : false;
   const linkActivityDuration = calcDurationMinutes(form.from, form.to);
@@ -281,6 +290,32 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
     return () => clearInterval(interval);
   }, [timerState]);
 
+  // One controlled fetch of all links for the visible activities (no per-card requests).
+  // Depends on the stable sorted ID key, not the activities array reference.
+  // Versioned so a stale response can never overwrite a newer mutation.
+  useEffect(() => {
+    if (!activityIdsKey) {
+      setLinkMap({});
+      return;
+    }
+    const ids = activityIdsKey.split(',');
+    const version = ++linkFetchVersionRef.current;
+    fetchActivityLinks(ids).then(map => {
+      // Drop stale responses — a mutation may have updated the map more recently
+      if (linkFetchVersionRef.current !== version) return;
+      setLinkMap(prev => {
+        const merged = { ...prev };
+        for (const id of ids) {
+          const row = map[id];
+          merged[String(id)] = row
+            ? { projectId: row.project_id, resourceId: row.resource_id, unitsAdded: row.units_added, durationMinutes: row.duration_minutes }
+            : null;
+        }
+        return merged;
+      });
+    });
+  }, [activityIdsKey, dateKey]);
+
   async function runTimerAction(
     action: (userId: string, latest: TimerRecord | null) => Promise<void>,
   ) {
@@ -393,13 +428,25 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
       const units = selectedLinkIsTime
         ? (durationMin > 0 ? durationMin : manualAmount)
         : manualAmount;
-      await upsertContribution({
+      const ok = await upsertContribution({
         activityId, projectId: linkProjectId, resourceId: linkResourceId || null,
         unitsAdded: units, dateKey, durationMinutes: durationMin,
       });
+      if (ok) {
+        ++linkFetchVersionRef.current; // invalidate any in-flight batch fetch
+        setLinkMap(prev => ({ ...prev, [String(activityId)]: { projectId: linkProjectId, resourceId: linkResourceId || null, unitsAdded: units, durationMinutes: durationMin } }));
+      } else {
+        setSyncError(SYNC_ERROR_MESSAGE);
+      }
     } else if (!linkProgress && existingLink && activityId) {
       // Was linked before, now unlinked
-      await removeContribution(activityId);
+      const ok = await removeContribution(activityId);
+      if (ok) {
+        ++linkFetchVersionRef.current;
+        setLinkMap(prev => ({ ...prev, [String(activityId)]: null }));
+      } else {
+        setSyncError(SYNC_ERROR_MESSAGE);
+      }
     }
 
     discardDraft(dateKey);
@@ -860,7 +907,22 @@ export default function ActivitySection({ activities, dateKey, onAdd, onDelete, 
           <ActivityCard
             key={act.id}
             activity={act}
-            onDelete={() => onDelete(act.id)}
+            onDelete={async () => {
+              await removeContribution(act.id);
+              ++linkFetchVersionRef.current;
+              setLinkMap(prev => { const next = { ...prev }; delete next[act.id]; return next; });
+              onDelete(act.id);
+            }}
+            linkInfo={linkMap[String(act.id)] ?? null}
+            onUnlink={async (id: string) => {
+              const ok = await removeContribution(id);
+              if (ok) {
+                ++linkFetchVersionRef.current;
+                setLinkMap(prev => ({ ...prev, [String(id)]: null }));
+              } else {
+                setSyncError(SYNC_ERROR_MESSAGE);
+              }
+            }}
             onEdit={() => handleEditActivity(act)}
             timeFormat={timeFormat}
             progressProjects={progressProjects}
@@ -881,33 +943,22 @@ interface CardProps {
   activity: Activity;
   onDelete: () => void;
   onEdit: () => void;
+  onUnlink: (id: string) => Promise<void>;
   timeFormat: '12h' | '24h';
   progressProjects?: ProgressProject[];
   progressResources?: ProgressResource[];
+  linkInfo: LinkInfo | null;
 }
 
-function ActivityCard({ activity, onDelete, onEdit, timeFormat, progressProjects = [], progressResources = [] }: CardProps) {
+function ActivityCard({ activity, onDelete, onEdit, onUnlink, timeFormat, progressProjects = [], progressResources = [], linkInfo }: CardProps) {
   const { colors } = useTheme();
-  const [linkInfo, setLinkInfo] = useState<{ projectId: string; resourceId: string | null; unitsAdded: number } | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    getActivityLink(activity.id).then(link => {
-      if (!cancelled && link) {
-        setLinkInfo({ projectId: link.project_id, resourceId: link.resource_id, unitsAdded: link.units_added });
-      }
-    });
-    return () => { cancelled = true; };
-  }, [activity.id]);
-
+  const [linkExpanded, setLinkExpanded] = useState(false);
   const linkedProject = linkInfo ? progressProjects.find(p => p.id === linkInfo.projectId) : null;
   const linkedResource = linkInfo?.resourceId ? progressResources.find(r => r.id === linkInfo.resourceId) : null;
-
-  async function handleUnlink() {
-    if (!linkInfo) return;
-    await removeContribution(activity.id);
-    setLinkInfo(null);
-  }
+  const hasLink = !!linkInfo;
+  const showResourceLine = !!linkedResource && !!linkInfo && linkInfo.unitsAdded > 0;
+  const resourceIsTime = !!linkedResource && isTimeUnit(linkedResource.unit);
   const duration = (() => {
     if (!activity.from || !activity.to) return null;
     const [fh, fm] = activity.from.split(':').map(Number);
@@ -947,19 +998,44 @@ function ActivityCard({ activity, onDelete, onEdit, timeFormat, progressProjects
             {activity.note}
           </p>
         )}
-        {linkedProject && (
-          <div className="flex items-center gap-1.5 mt-1">
-            <Link2 size={10} color={colors.accent} />
+        {hasLink && linkExpanded && (
+          <div
+            className="flex flex-col gap-0.5 mt-2 rounded-lg px-3 py-2"
+            style={{ background: colors.bgCard, border: `1px solid ${colors.borderLight}` }}
+          >
             <span className="text-[11px] font-semibold" style={{ color: colors.accent }}>
-              {linkedProject.name}{linkedResource ? ` — ${linkedResource.name}` : ''}{linkInfo && linkInfo.unitsAdded > 0 ? ` (+${linkInfo.unitsAdded})` : ''}
+              {linkedProject ? linkedProject.name : 'Progress'}
             </span>
+            {showResourceLine && (
+              <span className="text-[11px]" style={{ color: colors.textSecondary }}>
+                {linkedResource!.name} · +{formatAmount(linkInfo!.unitsAdded, linkedResource!.unit)}
+              </span>
+            )}
+            {!duration && linkInfo!.durationMinutes > 0 && !resourceIsTime && (
+              <span className="text-[11px]" style={{ color: colors.textSecondary }}>
+                Studied: {formatStudyMinutes(linkInfo!.durationMinutes)}
+              </span>
+            )}
           </div>
         )}
       </div>
       <div className="flex-shrink-0 flex items-center gap-1 opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-        {linkedProject && (
+        {hasLink && (
           <button
-            onClick={handleUnlink}
+            onClick={() => setLinkExpanded(v => !v)}
+            aria-expanded={linkExpanded}
+            className="p-1 rounded transition-colors"
+            style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: linkExpanded ? colors.accent : colors.textTertiary }}
+            onMouseEnter={e => (e.currentTarget.style.color = colors.accent)}
+            onMouseLeave={e => (e.currentTarget.style.color = linkExpanded ? colors.accent : colors.textTertiary)}
+            title={linkExpanded ? 'Hide Progress details' : 'Show Progress details'}
+          >
+            {linkExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          </button>
+        )}
+        {hasLink && (
+          <button
+            onClick={() => onUnlink(activity.id)}
             className="p-1 rounded transition-colors"
             style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: colors.textTertiary }}
             onMouseEnter={e => (e.currentTarget.style.color = colors.warning)}
