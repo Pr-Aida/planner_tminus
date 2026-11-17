@@ -118,6 +118,26 @@ export interface Reminder {
   class_id: string | null;
   email_enabled: boolean;
   notification_email: string | null;
+  email_delivery_time: string | null;
+  created_at: string;
+  updated_at: string;
+  schedules?: ReminderSchedule[];
+}
+
+export interface ReminderSchedule {
+  id: string;
+  reminder_id: string;
+  user_id: string;
+  notify_date: string; // Gregorian ISO YYYY-MM-DD
+  notify_time: string; // HH:mm
+  in_app_enabled: boolean;
+  email_enabled: boolean;
+  email_sent: boolean;
+  email_sent_at: string | null;
+  email_fail_count: number;
+  in_app_sent: boolean;
+  in_app_sent_at: string | null;
+  sort_order: number;
   created_at: string;
   updated_at: string;
 }

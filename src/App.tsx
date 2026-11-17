@@ -7,7 +7,7 @@ import {
 } from './lib/calendar';
 import type {
   CalendarMode, ViewMode, Habit, HabitType, DailyData, ShDate, GregDate,
-  UserProfile, Reminder, ReminderStatus, ReminderOffset, TempHabit,
+  UserProfile, Reminder, ReminderSchedule, ReminderStatus, ReminderOffset, TempHabit,
   ProgressProject, ProgressResource,
 } from './types';
 import { useProgressData } from './hooks/useProgressData';
@@ -112,6 +112,7 @@ export default function App() {
   const [monthlyNotes, setMonthlyNotes] = useState<Map<string, string>>(new Map());
   const [countdown, setCountdown] = useState<CountdownConfig | null>(null);
   const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [schedules, setSchedules] = useState<ReminderSchedule[]>([]);
 
   const [coverImage, setCoverImage] = useState<string | null>(null);
   const [coverLoaded, setCoverLoaded] = useState(false);
@@ -151,6 +152,7 @@ export default function App() {
         setMonthlyNotes(new Map());
         setCountdown(null);
         setReminders([]);
+        setSchedules([]);
         setCoverImage(null);
         setCoverLoaded(false);
         setProfile(null);
@@ -172,6 +174,7 @@ export default function App() {
         setShowTour(false);
         setShowProfile(false);
         setReminders([]);
+        setSchedules([]);
         setCoverImage(null);
         setCoverLoaded(false);
         setHabits([]);
@@ -260,10 +263,11 @@ export default function App() {
     if (!user) return;
     let cancelled = false;
     (async () => {
-      const [habitsRes, countdownRes, remindersRes] = await Promise.all([
+      const [habitsRes, countdownRes, remindersRes, schedulesRes] = await Promise.all([
         supabase.from('planner_habits').select('*').order('sort_order'),
         supabase.from('planner_monthly_notes').select('note').eq('month_key', COUNTDOWN_KEY).maybeSingle(),
         supabase.from('planner_reminders').select('*').order('date_key'),
+        supabase.from('planner_reminder_schedules').select('*').order('notify_date').order('notify_time'),
       ]);
       if (cancelled) return;
       if (habitsRes.data) setHabits(habitsRes.data as Habit[]);
@@ -271,6 +275,7 @@ export default function App() {
         try { setCountdown(JSON.parse(countdownRes.data.note)); } catch {}
       }
       if (remindersRes.data) setReminders(remindersRes.data as Reminder[]);
+      if (schedulesRes.data) setSchedules(schedulesRes.data as ReminderSchedule[]);
     })();
     return () => { cancelled = true; };
   }, [user]);
@@ -716,7 +721,13 @@ export default function App() {
   }, []);
 
   // ─── Reminder CRUD ────────────────────────────────────────────────────────
-  const handleAddReminder = useCallback(async (dateKeyStr: string, title: string, offset: ReminderOffset, email?: { enabled: boolean; address: string | null }) => {
+  const handleAddReminder = useCallback(async (
+    dateKeyStr: string,
+    title: string,
+    offset: ReminderOffset,
+    email?: { enabled: boolean; address: string | null },
+    schedule?: { notifyDate: string; notifyTime: string; inApp: boolean; email: boolean },
+  ) => {
     const { data } = await supabase.from('planner_reminders')
       .insert({
         date_key: dateKeyStr,
@@ -727,7 +738,64 @@ export default function App() {
       })
       .select()
       .single();
-    if (data) setReminders(prev => [...prev, data as Reminder].sort((a, b) => a.date_key.localeCompare(b.date_key)));
+    if (data) {
+      const newReminder = data as Reminder;
+      setReminders(prev => [...prev, newReminder].sort((a, b) => a.date_key.localeCompare(b.date_key)));
+      // Create the first schedule row derived from the offset (preserves old behavior)
+      const gDate = gregDateFromKey(dateKeyStr);
+      const notifyDate = schedule?.notifyDate || dateKey(addDaysGreg(gDate, -offset));
+      const { data: schedData } = await supabase.from('planner_reminder_schedules')
+        .insert({
+          reminder_id: newReminder.id,
+          user_id: newReminder.user_id,
+          notify_date: notifyDate,
+          notify_time: schedule?.notifyTime || '08:00',
+          in_app_enabled: schedule?.inApp ?? true,
+          email_enabled: schedule?.email ?? !!email?.enabled,
+          sort_order: 0,
+        })
+        .select()
+        .single();
+      if (schedData) setSchedules(prev => [...prev, schedData as ReminderSchedule].sort((a, b) => a.notify_date.localeCompare(b.notify_date)));
+    }
+  }, []);
+
+  const handleUpdateReminder = useCallback(async (id: string, updates: { title?: string; note?: string; date_key?: string }) => {
+    setReminders(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
+    await supabase.from('planner_reminders').update(updates).eq('id', id);
+  }, []);
+
+  const handleAddSchedule = useCallback(async (reminderId: string, notifyDate: string, notifyTime: string, inApp: boolean, email: boolean): Promise<ReminderSchedule | null> => {
+    const reminder = reminders.find(r => r.id === reminderId);
+    if (!reminder) return null;
+    const { data, error } = await supabase.from('planner_reminder_schedules')
+      .insert({
+        reminder_id: reminderId,
+        user_id: reminder.user_id,
+        notify_date: notifyDate,
+        notify_time: notifyTime,
+        in_app_enabled: inApp,
+        email_enabled: email,
+        sort_order: schedules.filter(s => s.reminder_id === reminderId).length,
+      })
+      .select()
+      .single();
+    if (data) {
+      const newSched = data as ReminderSchedule;
+      setSchedules(prev => [...prev, newSched].sort((a, b) => a.notify_date.localeCompare(b.notify_date)));
+      return newSched;
+    }
+    return null;
+  }, [reminders, schedules]);
+
+  const handleUpdateSchedule = useCallback(async (scheduleId: string, updates: Partial<Pick<ReminderSchedule, 'notify_date' | 'notify_time' | 'in_app_enabled' | 'email_enabled'>>) => {
+    setSchedules(prev => prev.map(s => s.id === scheduleId ? { ...s, ...updates } : s));
+    await supabase.from('planner_reminder_schedules').update(updates).eq('id', scheduleId);
+  }, []);
+
+  const handleDeleteSchedule = useCallback(async (scheduleId: string) => {
+    setSchedules(prev => prev.filter(s => s.id !== scheduleId));
+    await supabase.from('planner_reminder_schedules').delete().eq('id', scheduleId);
   }, []);
 
   const handleUpdateReminderStatus = useCallback(async (id: string, status: ReminderStatus) => {

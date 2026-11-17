@@ -1,0 +1,17 @@
+{
+  "projectId": "68408434",
+  "functions": {
+    "account": {
+      "hasChanged": false,
+      "hash": "6cd80438c4bdf307bd9bbb400985649702e32ef71e92272bdbcc51d15c87fa29"
+    },
+    "send-feedback": {
+      "hasChanged": false,
+      "hash": "359636b1eb37a0c2ed29097296631d6ea7f34c379fc0f3e156753d2fa0f89748"
+    },
+    "send-reminder-emails": {
+      "hasChanged": false,
+      "hash": "ed53a3f09d2b43864cee9195e0c470ff6543145ef17ed92653a00e594460ea6f"
+    }
+  }
+}
