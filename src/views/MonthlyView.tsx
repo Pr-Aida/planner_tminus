@@ -29,7 +29,7 @@ interface Props {
   onMonthlyNoteChange: (key: string, note: string) => void;
   // Reminders
   reminders: Reminder[];
-  onAddReminder: (dateKeyStr: string, title: string, offset: ReminderOffset) => void;
+  onAddReminder: (dateKeyStr: string, title: string, offset: ReminderOffset, email?: { enabled: boolean; address: string | null }) => void;
   onUpdateReminderStatus: (id: string, status: ReminderStatus) => void;
   onDeleteReminder: (id: string) => void;
   timezone?: string;
@@ -98,7 +98,7 @@ export default function MonthlyView({
           onSave={saveModal}
           onClose={closeModal}
           reminders={modalReminders}
-          onAddReminder={(title, offset) => onAddReminder(modal.dateKeyStr, title, offset)}
+          onAddReminder={(title, offset, email) => onAddReminder(modal.dateKeyStr, title, offset, email)}
           onUpdateReminderStatus={onUpdateReminderStatus}
           onDeleteReminder={onDeleteReminder}
         />
@@ -136,7 +136,7 @@ export default function MonthlyView({
         onSave={saveModal}
         onClose={closeModal}
         reminders={modalReminders}
-        onAddReminder={(title, offset) => onAddReminder(modal.dateKeyStr, title, offset)}
+        onAddReminder={(title, offset, email) => onAddReminder(modal.dateKeyStr, title, offset, email)}
         onUpdateReminderStatus={onUpdateReminderStatus}
         onDeleteReminder={onDeleteReminder}
       />

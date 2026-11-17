@@ -716,9 +716,15 @@ export default function App() {
   }, []);
 
   // ─── Reminder CRUD ────────────────────────────────────────────────────────
-  const handleAddReminder = useCallback(async (dateKeyStr: string, title: string, offset: ReminderOffset) => {
+  const handleAddReminder = useCallback(async (dateKeyStr: string, title: string, offset: ReminderOffset, email?: { enabled: boolean; address: string | null }) => {
     const { data } = await supabase.from('planner_reminders')
-      .insert({ date_key: dateKeyStr, title, remind_offset: offset })
+      .insert({
+        date_key: dateKeyStr,
+        title,
+        remind_offset: offset,
+        email_enabled: !!email?.enabled,
+        notification_email: email?.enabled ? (email.address?.trim() || null) : null,
+      })
       .select()
       .single();
     if (data) setReminders(prev => [...prev, data as Reminder].sort((a, b) => a.date_key.localeCompare(b.date_key)));
@@ -1109,7 +1115,7 @@ interface MainAppContentProps {
   monthlyNote: string;
   onMonthlyNoteChange: (key: string, note: string) => void;
   reminders: Reminder[];
-  onAddReminder: (dateKey: string, title: string, offset: ReminderOffset) => void;
+  onAddReminder: (dateKey: string, title: string, offset: ReminderOffset, email?: { enabled: boolean; address: string | null }) => void;
   onDeleteReminder: (id: string) => void;
   viewShYearForYear: number;
   viewGregYearForYear: number;

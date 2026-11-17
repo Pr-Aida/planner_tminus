@@ -10,7 +10,7 @@ interface Props {
   onSave: (note: string) => void;
   onClose: () => void;
   reminders: Reminder[];
-  onAddReminder: (title: string, offset: ReminderOffset) => void;
+  onAddReminder: (title: string, offset: ReminderOffset, email?: { enabled: boolean; address: string | null }) => void;
   onUpdateReminderStatus: (id: string, status: ReminderStatus) => void;
   onDeleteReminder: (id: string) => void;
 }
@@ -30,6 +30,7 @@ export default function DayModal({
   const [note, setNote] = useState(initialNote);
   const [newReminder, setNewReminder] = useState('');
   const [newOffset, setNewOffset] = useState<ReminderOffset>(0);
+  const [newEmailEnabled, setNewEmailEnabled] = useState(false);
 
   const STATUS_META: Record<ReminderStatus, { label: string; color: string; bg: string }> = {
     pending: { label: 'Pending', color: colors.textPrimary, bg: colors.bgHover },
@@ -40,16 +41,17 @@ export default function DayModal({
   };
 
   useEffect(() => { setNote(initialNote); }, [initialNote]);
-  useEffect(() => { if (open) { setNewReminder(''); setNewOffset(0); } }, [open]);
+  useEffect(() => { if (open) { setNewReminder(''); setNewOffset(0); setNewEmailEnabled(false); } }, [open]);
 
   if (!open) return null;
 
   function handleAdd() {
     const t = newReminder.trim();
     if (!t) return;
-    onAddReminder(t, newOffset);
+    onAddReminder(t, newOffset, { enabled: newEmailEnabled, address: null });
     setNewReminder('');
     setNewOffset(0);
+    setNewEmailEnabled(false);
   }
 
   return (
@@ -132,6 +134,29 @@ export default function DayModal({
             </button>
           </div>
 
+          {/* Optional email notification */}
+          <label className="flex items-center gap-2 mb-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={newEmailEnabled}
+              onChange={e => setNewEmailEnabled(e.target.checked)}
+              className="rounded"
+            />
+            <span className="text-xs font-medium" style={{ color: colors.textSecondary }}>Send me an email reminder</span>
+          </label>
+          {newEmailEnabled && (
+            <select
+              value={newOffset}
+              onChange={e => setNewOffset(Number(e.target.value) as ReminderOffset)}
+              className="w-full rounded-lg px-3 py-2 text-xs outline-none cursor-pointer mb-3"
+              style={{ border: `1.5px solid ${colors.border}`, color: colors.textPrimary, background: colors.bgCard }}
+            >
+              {(Object.keys(OFFSET_LABELS) as unknown as ReminderOffset[]).map(k => (
+                <option key={k} value={k}>Email: {OFFSET_LABELS[k]}</option>
+              ))}
+            </select>
+          )}
+
           {/* Existing reminders */}
           {reminders.length === 0 ? (
             <p className="text-xs text-center py-3" style={{ color: '#9CA3AF' }}>
@@ -147,7 +172,7 @@ export default function DayModal({
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold truncate" style={{ color: colors.textPrimary }}>{r.title}</p>
                         <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>
-                          {OFFSET_LABELS[r.remind_offset]}
+                          {OFFSET_LABELS[r.remind_offset]}{r.email_enabled ? ' · Email' : ''}
                         </p>
                       </div>
                       <button

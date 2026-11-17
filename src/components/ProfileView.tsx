@@ -37,6 +37,8 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
   const [themePref, setThemePref] = useState<ThemeMode>((profile.theme_pref as ThemeMode) || 'light');
   const { timeFormat, setTimeFormat } = useTimeFormatValue();
   const [timeFormatPref, setTimeFormatPref] = useState<TimeFormat>((profile.time_format as TimeFormat) || '12h');
+  const [emailRemindersEnabled, setEmailRemindersEnabled] = useState(!!profile.email_reminders_enabled);
+  const [notificationEmail, setNotificationEmail] = useState(profile.notification_email || '');
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +62,8 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
     setTimezonePref(profile.timezone_pref);
     setThemePref((profile.theme_pref as ThemeMode) || 'light');
     setTimeFormatPref((profile.time_format as TimeFormat) || '12h');
+    setEmailRemindersEnabled(!!profile.email_reminders_enabled);
+    setNotificationEmail(profile.notification_email || '');
   }, [profile]);
 
   async function handleAvatarUpload(file: File) {
@@ -112,6 +116,8 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
         timezone_pref: timezonePref,
         theme_pref: themePref,
         time_format: timeFormatPref,
+        email_reminders_enabled: emailRemindersEnabled,
+        notification_email: notificationEmail.trim() || null,
       };
 
       const { data, error: updErr } = await supabase
@@ -316,6 +322,30 @@ export default function ProfileView({ profile, onClose, onSaved, onAccountDelete
                   </button>
                 </div>
               </Field>
+
+              {/* Email Notifications */}
+              <div style={{ borderTop: `1px solid ${colors.borderLight}`, paddingTop: 14 }}>
+                <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: colors.accent }}>Email Notifications</p>
+                <label className="flex items-center gap-2 cursor-pointer select-none mb-3">
+                  <input
+                    type="checkbox"
+                    checked={emailRemindersEnabled}
+                    onChange={e => setEmailRemindersEnabled(e.target.checked)}
+                    className="rounded"
+                  />
+                  <span className="text-xs font-medium" style={{ color: colors.textSecondary }}>Enable email reminders globally</span>
+                </label>
+                <Field label="Notification Email">
+                  <input
+                    type="email"
+                    value={notificationEmail}
+                    onChange={e => setNotificationEmail(e.target.value)}
+                    className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                    style={inputStyle}
+                    placeholder="Defaults to your account email"
+                  />
+                </Field>
+              </div>
 
               <div className="pt-2 space-y-2">
                 <button onClick={onRestartTour} className="flex items-center gap-2 text-xs font-semibold" style={{ color: colors.accent, background: 'none', border: 'none', cursor: 'pointer' }}>

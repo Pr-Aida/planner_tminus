@@ -116,6 +116,8 @@ export interface Reminder {
   remind_offset: ReminderOffset;
   status: ReminderStatus;
   class_id: string | null;
+  email_enabled: boolean;
+  notification_email: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -262,6 +264,9 @@ export interface UserProfile {
   clock2_visible: boolean;
   theme_pref: 'light' | 'dark';
   time_format: '12h' | '24h';
+  // Email reminder preferences
+  email_reminders_enabled: boolean;
+  notification_email: string | null;
 }
 
 export const TIMEZONES = [

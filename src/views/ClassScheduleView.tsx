@@ -39,6 +39,8 @@ interface LinkedReminder {
   remind_offset: ReminderOffset;
   status: string;
   class_id: string | null;
+  email_enabled?: boolean;
+  notification_email?: string | null;
 }
 
 interface Props {
@@ -128,6 +130,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
   const [reminderCustomDate, setReminderCustomDate] = useState('');
   const [reminderCustomTime, setReminderCustomTime] = useState('08:00');
   const [reminderRepeat, setReminderRepeat] = useState<'every' | 'once'>('every');
+  const [reminderEmailEnabled, setReminderEmailEnabled] = useState(false);
   const [linkedReminders, setLinkedReminders] = useState<LinkedReminder[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -176,6 +179,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
     setReminderCustomDate('');
     setReminderCustomTime('08:00');
     setReminderRepeat('every');
+    setReminderEmailEnabled(false);
     setLinkedReminders([]);
     setEditingId(null);
   }
@@ -233,11 +237,13 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
       setReminderTitle(firstRem.title);
       setReminderNote(firstRem.note || '');
       setReminderRepeat(cls.weekly_repeat ? 'every' : 'once');
+      setReminderEmailEnabled(!!firstRem.email_enabled);
     } else if (cls.reminder_offset !== null) {
       setReminderMode('preset');
       setReminderPreset(cls.reminder_offset);
       setReminderTitle(`${cls.course_name} — Class Reminder`);
       setReminderRepeat(cls.weekly_repeat ? 'every' : 'once');
+      setReminderEmailEnabled(false);
     } else {
       setReminderMode('none');
     }
@@ -294,6 +300,10 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
 
     const title = reminderTitle.trim() || `${cls.course_name} — Class Reminder`;
     const note = reminderNote.trim();
+    const emailFields = {
+      email_enabled: reminderEmailEnabled,
+      notification_email: null as string | null,
+    };
 
     if (reminderMode === 'preset') {
       const offset = reminderPreset;
@@ -302,7 +312,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
       const maxWeeks = reminderRepeat === 'every' && cls.weekly_repeat ? 16 : 1;
       const firstOccurrence = nextClassOccurrence(cls.day_of_week);
 
-      const remindersToCreate: { date_key: string; title: string; note: string; remind_offset: ReminderOffset; class_id: string }[] = [];
+      const remindersToCreate: { date_key: string; title: string; note: string; remind_offset: ReminderOffset; class_id: string; email_enabled: boolean; notification_email: string | null }[] = [];
 
       for (let w = 0; w < maxWeeks; w++) {
         const classDate = addDaysGreg(firstOccurrence, w * 7);
@@ -313,6 +323,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
           note,
           remind_offset: offset,
           class_id: cls.id,
+          ...emailFields,
         });
       }
 
@@ -325,7 +336,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
 
       if (!reminderCustomDate) return;
       const g = isoDateToGreg(reminderCustomDate);
-      const remindersToCreate: { date_key: string; title: string; note: string; remind_offset: ReminderOffset; class_id: string }[] = [];
+      const remindersToCreate: { date_key: string; title: string; note: string; remind_offset: ReminderOffset; class_id: string; email_enabled: boolean; notification_email: string | null }[] = [];
 
       if (reminderRepeat === 'every' && cls.weekly_repeat) {
         // Create weekly reminders for 16 weeks starting from custom date
@@ -337,6 +348,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
             note,
             remind_offset: 0,
             class_id: cls.id,
+            ...emailFields,
           });
         }
       } else {
@@ -346,6 +358,7 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
           note,
           remind_offset: 0,
           class_id: cls.id,
+          ...emailFields,
         });
       }
 
@@ -817,6 +830,19 @@ export default function ClassScheduleView({ userId, calMode, timezone, onClose }
                       />
                     </div>
                   </div>
+                )}
+
+                {/* Optional email notification (both modes) */}
+                {reminderMode !== 'none' && (
+                  <label className="flex items-center gap-2 cursor-pointer select-none mt-3">
+                    <input
+                      type="checkbox"
+                      checked={reminderEmailEnabled}
+                      onChange={e => setReminderEmailEnabled(e.target.checked)}
+                      className="rounded"
+                    />
+                    <span className="text-xs font-medium" style={{ color: colors.textSecondary }}>Send me an email reminder</span>
+                  </label>
                 )}
 
                 {/* Show existing linked reminders when editing */}
